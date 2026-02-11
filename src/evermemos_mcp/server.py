@@ -1,0 +1,294 @@
+"""MCP Server entry point for evermemos-mcp.
+
+Registers 5 tools and runs over stdio transport.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any
+
+import mcp.server.stdio
+from mcp import types
+from mcp.server.lowlevel import NotificationOptions, Server
+from mcp.server.models import InitializationOptions
+
+from . import __version__
+from .evermemos_client import EverMemosClient, EverMemosError
+from .memory_service import MemoryService
+from .space_catalog_service import SpaceCatalogService
+
+logger = logging.getLogger(__name__)
+
+server = Server("evermemos-mcp")
+
+# Module-level service — set in main() before server.run()
+_svc: MemoryService | None = None
+
+# ---------------------------------------------------------------------------
+# Tool definitions
+# ---------------------------------------------------------------------------
+
+TOOLS: list[types.Tool] = [
+    types.Tool(
+        name="list_spaces",
+        description=(
+            "List available memory spaces. Call this first to discover "
+            "which space_id to use with other memory tools. "
+            "Each space isolates memories by topic (e.g. coding:my-app, chat:daily)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Optional keyword to filter spaces",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of spaces to return",
+                    "default": 20,
+                },
+            },
+        },
+    ),
+    types.Tool(
+        name="remember",
+        description=(
+            "Store information in long-term memory within a specific space. "
+            "The content is queued for extraction and may take a few minutes "
+            "to become searchable via recall. "
+            "Provide a description when creating a new space for the first time."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The information to remember",
+                },
+                "space_id": {
+                    "type": "string",
+                    "description": (
+                        "Target memory space in <domain>:<slug> format "
+                        "(e.g. coding:my-app, chat:daily, study:ml)"
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "Human-readable description of this space "
+                        "(recommended when creating a new space)"
+                    ),
+                },
+                "sender": {
+                    "type": "string",
+                    "description": "Who is speaking: 'user' or 'assistant'",
+                    "default": "user",
+                },
+                "flush": {
+                    "type": "boolean",
+                    "description": "Signal end of a conversation segment",
+                    "default": True,
+                },
+            },
+            "required": ["content", "space_id"],
+        },
+    ),
+    types.Tool(
+        name="recall",
+        description=(
+            "Search for relevant memories in a specific space. "
+            "Returns matching memories with source citations "
+            "(type, snippet, timestamp, relevance score). "
+            "Also reports how many messages are still being processed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "What to search for",
+                },
+                "space_id": {
+                    "type": "string",
+                    "description": "Memory space to search",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Max number of results",
+                    "default": 5,
+                },
+                "retrieve_method": {
+                    "type": "string",
+                    "description": "Search strategy",
+                    "enum": ["keyword", "hybrid", "vector"],
+                    "default": "hybrid",
+                },
+            },
+            "required": ["query", "space_id"],
+        },
+    ),
+    types.Tool(
+        name="briefing",
+        description=(
+            "Get a contextual briefing for a memory space. "
+            "Returns the user profile, recent episodes, and key facts "
+            "to quickly restore context at the start of a session."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "space_id": {
+                    "type": "string",
+                    "description": "Memory space to summarise",
+                },
+                "max_items": {
+                    "type": "integer",
+                    "description": "Max items per section",
+                    "default": 8,
+                },
+            },
+            "required": ["space_id"],
+        },
+    ),
+    types.Tool(
+        name="forget",
+        description=(
+            "Delete specific memories by their IDs. "
+            "Use recall first to find the memory_id values you want to remove. "
+            "Deletion is permanent."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "memory_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "IDs of memories to delete (from recall results)",
+                },
+                "space_id": {
+                    "type": "string",
+                    "description": "Memory space containing the memories",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional reason for deletion",
+                },
+            },
+            "required": ["memory_ids", "space_id"],
+        },
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# Handlers
+# ---------------------------------------------------------------------------
+
+
+@server.list_tools()
+async def handle_list_tools() -> list[types.Tool]:
+    return TOOLS
+
+
+@server.call_tool()
+async def handle_call_tool(
+    name: str, arguments: dict[str, Any]
+) -> list[types.TextContent]:
+    assert _svc is not None, "MemoryService not initialised"
+
+    try:
+        result = await _dispatch(name, arguments)
+    except EverMemosError as exc:
+        result = {"ok": False, "error": exc.code, "message": str(exc)}
+    except (KeyError, TypeError, ValueError) as exc:
+        result = {"ok": False, "error": "INVALID_INPUT", "message": str(exc)}
+
+    return [types.TextContent(type="text", text=_to_json(result))]
+
+
+async def _dispatch(name: str, args: dict[str, Any]) -> dict:
+    assert _svc is not None
+
+    if name == "list_spaces":
+        return await _svc.list_spaces(
+            query=args.get("query"),
+            limit=args.get("limit", 20),
+        )
+
+    if name == "remember":
+        return await _svc.remember(
+            space_id=args["space_id"],
+            content=args["content"],
+            description=args.get("description"),
+            sender=args.get("sender", "user"),
+            flush=args.get("flush", True),
+        )
+
+    if name == "recall":
+        return await _svc.recall(
+            query=args["query"],
+            space_id=args["space_id"],
+            top_k=args.get("top_k", 5),
+            retrieve_method=args.get("retrieve_method", "hybrid"),
+        )
+
+    if name == "briefing":
+        return await _svc.briefing(
+            space_id=args["space_id"],
+            max_items=args.get("max_items", 8),
+        )
+
+    if name == "forget":
+        return await _svc.forget(
+            memory_ids=args["memory_ids"],
+            space_id=args["space_id"],
+            reason=args.get("reason"),
+        )
+
+    return {"ok": False, "error": "UNKNOWN_TOOL", "message": f"No tool named '{name}'"}
+
+
+def _to_json(data: dict) -> str:
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+async def _run() -> None:
+    global _svc
+
+    client = EverMemosClient()
+    catalog = SpaceCatalogService(client)
+    _svc = MemoryService(client, catalog)
+
+    try:
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="evermemos-mcp",
+                    server_version=__version__,
+                    capabilities=server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
+                ),
+            )
+    finally:
+        await client.close()
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(_run())
+
+
+if __name__ == "__main__":
+    main()
