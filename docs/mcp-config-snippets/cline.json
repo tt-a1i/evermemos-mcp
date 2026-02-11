@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "evermemos": {
+      "command": "evermemos-mcp",
+      "args": [],
+      "env": {
+        "EVERMEMOS_API_KEY": "YOUR_KEY"
+      }
+    }
+  }
+}

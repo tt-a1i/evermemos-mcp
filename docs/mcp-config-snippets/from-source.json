@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "evermemos": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/ABS/PATH/evermemos-mcp",
+        "evermemos-mcp"
+      ],
+      "env": {
+        "EVERMEMOS_API_KEY": "YOUR_KEY"
+      }
+    }
+  }
+}

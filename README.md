@@ -21,6 +21,7 @@ Universal MCP memory layer powered by EverMemOS.
 
 ## MCP Client Integration
 - Claude Code / Cursor / Cline 配置示例见：`docs/05-client-integrations.md`
+- 可直接复制的 JSON 片段：`docs/mcp-config-snippets/`
 - 演示脚本见：`scripts/demo_preload.py`、`scripts/demo_live_walkthrough.py`
 
 ## Design Docs

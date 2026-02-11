@@ -2,6 +2,8 @@
 
 本文给出 `evermemos-mcp` 的可复制接入配置。
 
+现成配置片段目录：`docs/mcp-config-snippets/`
+
 ## 1) 前置条件
 
 1. 已安装本项目（或可以从源码运行）
@@ -54,6 +56,8 @@
 }
 ```
 
+对应片段文件：`docs/mcp-config-snippets/cursor.json`
+
 ## 4) Cline 配置示例
 
 在 Cline 的 MCP Servers 配置里添加：
@@ -71,6 +75,8 @@
   }
 }
 ```
+
+对应片段文件：`docs/mcp-config-snippets/cline.json`
 
 ## 5) Claude Code 配置示例
 
@@ -91,6 +97,26 @@ Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command 
 ```
 
 如果你是源码方式运行，把 `command/args` 替换成第 2 节的方式 B。
+
+对应片段文件：`docs/mcp-config-snippets/claude-code.json`
+
+## 5.1) 源码启动片段
+
+如果你还没安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`
+
+```json
+{
+  "mcpServers": {
+    "evermemos": {
+      "command": "uv",
+      "args": ["run", "--directory", "/ABS/PATH/evermemos-mcp", "evermemos-mcp"],
+      "env": {
+        "EVERMEMOS_API_KEY": "YOUR_KEY"
+      }
+    }
+  }
+}
+```
 
 ## 6) 接入后自检（30 秒）
 
