@@ -182,7 +182,7 @@ TOOLS: list[types.Tool] = [
                     "type": "array",
                     "description": (
                         "Optional memory type filter override. "
-                        "Allowed: profile, episodic_memory, foresight, event_log"
+                        "Allowed: profile, episodic_memory, foresight, event_log."
                     ),
                     "items": {
                         "type": "string",
@@ -219,11 +219,16 @@ TOOLS: list[types.Tool] = [
                 },
                 "start_time": {
                     "type": "string",
-                    "description": "ISO 8601 start time with timezone for filtering",
+                    "description": (
+                        "ISO 8601 start time for filtering "
+                        "(naive values default to UTC)"
+                    ),
                 },
                 "end_time": {
                     "type": "string",
-                    "description": "ISO 8601 end time with timezone for filtering",
+                    "description": (
+                        "ISO 8601 end time for filtering (naive values default to UTC)"
+                    ),
                 },
             },
             "required": ["space_id"],

@@ -36,6 +36,8 @@ Universal MCP memory layer powered by EverMemOS.
 - `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
 - `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
+- `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，仅对 `episodic_memory/event_log` 生效）
+- Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
 
 ## MCP Client Integration
 - Claude Code / Cursor / Cline 配置示例见：`docs/05-client-integrations.md`

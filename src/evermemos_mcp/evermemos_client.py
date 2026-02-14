@@ -6,6 +6,7 @@ Returns raw API response dicts — service layers handle interpretation.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -42,14 +43,32 @@ class EverMemosClient:
         api_version: str | None = None,
         user_id: str | None = None,
         timeout: float = 30.0,
+        get_retry_count: int = 2,
+        get_retry_backoff_seconds: float = 0.25,
     ):
-        self._base_url = base_url or config.EVERMEMOS_BASE_URL
-        self._api_key = api_key or config.EVERMEMOS_API_KEY
-        self._api_version = api_version or config.EVERMEMOS_API_VERSION
-        self._user_id = user_id or config.EVERMEMOS_USER_ID
+        self._base_url = config.EVERMEMOS_BASE_URL if base_url is None else base_url
+        self._api_key = config.EVERMEMOS_API_KEY if api_key is None else api_key
+        self._api_version = (
+            config.EVERMEMOS_API_VERSION if api_version is None else api_version
+        )
+        self._user_id = config.EVERMEMOS_USER_ID if user_id is None else user_id
         self._api_base = f"{self._base_url}/api/{self._api_version}"
         self._timeout = timeout
+        self._get_retry_count = max(0, int(get_retry_count))
+        self._get_retry_backoff_seconds = max(0.0, float(get_retry_backoff_seconds))
         self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> "EverMemosClient":
+        await self._get_client()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type,
+        exc,
+        tb,
+    ) -> None:
+        await self.close()
 
     @property
     def user_id(self) -> str:
@@ -59,8 +78,14 @@ class EverMemosClient:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
+            timeout = httpx.Timeout(
+                connect=self._timeout,
+                read=self._timeout,
+                write=self._timeout,
+                pool=self._timeout,
+            )
             self._client = httpx.AsyncClient(
-                timeout=self._timeout,
+                timeout=timeout,
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
         return self._client
@@ -94,7 +119,7 @@ class EverMemosClient:
                 body = r.json()
                 msg = body.get("message", r.text)
                 code = body.get("code", "UPSTREAM_ERROR")
-            except Exception:
+            except (ValueError, TypeError, AttributeError):
                 msg = r.text[:500]
                 code = "UPSTREAM_ERROR"
             raise EverMemosError(msg, code=code, status_code=r.status_code)
@@ -124,21 +149,72 @@ class EverMemosClient:
         them as EverMemosError(code="UPSTREAM_UNAVAILABLE").
         """
         client = await self._get_client()
-        try:
-            r = await client.request(
-                method, f"{self._api_base}{path}", headers=self._headers(), **kwargs
-            )
-        except httpx.TimeoutException as exc:
-            raise EverMemosError(
-                f"Request timed out: {exc}",
-                code="UPSTREAM_UNAVAILABLE",
-            ) from exc
-        except httpx.RequestError as exc:
-            raise EverMemosError(
-                f"Network error: {exc}",
-                code="UPSTREAM_UNAVAILABLE",
-            ) from exc
-        return await self._handle(r)
+        method_upper = method.upper()
+        retries = self._get_retry_count if method_upper == "GET" else 0
+        attempts = retries + 1
+
+        for attempt in range(attempts):
+            try:
+                r = await client.request(
+                    method_upper,
+                    f"{self._api_base}{path}",
+                    headers=self._headers(),
+                    **kwargs,
+                )
+            except httpx.TimeoutException as exc:
+                if attempt < retries:
+                    await asyncio.sleep(self._get_retry_backoff_seconds * (2**attempt))
+                    continue
+                raise EverMemosError(
+                    f"Request timed out: {exc}",
+                    code="UPSTREAM_UNAVAILABLE",
+                ) from exc
+            except httpx.RequestError as exc:
+                if attempt < retries:
+                    await asyncio.sleep(self._get_retry_backoff_seconds * (2**attempt))
+                    continue
+                raise EverMemosError(
+                    f"Network error: {exc}",
+                    code="UPSTREAM_UNAVAILABLE",
+                ) from exc
+
+            if r.status_code in {500, 502, 503, 504} and attempt < retries:
+                await asyncio.sleep(self._get_retry_backoff_seconds * (2**attempt))
+                continue
+            return await self._handle(r)
+
+        raise EverMemosError(
+            "Request failed after retries",
+            code="UPSTREAM_UNAVAILABLE",
+        )
+
+    @staticmethod
+    def _maybe_hint_get_body_stripping(
+        error: EverMemosError, payload: dict
+    ) -> EverMemosError:
+        if error.status_code not in {400, 422}:
+            return error
+
+        msg = str(error)
+        needles = [
+            "Missing required field",
+            "group_ids",
+            "query",
+            "memory_type",
+        ]
+        if not any(n in msg for n in needles):
+            return error
+
+        if not payload:
+            return error
+
+        hint = (
+            "Possible network/proxy issue: GET request JSON body may be stripped by a proxy/WAF. "
+            "If you're behind a corporate proxy, try configuring an allowlist or switching to a network that preserves GET bodies."
+        )
+        return EverMemosError(
+            f"{msg} ({hint})", code=error.code, status_code=error.status_code
+        )
 
     # -- public API --
 
@@ -212,7 +288,10 @@ class EverMemosClient:
         if end_time:
             payload["end_time"] = end_time
 
-        return await self._request("GET", "/memories", json=payload)
+        try:
+            return await self._request("GET", "/memories", json=payload)
+        except EverMemosError as exc:
+            raise self._maybe_hint_get_body_stripping(exc, payload) from exc
 
     async def search_memories(
         self,
@@ -255,7 +334,10 @@ class EverMemosClient:
         if include_metadata is not None:
             payload["include_metadata"] = include_metadata
 
-        return await self._request("GET", "/memories/search", json=payload)
+        try:
+            return await self._request("GET", "/memories/search", json=payload)
+        except EverMemosError as exc:
+            raise self._maybe_hint_get_body_stripping(exc, payload) from exc
 
     async def get_request_status(self, request_id: str) -> dict:
         """Get async processing status for a queued add-memory request."""
@@ -371,12 +453,27 @@ class EverMemosClient:
         self._require_key()
 
         payload: dict = {}
-        if memory_id:
-            payload["memory_id"] = memory_id
-        if user_id:
-            payload["user_id"] = user_id
-        if group_id:
-            payload["group_id"] = group_id
+        if memory_id is not None:
+            if not isinstance(memory_id, str) or not memory_id.strip():
+                raise EverMemosError(
+                    "memory_id must be a non-empty string when provided",
+                    code="INVALID_INPUT",
+                )
+            payload["memory_id"] = memory_id.strip()
+        if user_id is not None:
+            if not isinstance(user_id, str) or not user_id.strip():
+                raise EverMemosError(
+                    "user_id must be a non-empty string when provided",
+                    code="INVALID_INPUT",
+                )
+            payload["user_id"] = user_id.strip()
+        if group_id is not None:
+            if not isinstance(group_id, str) or not group_id.strip():
+                raise EverMemosError(
+                    "group_id must be a non-empty string when provided",
+                    code="INVALID_INPUT",
+                )
+            payload["group_id"] = group_id.strip()
 
         if not payload:
             raise EverMemosError(

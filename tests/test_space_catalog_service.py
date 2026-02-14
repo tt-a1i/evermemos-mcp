@@ -87,6 +87,25 @@ async def test_register_falls_back_to_update_conversation_metadata():
 
 
 @pytest.mark.asyncio
+async def test_register_meta_update_failure_does_not_block():
+    client = AsyncMock(spec=EverMemosClient)
+    client.add_message = AsyncMock(return_value={"status": "queued"})
+    client.set_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError("exists", code="INVALID_PARAMETER", status_code=400)
+    )
+    client.update_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError("network", code="UPSTREAM_UNAVAILABLE")
+    )
+    catalog = SpaceCatalogService(client)
+
+    info = await catalog.register_space("coding:app", "My React app")
+
+    assert info.space_id == "coding:app"
+    client.set_conversation_metadata.assert_called_once()
+    client.update_conversation_metadata.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_register_passes_llm_custom_setting(monkeypatch):
     monkeypatch.setattr(
         catalog_module,

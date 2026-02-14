@@ -56,6 +56,7 @@ EverMemOS API
 - 封装 `/api/v0/status/request`，用于查询异步写入状态
 - 本地兼容：可切换到 `/api/v1/*`（通过配置）
 - 处理鉴权、超时、重试和错误信息提炼
+- 注意：官方 `fetch/search` 契约是 `GET + JSON body`，在部分代理/WAF 环境可能被剥离请求体
 
 ## 4) 数据与隔离模型
 
@@ -116,7 +117,7 @@ EverMemOS API
     - 可选值：`keyword|hybrid|vector|rrf|agentic`
   - `memory_types` (optional)
     - 可选值：`profile|episodic_memory|foresight|event_log`
-    - 若不传，在 `hybrid/rrf/agentic` 下默认使用 `profile+episodic_memory`
+    - 不传则使用 upstream 默认检索策略
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
     - 仅对 `episodic_memory` 生效
   - `current_time` (optional, ISO 8601 with timezone)
@@ -135,6 +136,7 @@ EverMemOS API
   - `max_items` (optional, default: 8)
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
 - 行为：分层抓取后生成上下文简报（profile + episodic + event_log + foresight）
+  - `start_time/end_time` 仅作用于 `episodic_memory` 与 `event_log`，不限制 `foresight`
 - 输出：
   - `ok`
   - `space_id`

@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from evermemos_mcp.evermemos_client import EverMemosClient, EverMemosError
+from evermemos_mcp import config
 
 
 # -- auth gating --
@@ -28,6 +29,12 @@ def test_v1_allows_no_api_key():
     c._api_key = ""
     # Should not raise
     c._require_key()
+
+
+def test_explicit_empty_api_key_does_not_fallback_to_env(monkeypatch):
+    monkeypatch.setattr(config, "EVERMEMOS_API_KEY", "env-key")
+    c = EverMemosClient(api_key="", api_version="v0")
+    assert c._api_key == ""
 
 
 # -- response handling --
@@ -122,6 +129,72 @@ async def test_network_timeout_wraps_as_upstream_unavailable():
     await c.close()
 
 
+@pytest.mark.asyncio
+async def test_request_retries_get_on_network_error():
+    c = EverMemosClient(api_key="fake", api_version="v0", get_retry_count=2)
+    req = httpx.Request("GET", "http://test")
+    response = httpx.Response(200, json={"status": "ok"}, request=req)
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(
+        side_effect=[
+            httpx.ConnectError("conn reset", request=req),
+            response,
+        ]
+    )
+    c._get_client = AsyncMock(return_value=mock_client)
+
+    result = await c._request("GET", "/memories")
+
+    assert result["status"] == "ok"
+    assert mock_client.request.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_request_does_not_retry_post_on_network_error():
+    c = EverMemosClient(api_key="fake", api_version="v0", get_retry_count=2)
+    req = httpx.Request("POST", "http://test")
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(
+        side_effect=httpx.ConnectError("conn reset", request=req)
+    )
+    c._get_client = AsyncMock(return_value=mock_client)
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c._request("POST", "/memories", json={"x": 1})
+
+    assert exc_info.value.code == "UPSTREAM_UNAVAILABLE"
+    assert mock_client.request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_request_retries_get_on_503_response():
+    c = EverMemosClient(api_key="fake", api_version="v0", get_retry_count=2)
+    req = httpx.Request("GET", "http://test")
+    response_503 = httpx.Response(503, text="busy", request=req)
+    response_200 = httpx.Response(200, json={"status": "ok"}, request=req)
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(side_effect=[response_503, response_200])
+    c._get_client = AsyncMock(return_value=mock_client)
+
+    result = await c._request("GET", "/memories")
+    assert result["status"] == "ok"
+    assert mock_client.request.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_client_supports_async_context_manager_close():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._get_client = AsyncMock(return_value=AsyncMock())
+    c.close = AsyncMock()
+
+    async with c as entered:
+        assert entered is c
+
+    c.close.assert_called_once()
+
+
 # -- delete input validation --
 
 
@@ -131,6 +204,14 @@ async def test_delete_requires_at_least_one_filter():
     c = EverMemosClient(api_key="fake", api_version="v0")
     with pytest.raises(EverMemosError) as exc_info:
         await c.delete_memories()
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_empty_memory_id_when_provided():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.delete_memories(memory_id="   ")
     assert exc_info.value.code == "INVALID_INPUT"
 
 
@@ -146,6 +227,23 @@ async def test_fetch_memories_uses_get_json_body_contract():
     assert kwargs["json"]["group_ids"] == ["space::coding:app"]
     assert kwargs["json"]["page"] == 1
     assert kwargs["json"]["page_size"] == 20
+
+
+@pytest.mark.asyncio
+async def test_fetch_memories_adds_proxy_hint_for_missing_required_fields():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(
+        side_effect=EverMemosError(
+            "Missing required field group_ids",
+            code="INVALID_PARAMETER",
+            status_code=400,
+        )
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.fetch_memories("space::coding:app")
+
+    assert "GET request JSON body may be stripped" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

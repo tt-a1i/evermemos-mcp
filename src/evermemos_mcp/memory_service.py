@@ -7,6 +7,7 @@ Each method returns a plain dict that server.py serialises to the MCP client.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -18,6 +19,8 @@ _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic"}
 _VALID_MEMORY_TYPES = {"profile", "episodic_memory", "foresight", "event_log"}
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
@@ -130,6 +133,23 @@ class MemoryService:
             )
         return value
 
+    @staticmethod
+    def _validate_time_window(
+        start_time: str | None,
+        end_time: str | None,
+    ) -> tuple[str | None, str | None]:
+        if start_time is None or end_time is None:
+            return start_time, end_time
+
+        start_dt = datetime.fromisoformat(start_time)
+        end_dt = datetime.fromisoformat(end_time)
+        if start_dt > end_dt:
+            raise EverMemosError(
+                "start_time must be earlier than or equal to end_time",
+                code="INVALID_INPUT",
+            )
+        return start_time, end_time
+
     # -- list_spaces --
 
     async def list_spaces(self, query: str | None = None, limit: int = 20) -> dict:
@@ -204,11 +224,18 @@ class MemoryService:
         self._catalog.adjust_memory_count(space_id, 1)
 
         request_id = result.get("request_id", "")
+        if not isinstance(request_id, str):
+            request_id = ""
+        message_id = result.get("message_id", "")
+        if not isinstance(message_id, str):
+            message_id = ""
+        if not message_id:
+            message_id = request_id
 
         output: dict = {
             "ok": True,
             "space_id": space_id,
-            "message_id": request_id,
+            "message_id": message_id,
             "request_id": request_id,
             "created_at": created_at,
             "processing_hint": (
@@ -257,6 +284,7 @@ class MemoryService:
         top_k = self._validate_positive_int(top_k, "top_k")
         start_time = self._validate_iso_datetime(start_time, "start_time")
         end_time = self._validate_iso_datetime(end_time, "end_time")
+        start_time, end_time = self._validate_time_window(start_time, end_time)
         current_time = self._validate_iso_datetime(current_time, "current_time")
         radius = self._validate_radius(radius)
         memory_types = self._validate_memory_types(memory_types)
@@ -274,10 +302,6 @@ class MemoryService:
 
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
-
-        # For hybrid/rrf/agentic, the API currently only supports profile and episodic_memory
-        if memory_types is None and retrieve_method in {"hybrid", "rrf", "agentic"}:
-            memory_types = ["profile", "episodic_memory"]
 
         result = await self._client.search_memories(
             query,
@@ -382,6 +406,7 @@ class MemoryService:
         max_items = self._validate_positive_int(max_items, "max_items")
         start_time = self._validate_iso_datetime(start_time, "start_time")
         end_time = self._validate_iso_datetime(end_time, "end_time")
+        start_time, end_time = self._validate_time_window(start_time, end_time)
 
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
@@ -406,8 +431,6 @@ class MemoryService:
                 group_id,
                 memory_type="foresight",
                 limit=max_items,
-                start_time=start_time,
-                end_time=end_time,
             ),
             return_exceptions=True,
         )
@@ -626,11 +649,21 @@ class MemoryService:
         if deleted:
             self._catalog.adjust_memory_count(space_id, -deleted)
 
+        normalized_reason = reason.strip() if isinstance(reason, str) else ""
+        if normalized_reason:
+            logger.info(
+                "forget called with reason in space %s for %d memory ids",
+                space_id,
+                len(unique_ids),
+            )
+
         output: dict = {
             "ok": len(errors) == 0,
             "space_id": space_id,
             "deleted_count": deleted,
         }
+        if normalized_reason:
+            output["reason_logged"] = True
         if errors:
             output["errors"] = errors
         return output

@@ -37,9 +37,6 @@ if _LLM_CUSTOM_SETTING_RAW:
 else:
     EVERMEMOS_LLM_CUSTOM_SETTING = None
 
-# Derived
-EVERMEMOS_API_BASE = f"{EVERMEMOS_BASE_URL}/api/{EVERMEMOS_API_VERSION}"
-
 # Reserved group_id for space catalog metadata
 CATALOG_GROUP_ID = "space::catalog"
 

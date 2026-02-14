@@ -275,25 +275,25 @@ async def test_recall_vector_does_not_force_memory_types():
 
 
 @pytest.mark.asyncio
-async def test_recall_hybrid_forces_profile_and_episodic_memory_types():
+async def test_recall_hybrid_does_not_force_memory_types():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
     await svc.recall("x", "coding:app", retrieve_method="hybrid")
 
     _, kwargs = client.search_memories.call_args
-    assert kwargs["memory_types"] == ["profile", "episodic_memory"]
+    assert kwargs["memory_types"] is None
 
 
 @pytest.mark.asyncio
-async def test_recall_explicit_memory_types_override_default_behavior():
+async def test_recall_explicit_memory_types_override_for_vector_search():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
     await svc.recall(
         "x",
         "coding:app",
-        retrieve_method="hybrid",
+        retrieve_method="vector",
         memory_types=["event_log", "foresight", "event_log"],
     )
 
@@ -311,11 +311,27 @@ async def test_recall_invalid_memory_types_raises():
     assert exc_info.value.code == "INVALID_INPUT"
 
 
+@pytest.mark.asyncio
+async def test_recall_hybrid_allows_custom_memory_types_passthrough():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall(
+        "x",
+        "coding:app",
+        retrieve_method="hybrid",
+        memory_types=["event_log"],
+    )
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] == ["event_log"]
+
+
 # -- briefing --
 
 
 @pytest.mark.asyncio
-async def test_briefing_assembles_three_types():
+async def test_briefing_assembles_four_types():
     call_count = 0
 
     async def mock_fetch(group_id, *, memory_type="episodic_memory", limit=40, **kw):
@@ -477,6 +493,16 @@ async def test_forget_partial_failure():
 
 
 @pytest.mark.asyncio
+async def test_forget_reason_is_logged_in_output():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["ok-1"], "coding:app", reason="cleanup duplicate")
+    assert result["ok"] is True
+    assert result["reason_logged"] is True
+
+
+@pytest.mark.asyncio
 async def test_forget_rejects_empty_memory_ids():
     svc, _ = _make_svc()
     with pytest.raises(EverMemosError) as exc_info:
@@ -530,14 +556,14 @@ async def test_briefing_with_time_range_passes_to_client():
         end_time="2024-12-31T23:59:59+00:00",
     )
 
-    # briefing calls fetch_memories 4 times. profile has no time filters.
+    # briefing calls fetch_memories 4 times.
     for call in client.fetch_memories.call_args_list:
         _, kwargs = call
         mtype = kwargs.get("memory_type")
-        if mtype in ["episodic_memory", "event_log", "foresight"]:
+        if mtype in ["episodic_memory", "event_log"]:
             assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
             assert kwargs["end_time"] == "2024-12-31T23:59:59+00:00"
-        elif mtype == "profile":
+        elif mtype in ["profile", "foresight"]:
             assert kwargs.get("start_time") is None
             assert kwargs.get("end_time") is None
 
@@ -568,6 +594,38 @@ async def test_recall_rejects_out_of_range_radius():
 
 
 @pytest.mark.asyncio
+async def test_recall_rejects_inverted_time_range():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall(
+            "query",
+            "coding:app",
+            start_time="2024-12-31T23:59:59+00:00",
+            end_time="2024-01-01T00:00:00+00:00",
+        )
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_allows_equal_time_window():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall(
+        "query",
+        "coding:app",
+        start_time="2024-01-01T00:00:00+00:00",
+        end_time="2024-01-01T00:00:00+00:00",
+    )
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
+    assert kwargs["end_time"] == "2024-01-01T00:00:00+00:00"
+
+
+@pytest.mark.asyncio
 async def test_briefing_accepts_naive_time_and_normalizes_to_utc():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
@@ -576,8 +634,24 @@ async def test_briefing_accepts_naive_time_and_normalizes_to_utc():
 
     for call in client.fetch_memories.call_args_list:
         _, kwargs = call
-        if kwargs.get("memory_type") in {"episodic_memory", "event_log", "foresight"}:
+        if kwargs.get("memory_type") in {"episodic_memory", "event_log"}:
             assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
+        if kwargs.get("memory_type") == "foresight":
+            assert kwargs.get("end_time") is None
+
+
+@pytest.mark.asyncio
+async def test_briefing_rejects_inverted_time_range():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.briefing(
+            "coding:app",
+            start_time="2024-12-31T23:59:59+00:00",
+            end_time="2024-01-01T00:00:00+00:00",
+        )
+    assert exc_info.value.code == "INVALID_INPUT"
 
 
 @pytest.mark.asyncio

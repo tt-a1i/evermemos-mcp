@@ -109,11 +109,17 @@ async def test_dispatch_recall_with_extended_filters(svc):
             "current_time": "2024-06-01T00:00:00+00:00",
             "radius": 0.6,
             "include_metadata": True,
+            "retrieve_method": "vector",
             "memory_types": ["event_log", "foresight"],
         },
     )
     data = _parse(result)
     assert data["ok"] is True
+
+    svc._client.search_memories.assert_called_once()
+    _, kwargs = svc._client.search_memories.call_args
+    assert kwargs["memory_types"] == ["event_log", "foresight"]
+    assert kwargs["retrieve_method"] == "vector"
 
 
 @pytest.mark.asyncio
@@ -126,6 +132,31 @@ async def test_dispatch_briefing(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_briefing_with_time_filters(svc):
+    svc._catalog.ensure_space("coding:app")
+    result = await server_mod.handle_call_tool(
+        "briefing",
+        {
+            "space_id": "coding:app",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "end_time": "2024-12-31T23:59:59+00:00",
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+
+    for call in svc._client.fetch_memories.call_args_list:
+        _, kwargs = call
+        memory_type = kwargs.get("memory_type")
+        if memory_type in {"episodic_memory", "event_log"}:
+            assert kwargs.get("start_time") == "2024-01-01T00:00:00+00:00"
+            assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
+        if memory_type in {"profile", "foresight"}:
+            assert kwargs.get("start_time") is None
+            assert kwargs.get("end_time") is None
+
+
+@pytest.mark.asyncio
 async def test_dispatch_forget(svc):
     svc._catalog.ensure_space("coding:app")
     result = await server_mod.handle_call_tool(
@@ -134,6 +165,10 @@ async def test_dispatch_forget(svc):
     data = _parse(result)
     assert data["ok"] is True
     assert data["deleted_count"] == 1
+    svc._client.delete_memories.assert_called_with(
+        memory_id="m1",
+        group_id="space::coding:app",
+    )
 
 
 @pytest.mark.asyncio
