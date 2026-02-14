@@ -285,6 +285,32 @@ async def test_recall_hybrid_forces_profile_and_episodic_memory_types():
     assert kwargs["memory_types"] == ["profile", "episodic_memory"]
 
 
+@pytest.mark.asyncio
+async def test_recall_explicit_memory_types_override_default_behavior():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall(
+        "x",
+        "coding:app",
+        retrieve_method="hybrid",
+        memory_types=["event_log", "foresight", "event_log"],
+    )
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] == ["event_log", "foresight"]
+
+
+@pytest.mark.asyncio
+async def test_recall_invalid_memory_types_raises():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("x", "coding:app", memory_types=["unknown"])
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
 # -- briefing --
 
 
@@ -517,17 +543,18 @@ async def test_briefing_with_time_range_passes_to_client():
 
 
 @pytest.mark.asyncio
-async def test_recall_rejects_naive_time_without_timezone():
-    svc, _ = _make_svc()
+async def test_recall_accepts_naive_time_and_normalizes_to_utc():
+    svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
-    with pytest.raises(EverMemosError) as exc_info:
-        await svc.recall(
-            "query",
-            "coding:app",
-            start_time="2024-01-01T00:00:00",
-        )
-    assert exc_info.value.code == "INVALID_INPUT"
+    await svc.recall(
+        "query",
+        "coding:app",
+        start_time="2024-01-01T00:00:00",
+    )
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
 
 
 @pytest.mark.asyncio
@@ -541,10 +568,29 @@ async def test_recall_rejects_out_of_range_radius():
 
 
 @pytest.mark.asyncio
-async def test_briefing_rejects_naive_time_without_timezone():
-    svc, _ = _make_svc()
+async def test_briefing_accepts_naive_time_and_normalizes_to_utc():
+    svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
-    with pytest.raises(EverMemosError) as exc_info:
-        await svc.briefing("coding:app", end_time="2024-12-31T23:59:59")
-    assert exc_info.value.code == "INVALID_INPUT"
+    await svc.briefing("coding:app", end_time="2024-12-31T23:59:59")
+
+    for call in client.fetch_memories.call_args_list:
+        _, kwargs = call
+        if kwargs.get("memory_type") in {"episodic_memory", "event_log", "foresight"}:
+            assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
+
+
+@pytest.mark.asyncio
+async def test_recall_includes_partial_hint_when_upstream_partial():
+    svc, _ = _make_svc(
+        search_rv={
+            "status": "partial",
+            "message": "partial shard failure",
+            "result": {"memories": [], "pending_messages": [], "partial_errors": []},
+        }
+    )
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.recall("query", "coding:app")
+    assert result["partial_hint"]
+    assert result["partial_errors"][0]["message"] == "partial shard failure"

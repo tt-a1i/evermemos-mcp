@@ -149,14 +149,14 @@ TOOLS: list[types.Tool] = [
                     "type": "string",
                     "description": (
                         "ISO 8601 start time with timezone "
-                        "(e.g. 2024-01-01T00:00:00+00:00). "
+                        "(e.g. 2024-01-01T00:00:00+00:00, naive values default to UTC). "
                         "For search results, this only filters episodic_memory items."
                     ),
                 },
                 "end_time": {
                     "type": "string",
                     "description": (
-                        "ISO 8601 end time with timezone. "
+                        "ISO 8601 end time with timezone (naive values default to UTC). "
                         "For search results, this only filters episodic_memory items."
                     ),
                 },
@@ -178,6 +178,22 @@ TOOLS: list[types.Tool] = [
                     "description": "Whether to include memory metadata in results",
                     "default": False,
                 },
+                "memory_types": {
+                    "type": "array",
+                    "description": (
+                        "Optional memory type filter override. "
+                        "Allowed: profile, episodic_memory, foresight, event_log"
+                    ),
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "profile",
+                            "episodic_memory",
+                            "foresight",
+                            "event_log",
+                        ],
+                    },
+                },
             },
             "required": ["query", "space_id"],
         },
@@ -186,7 +202,7 @@ TOOLS: list[types.Tool] = [
         name="briefing",
         description=(
             "Get a contextual briefing for a memory space. "
-            "Returns the user profile, recent episodes, and key facts "
+            "Returns the user profile, recent episodes, key facts, and future foresights "
             "to quickly restore context at the start of a session."
         ),
         inputSchema={
@@ -296,6 +312,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             current_time=args.get("current_time"),
             radius=args.get("radius"),
             include_metadata=args.get("include_metadata", False),
+            memory_types=args.get("memory_types"),
         )
 
     if name == "briefing":

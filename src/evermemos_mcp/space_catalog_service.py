@@ -7,6 +7,7 @@ Writes are also persisted to a reserved EverMemOS space for cross-session recove
 from __future__ import annotations
 
 import logging
+import json
 import re
 import time
 import asyncio
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 _RECOVER_COOLDOWN_SECS = 30.0
 _META_ENRICH_CONCURRENCY = 8
+_META_ENRICH_MAX_SPACES = 60
+_CATALOG_PAGE_SIZE = 100
+_ENTRY_JSON_PREFIX = "SPACE_CATALOG_ENTRY:"
 
 
 # -- helpers --
@@ -95,7 +99,7 @@ class SpaceCatalogService:
             self._cache[space_id] = info
 
         # Best-effort persist to catalog space
-        await self._persist_entry(space_id, description)
+        await self._persist_entry(space_id, description, created_at=info.created_at)
         await self._persist_conversation_meta(
             space_id, description, created_at=info.created_at
         )
@@ -159,11 +163,28 @@ class SpaceCatalogService:
 
     # -- persistence (best-effort) --
 
-    async def _persist_entry(self, space_id: str, description: str) -> None:
+    async def _persist_entry(
+        self,
+        space_id: str,
+        description: str,
+        *,
+        created_at: str,
+    ) -> None:
         try:
-            content = (
+            payload = {
+                "version": 1,
+                "space_id": space_id,
+                "description": description or "",
+                "created_at": created_at,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            legacy_text = (
                 f"Registered memory space: {space_id}"
                 f" — {description or 'no description'}"
+            )
+            content = (
+                f"{_ENTRY_JSON_PREFIX}{json.dumps(payload, ensure_ascii=True)}\n"
+                f"{legacy_text}"
             )
             await self._client.add_message(
                 group_id=CATALOG_GROUP_ID,
@@ -243,34 +264,30 @@ class SpaceCatalogService:
     async def _try_recover(self) -> None:
         """Best-effort: recover space list from EverMemOS catalog space.
 
-        Search results are **flat items** (each with ``memory_type``, ``summary``,
-        ``atomic_fact``, ``timestamp``, etc.), not nested groups.
+        Prefer paginated fetch (stable, exhaustive). Fallback to keyword search when
+        fetch is unavailable/incompatible.
 
         On network failure, retries after a cooldown instead of giving up permanently.
         """
         try:
-            result = await self._client.search_memories(
-                query="Registered memory space",
-                group_id=CATALOG_GROUP_ID,
-                retrieve_method="keyword",
-                top_k=200,
-            )
-            res = result.get("result", {})
-
-            # Parse extracted memories (flat items)
-            for item in res.get("memories", []):
-                if isinstance(item, dict):
-                    self._parse_memory(item)
-
-            # Parse pending (not-yet-extracted) messages
-            for msg in res.get("pending_messages", []):
-                self._parse_content(
-                    msg.get("content", ""),
-                    timestamp=msg.get("created_at", ""),
-                )
+            recovered_from_fetch = await self._recover_from_paginated_fetch()
+            if not recovered_from_fetch:
+                await self._recover_from_search(include_extracted=True)
+            else:
+                # Fetch API does not include pending_messages; enrich with a lightweight
+                # search call to surface queued-but-not-extracted catalog writes.
+                await self._recover_from_search(include_extracted=False)
 
             if self._cache and EVERMEMOS_ENABLE_CONVERSATION_META:
-                await self._enrich_with_conversation_meta()
+                ranked = sorted(
+                    self._cache.values(),
+                    key=lambda item: item.last_used_at or "",
+                    reverse=True,
+                )
+                target_space_ids = [
+                    item.space_id for item in ranked[:_META_ENRICH_MAX_SPACES]
+                ]
+                await self._enrich_with_conversation_meta(target_space_ids)
 
             # Mark success — no more retries
             self._recovered = True
@@ -285,7 +302,87 @@ class SpaceCatalogService:
                 _RECOVER_COOLDOWN_SECS,
             )
 
-    async def _enrich_with_conversation_meta(self) -> None:
+    async def _recover_from_paginated_fetch(self) -> bool:
+        """Recover catalog entries by paging through fetch_memories results.
+
+        Returns True when fetch API returned a parseable dict response at least once.
+        """
+
+        saw_valid_fetch = False
+        for memory_type in ("event_log", "episodic_memory"):
+            page = 1
+            while True:
+                response = await self._client.fetch_memories(
+                    CATALOG_GROUP_ID,
+                    memory_type=memory_type,
+                    limit=_CATALOG_PAGE_SIZE,
+                    offset=(page - 1) * _CATALOG_PAGE_SIZE,
+                )
+                if not isinstance(response, dict):
+                    return saw_valid_fetch
+
+                result = response.get("result")
+                if not isinstance(result, dict):
+                    break
+
+                memories = result.get("memories", [])
+                if not isinstance(memories, list):
+                    break
+                saw_valid_fetch = True
+                for item in memories:
+                    if isinstance(item, dict):
+                        self._parse_memory(item)
+
+                count = result.get("count")
+                if not isinstance(count, int):
+                    count = len(memories)
+                total_count = result.get("total_count")
+
+                if count <= 0:
+                    break
+                if isinstance(total_count, int) and total_count >= 0:
+                    if (page - 1) * _CATALOG_PAGE_SIZE + count >= total_count:
+                        break
+                elif count < _CATALOG_PAGE_SIZE:
+                    break
+                page += 1
+
+        return saw_valid_fetch
+
+    async def _recover_from_search(self, *, include_extracted: bool) -> None:
+        """Recover from search API.
+
+        - include_extracted=True: parse extracted memories + pending messages.
+        - include_extracted=False: parse only pending messages.
+        """
+        result = await self._client.search_memories(
+            query="Registered memory space",
+            group_id=CATALOG_GROUP_ID,
+            retrieve_method="keyword",
+            top_k=200,
+        )
+        if not isinstance(result, dict):
+            return
+        res = result.get("result", {})
+        if not isinstance(res, dict):
+            return
+
+        if include_extracted:
+            for item in res.get("memories", []):
+                if isinstance(item, dict):
+                    self._parse_memory(item)
+
+        for msg in res.get("pending_messages", []):
+            if not isinstance(msg, dict):
+                continue
+            self._parse_content(
+                msg.get("content", ""),
+                timestamp=msg.get("created_at", ""),
+            )
+
+    async def _enrich_with_conversation_meta(self, space_ids: list[str]) -> None:
+        if not space_ids:
+            return
         semaphore = asyncio.Semaphore(_META_ENRICH_CONCURRENCY)
 
         async def _fetch_for_space(space_id: str) -> None:
@@ -321,7 +418,7 @@ class SpaceCatalogService:
                 if isinstance(updated, str) and updated:
                     info.last_used_at = max(info.last_used_at or "", updated)
 
-        await asyncio.gather(*(_fetch_for_space(space_id) for space_id in self._cache))
+        await asyncio.gather(*(_fetch_for_space(space_id) for space_id in space_ids))
 
     # -- parsing helpers --
 
@@ -332,8 +429,83 @@ class SpaceCatalogService:
         r"Registered memory space:\s*(\S+)(?:\s+[—\-]\s+(.+))?$", re.MULTILINE
     )
 
+    @staticmethod
+    def _pick_newest(a: str, b: str) -> str:
+        return a if (a or "") >= (b or "") else b
+
+    def _apply_space_record(
+        self,
+        *,
+        space_id: str,
+        description: str,
+        created_at: str,
+        updated_at: str,
+    ) -> None:
+        existing = self._cache.get(space_id)
+        if existing is None:
+            self._cache[space_id] = SpaceInfo(
+                space_id=space_id,
+                description=description,
+                created_at=created_at,
+                last_used_at=updated_at,
+            )
+            return
+
+        if description and updated_at >= (existing.last_used_at or ""):
+            existing.description = description
+        if created_at and not existing.created_at:
+            existing.created_at = created_at
+        if updated_at:
+            existing.last_used_at = self._pick_newest(existing.last_used_at, updated_at)
+
+    def _parse_structured_content(self, content: str, timestamp: str = "") -> bool:
+        parsed_any = False
+        for line in content.splitlines():
+            prefix_index = line.find(_ENTRY_JSON_PREFIX)
+            if prefix_index < 0:
+                continue
+
+            raw_json = line[prefix_index + len(_ENTRY_JSON_PREFIX) :].strip()
+            if not raw_json:
+                continue
+
+            try:
+                payload = json.loads(raw_json)
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(payload, dict):
+                continue
+            sid = payload.get("space_id")
+            if not isinstance(sid, str) or not sid.strip():
+                continue
+
+            desc = payload.get("description")
+            if not isinstance(desc, str):
+                desc = ""
+
+            created_at = payload.get("created_at")
+            if not isinstance(created_at, str):
+                created_at = timestamp
+
+            updated_at = payload.get("updated_at")
+            if not isinstance(updated_at, str):
+                updated_at = timestamp or created_at
+
+            self._apply_space_record(
+                space_id=sid.strip(),
+                description=desc.strip(),
+                created_at=created_at,
+                updated_at=updated_at,
+            )
+            parsed_any = True
+
+        return parsed_any
+
     def _parse_content(self, content: str, timestamp: str = "") -> None:
         if not content:
+            return
+        if self._parse_structured_content(content, timestamp=timestamp):
             return
         for m in self._ENTRY_RE.finditer(content):
             sid = m.group(1).rstrip(".")
@@ -342,19 +514,12 @@ class SpaceCatalogService:
                 desc = ""
             if not sid:
                 continue
-            existing = self._cache.get(sid)
-            if existing is None:
-                self._cache[sid] = SpaceInfo(
-                    space_id=sid,
-                    description=desc,
-                    created_at=timestamp,
-                    last_used_at=timestamp,
-                )
-            elif timestamp and timestamp > (existing.last_used_at or ""):
-                # Newer entry wins — update description and timestamps
-                if desc:
-                    existing.description = desc
-                existing.last_used_at = timestamp
+            self._apply_space_record(
+                space_id=sid,
+                description=desc,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
 
     def _parse_memory(self, memory: dict) -> None:
         """Parse a flat search-result item.
@@ -367,5 +532,9 @@ class SpaceCatalogService:
             or memory.get("atomic_fact", "")
             or memory.get("content", "")
         )
+        if isinstance(text, list):
+            text = "\n".join(str(item) for item in text if item)
+        if not isinstance(text, str):
+            text = str(text)
         ts = memory.get("timestamp", "") or memory.get("created_at", "")
         self._parse_content(text, timestamp=ts)

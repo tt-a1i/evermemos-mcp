@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
@@ -479,3 +480,94 @@ async def test_recover_runs_even_when_cache_has_entries():
 
     # Recovery search was actually called
     client.search_memories.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_recover_from_paginated_fetch_without_topk_truncation():
+    total = 220
+
+    def _structured_entry(index: int) -> str:
+        payload = {
+            "version": 1,
+            "space_id": f"bulk:space-{index}",
+            "description": f"Bulk space {index}",
+            "created_at": "2026-02-10T10:00:00+00:00",
+            "updated_at": "2026-02-10T10:00:00+00:00",
+        }
+        return f"{catalog_module._ENTRY_JSON_PREFIX}{json.dumps(payload)}"
+
+    async def fetch_side_effect(
+        group_id, *, memory_type="episodic_memory", limit=40, offset=0, **kwargs
+    ):
+        if group_id != "space::catalog":
+            return {"result": {"memories": [], "count": 0, "total_count": 0}}
+
+        if memory_type == "event_log":
+            if offset >= total:
+                return {"result": {"memories": [], "count": 0, "total_count": total}}
+
+            end = min(offset + limit, total)
+            memories = [
+                {
+                    "memory_type": "event_log",
+                    "atomic_fact": _structured_entry(i),
+                    "timestamp": "2026-02-10T10:00:00+00:00",
+                }
+                for i in range(offset, end)
+            ]
+            return {
+                "result": {
+                    "memories": memories,
+                    "count": len(memories),
+                    "total_count": total,
+                }
+            }
+
+        return {"result": {"memories": [], "count": 0, "total_count": 0}}
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.fetch_memories = AsyncMock(side_effect=fetch_side_effect)
+    client.search_memories = AsyncMock(
+        return_value={"result": {"pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces(limit=500)
+
+    assert len(spaces) == total
+    assert catalog.get_space("bulk:space-0") is not None
+    assert catalog.get_space("bulk:space-219") is not None
+
+
+@pytest.mark.asyncio
+async def test_conversation_meta_enrich_is_capped_for_large_catalog():
+    memories = []
+    for i in range(120):
+        memories.append(
+            {
+                "memory_type": "event_log",
+                "atomic_fact": f"Registered memory space: cap:space-{i} — desc {i}",
+                "timestamp": "2026-02-10T10:00:00Z",
+            }
+        )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.fetch_memories = AsyncMock(return_value={"invalid": True})
+    client.search_memories = AsyncMock(
+        return_value={"result": {"memories": memories, "pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces(limit=500)
+
+    assert len(spaces) == 120
+    assert (
+        client.get_conversation_metadata.call_count
+        <= catalog_module._META_ENRICH_MAX_SPACES
+    )

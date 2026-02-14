@@ -31,8 +31,9 @@ Universal MCP memory layer powered by EverMemOS.
 - `remember`: 支持 `include_status`（可选），开启后会附带一次 `request_status`
 - `remember` 输出包含：`message_id`、`request_id`、`created_at`、`processing_hint`
 - `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic`
-- `recall`: 支持 `start_time/end_time`（ISO 8601 且必须带时区），仅对 `episodic_memory` 生效
+- `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
+- `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
 - `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
 

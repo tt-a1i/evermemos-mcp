@@ -15,6 +15,7 @@ from .space_catalog_service import SpaceCatalogService, to_group_id
 
 _VALID_SENDERS = {"user", "assistant"}
 _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic"}
+_VALID_MEMORY_TYPES = {"profile", "episodic_memory", "foresight", "event_log"}
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
 
@@ -66,25 +67,50 @@ class MemoryService:
 
         raw = value.strip()
         normalized = raw
-        if raw.endswith("Z"):
-            normalized = f"{raw[:-1]}+00:00"
-        elif raw.endswith("z"):
+        if raw.endswith("Z") or raw.endswith("z"):
             normalized = f"{raw[:-1]}+00:00"
 
         try:
             parsed = datetime.fromisoformat(normalized)
         except ValueError as exc:
             raise EverMemosError(
-                f"{field_name} must be ISO 8601 with timezone",
+                f"{field_name} must be a valid ISO 8601 datetime",
                 code="INVALID_INPUT",
             ) from exc
 
         if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.isoformat()
+
+    @staticmethod
+    def _validate_memory_types(memory_types: list[str] | None) -> list[str] | None:
+        if memory_types is None:
+            return None
+        if not isinstance(memory_types, list) or not memory_types:
             raise EverMemosError(
-                f"{field_name} must include timezone information",
+                "memory_types must be a non-empty array when provided",
                 code="INVALID_INPUT",
             )
-        return raw
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in memory_types:
+            if not isinstance(item, str) or not item.strip():
+                raise EverMemosError(
+                    "memory_types must contain non-empty strings",
+                    code="INVALID_INPUT",
+                )
+            value = item.strip()
+            if value not in _VALID_MEMORY_TYPES:
+                raise EverMemosError(
+                    "memory_types must be one of: profile, episodic_memory, foresight, event_log",
+                    code="INVALID_INPUT",
+                )
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        return normalized
 
     @staticmethod
     def _validate_radius(radius: float | None) -> float | None:
@@ -224,6 +250,7 @@ class MemoryService:
         current_time: str | None = None,
         radius: float | None = None,
         include_metadata: bool = False,
+        memory_types: list[str] | None = None,
     ) -> dict:
         query = self._validate_text(query, "query")
         space_id = self._validate_space_id(space_id)
@@ -232,6 +259,7 @@ class MemoryService:
         end_time = self._validate_iso_datetime(end_time, "end_time")
         current_time = self._validate_iso_datetime(current_time, "current_time")
         radius = self._validate_radius(radius)
+        memory_types = self._validate_memory_types(memory_types)
         if not isinstance(include_metadata, bool):
             raise EverMemosError(
                 "include_metadata must be a boolean",
@@ -248,8 +276,7 @@ class MemoryService:
         self._catalog.touch_space(space_id)
 
         # For hybrid/rrf/agentic, the API currently only supports profile and episodic_memory
-        memory_types = None
-        if retrieve_method in {"hybrid", "rrf", "agentic"}:
+        if memory_types is None and retrieve_method in {"hybrid", "rrf", "agentic"}:
             memory_types = ["profile", "episodic_memory"]
 
         result = await self._client.search_memories(
@@ -323,6 +350,21 @@ class MemoryService:
                 f"{len(pending)} message(s) are still being processed "
                 "and may contain relevant information."
             )
+
+        partial_errors = res.get("partial_errors")
+        warnings = res.get("warnings")
+        status = result.get("status")
+        message = result.get("message")
+        has_partial = status == "partial" or bool(partial_errors)
+
+        if has_partial:
+            output["partial_hint"] = "Search returned partial results from upstream."
+            if isinstance(partial_errors, list) and partial_errors:
+                output["partial_errors"] = partial_errors
+            elif isinstance(message, str) and message:
+                output["partial_errors"] = [{"message": message}]
+        if isinstance(warnings, list) and warnings:
+            output["warnings"] = warnings
 
         return output
 

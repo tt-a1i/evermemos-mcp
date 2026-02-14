@@ -114,6 +114,9 @@ EverMemOS API
   - `top_k` (optional, default: 5)
   - `retrieve_method` (optional, default: `hybrid`)
     - 可选值：`keyword|hybrid|vector|rrf|agentic`
+  - `memory_types` (optional)
+    - 可选值：`profile|episodic_memory|foresight|event_log`
+    - 若不传，在 `hybrid/rrf/agentic` 下默认使用 `profile+episodic_memory`
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
     - 仅对 `episodic_memory` 生效
   - `current_time` (optional, ISO 8601 with timezone)

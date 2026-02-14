@@ -109,6 +109,7 @@ async def test_dispatch_recall_with_extended_filters(svc):
             "current_time": "2024-06-01T00:00:00+00:00",
             "radius": 0.6,
             "include_metadata": True,
+            "memory_types": ["event_log", "foresight"],
         },
     )
     data = _parse(result)
