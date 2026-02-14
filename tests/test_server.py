@@ -26,6 +26,13 @@ def svc():
     )
     client.fetch_memories = AsyncMock(return_value={"result": {"memories": []}})
     client.delete_memories = AsyncMock(return_value={"result": {"count": 1}})
+    client.get_request_status = AsyncMock(
+        return_value={
+            "success": True,
+            "found": True,
+            "data": {"request_id": "req-abc", "status": "queued"},
+        }
+    )
     catalog = SpaceCatalogService(client)
     ms = MemoryService(client, catalog)
     server_mod._svc = ms
@@ -64,6 +71,21 @@ async def test_dispatch_remember(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_remember_with_status(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "test content",
+            "space_id": "coding:app",
+            "include_status": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert data["request_status"]["success"] is True
+
+
+@pytest.mark.asyncio
 async def test_dispatch_recall(svc):
     svc._catalog.ensure_space("coding:app")
     result = await server_mod.handle_call_tool(
@@ -72,6 +94,25 @@ async def test_dispatch_recall(svc):
     data = _parse(result)
     assert data["ok"] is True
     assert "results" in data
+
+
+@pytest.mark.asyncio
+async def test_dispatch_recall_with_extended_filters(svc):
+    svc._catalog.ensure_space("coding:app")
+    result = await server_mod.handle_call_tool(
+        "recall",
+        {
+            "query": "FastAPI",
+            "space_id": "coding:app",
+            "start_time": "2024-01-01T00:00:00+00:00",
+            "end_time": "2024-12-31T23:59:59+00:00",
+            "current_time": "2024-06-01T00:00:00+00:00",
+            "radius": 0.6,
+            "include_metadata": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
 
 
 @pytest.mark.asyncio

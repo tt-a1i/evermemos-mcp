@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import evermemos_mcp.space_catalog_service as catalog_module
 from evermemos_mcp.evermemos_client import EverMemosClient, EverMemosError
 from evermemos_mcp.space_catalog_service import (
     SpaceCatalogService,
@@ -44,6 +45,12 @@ def test_from_group_id_filters_non_space():
 async def test_register_and_list():
     client = AsyncMock(spec=EverMemosClient)
     client.add_message = AsyncMock(return_value={"status": "queued"})
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    client.update_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
     client.search_memories = AsyncMock(
         return_value={"result": {"memories": [], "pending_messages": []}}
     )
@@ -57,6 +64,51 @@ async def test_register_and_list():
     spaces = await catalog.list_spaces()
     assert len(spaces) == 1
     assert spaces[0].space_id == "coding:app"
+    client.set_conversation_metadata.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_register_falls_back_to_update_conversation_metadata():
+    client = AsyncMock(spec=EverMemosClient)
+    client.add_message = AsyncMock(return_value={"status": "queued"})
+    client.set_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError("exists", code="INVALID_PARAMETER", status_code=400)
+    )
+    client.update_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.register_space("coding:app", "My React app")
+
+    client.set_conversation_metadata.assert_called_once()
+    client.update_conversation_metadata.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_register_passes_llm_custom_setting(monkeypatch):
+    monkeypatch.setattr(
+        catalog_module,
+        "EVERMEMOS_LLM_CUSTOM_SETTING",
+        {
+            "boundary": {
+                "provider": "openrouter",
+                "model": "openai/gpt-4.1-mini",
+            }
+        },
+    )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.add_message = AsyncMock(return_value={"status": "queued"})
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.register_space("coding:app", "My React app")
+
+    _, kwargs = client.set_conversation_metadata.call_args
+    assert kwargs["llm_custom_setting"] is not None
 
 
 @pytest.mark.asyncio
@@ -167,6 +219,15 @@ async def test_recover_from_flat_search_items():
             }
         }
     )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "description": "My React project from meta",
+                "updated_at": "2026-02-10T12:00:00Z",
+            },
+        }
+    )
     catalog = SpaceCatalogService(client)
 
     spaces = await catalog.list_spaces()  # triggers recovery
@@ -176,7 +237,7 @@ async def test_recover_from_flat_search_items():
 
     app = catalog.get_space("coding:app")
     assert app is not None
-    assert app.description == "My React project"
+    assert app.description == "My React project from meta"
     assert app.created_at == "2026-02-10T10:00:00Z"
 
 

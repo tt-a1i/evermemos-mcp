@@ -1,7 +1,7 @@
 """Preload demo memories and optionally wait until searchable.
 
 Usage:
-  uv run python scripts/demo_preload.py --wait
+  uv run python scripts/demo_preload.py --wait --check-status
 """
 
 from __future__ import annotations
@@ -69,7 +69,12 @@ DEMO_DATA = {
 }
 
 
-async def preload(svc: MemoryService, ids: dict[str, str]) -> None:
+async def preload(
+    svc: MemoryService,
+    ids: dict[str, str],
+    *,
+    check_status: bool = False,
+) -> None:
     for domain, space_id in ids.items():
         spec = DEMO_DATA[domain]
         print(f"\n=== preload {space_id} ===")
@@ -80,10 +85,22 @@ async def preload(svc: MemoryService, ids: dict[str, str]) -> None:
                 description=spec["description"] if idx == 0 else None,
                 sender="user",
                 flush=True,
+                include_status=check_status,
             )
             print(
                 f"[{idx + 1}/{len(spec['messages'])}] queued message_id={result.get('message_id', '')}"
             )
+            if check_status and result.get("request_status"):
+                rs = result["request_status"]
+                status = (
+                    (rs.get("data") or {}).get("status")
+                    if isinstance(rs.get("data"), dict)
+                    else ""
+                )
+                print(
+                    "    status_check: "
+                    f"success={rs.get('success')} found={rs.get('found')} status={status}"
+                )
             await asyncio.sleep(0.2)
 
 
@@ -146,6 +163,11 @@ async def main() -> int:
         default="",
         help="Optional slug prefix for space IDs",
     )
+    parser.add_argument(
+        "--check-status",
+        action="store_true",
+        help="Call request status once after each remember",
+    )
     args = parser.parse_args()
 
     ids = _space_ids(args.prefix.strip())
@@ -156,7 +178,7 @@ async def main() -> int:
     svc = MemoryService(client, catalog)
 
     try:
-        await preload(svc, ids)
+        await preload(svc, ids, check_status=args.check_status)
         if args.wait:
             ok = await wait_until_ready(svc, ids, args.timeout, args.interval)
             return 0 if ok else 1

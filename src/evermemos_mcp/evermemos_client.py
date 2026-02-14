@@ -59,7 +59,10 @@ class EverMemosClient:
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self._timeout)
+            self._client = httpx.AsyncClient(
+                timeout=self._timeout,
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            )
         return self._client
 
     async def close(self) -> None:
@@ -86,8 +89,6 @@ class EverMemosClient:
 
     async def _handle(self, r: httpx.Response) -> dict:
         """Parse response; raise EverMemosError on 4xx/5xx."""
-        if r.status_code == 202:
-            return r.json()
         if r.status_code >= 400:
             try:
                 body = r.json()
@@ -97,7 +98,23 @@ class EverMemosClient:
                 msg = r.text[:500]
                 code = "UPSTREAM_ERROR"
             raise EverMemosError(msg, code=code, status_code=r.status_code)
-        return r.json()
+
+        try:
+            body = r.json()
+        except ValueError as exc:
+            raise EverMemosError(
+                "Upstream returned invalid JSON response",
+                code="UPSTREAM_ERROR",
+                status_code=r.status_code,
+            ) from exc
+
+        if not isinstance(body, dict):
+            raise EverMemosError(
+                "Upstream returned non-object JSON response",
+                code="UPSTREAM_ERROR",
+                status_code=r.status_code,
+            )
+        return body
 
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         """Unified HTTP request with network error wrapping.
@@ -170,19 +187,32 @@ class EverMemosClient:
         user_id: str | None = None,
         limit: int = 40,
         offset: int = 0,
+        start_time: str | None = None,
+        end_time: str | None = None,
     ) -> dict:
-        """Fetch memories by type from a space."""
+        """Fetch memories by type from a space.
+
+        API contract (Cloud v0): GET /memories with JSON body.
+        """
         self._require_key()
 
-        params: dict = {
-            "group_id": group_id,
+        page_size = max(1, min(limit, 100))
+        safe_offset = max(0, offset)
+        page = (safe_offset // page_size) + 1
+
+        payload: dict = {
+            "group_ids": [group_id],
             "user_id": user_id or self._user_id,
             "memory_type": memory_type,
-            "limit": limit,
-            "offset": offset,
+            "page": page,
+            "page_size": page_size,
         }
+        if start_time:
+            payload["start_time"] = start_time
+        if end_time:
+            payload["end_time"] = end_time
 
-        return await self._request("GET", "/memories", params=params)
+        return await self._request("GET", "/memories", json=payload)
 
     async def search_memories(
         self,
@@ -192,6 +222,12 @@ class EverMemosClient:
         retrieve_method: str = "hybrid",
         memory_types: list[str] | None = None,
         top_k: int = 5,
+        user_id: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        current_time: str | None = None,
+        radius: float | None = None,
+        include_metadata: bool | None = None,
     ) -> dict:
         """Search memories in a space.
 
@@ -201,19 +237,130 @@ class EverMemosClient:
 
         payload: dict = {
             "query": query,
-            "group_id": group_id,
+            "group_ids": [group_id],
+            "user_id": user_id or self._user_id,
             "retrieve_method": retrieve_method,
             "top_k": top_k,
         }
         if memory_types:
             payload["memory_types"] = memory_types
+        if start_time:
+            payload["start_time"] = start_time
+        if end_time:
+            payload["end_time"] = end_time
+        if current_time:
+            payload["current_time"] = current_time
+        if radius is not None:
+            payload["radius"] = radius
+        if include_metadata is not None:
+            payload["include_metadata"] = include_metadata
 
         return await self._request("GET", "/memories/search", json=payload)
+
+    async def get_request_status(self, request_id: str) -> dict:
+        """Get async processing status for a queued add-memory request."""
+        self._require_key()
+
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise EverMemosError("request_id is required", code="INVALID_INPUT")
+
+        return await self._request(
+            "GET",
+            "/status/request",
+            params={"request_id": request_id.strip()},
+        )
+
+    async def set_conversation_metadata(
+        self,
+        *,
+        group_id: str,
+        scene: str,
+        created_at: str,
+        description: str | None = None,
+        scene_desc: dict | None = None,
+        tags: list[str] | None = None,
+        llm_custom_setting: dict | None = None,
+        default_timezone: str | None = None,
+    ) -> dict:
+        """Create conversation metadata for a group."""
+        self._require_key()
+
+        payload: dict = {
+            "group_id": group_id,
+            "scene": scene,
+            "created_at": created_at,
+        }
+        if description is not None:
+            payload["description"] = description
+        if scene_desc is not None:
+            payload["scene_desc"] = scene_desc
+        if tags is not None:
+            payload["tags"] = tags
+        if llm_custom_setting is not None:
+            payload["llm_custom_setting"] = llm_custom_setting
+        if default_timezone is not None:
+            payload["default_timezone"] = default_timezone
+
+        return await self._request("POST", "/memories/conversation-meta", json=payload)
+
+    async def update_conversation_metadata(
+        self,
+        *,
+        group_id: str,
+        description: str | None = None,
+        scene_desc: dict | None = None,
+        tags: list[str] | None = None,
+        llm_custom_setting: dict | None = None,
+        default_timezone: str | None = None,
+    ) -> dict:
+        """Patch conversation metadata for a group."""
+        self._require_key()
+
+        payload: dict = {"group_id": group_id}
+        if description is not None:
+            payload["description"] = description
+        if scene_desc is not None:
+            payload["scene_desc"] = scene_desc
+        if tags is not None:
+            payload["tags"] = tags
+        if llm_custom_setting is not None:
+            payload["llm_custom_setting"] = llm_custom_setting
+        if default_timezone is not None:
+            payload["default_timezone"] = default_timezone
+
+        return await self._request("PATCH", "/memories/conversation-meta", json=payload)
+
+    async def get_conversation_metadata(self, group_id: str) -> dict:
+        """Get conversation metadata for a group.
+
+        Some upstream deployments accept `group_id` via query params,
+        others via GET JSON body. Try query params first, then fallback.
+        """
+        self._require_key()
+
+        if not isinstance(group_id, str) or not group_id.strip():
+            raise EverMemosError("group_id is required", code="INVALID_INPUT")
+
+        gid = group_id.strip()
+        try:
+            return await self._request(
+                "GET",
+                "/memories/conversation-meta",
+                params={"group_id": gid},
+            )
+        except EverMemosError as exc:
+            if exc.status_code not in {400, 404, 422}:
+                raise
+            return await self._request(
+                "GET",
+                "/memories/conversation-meta",
+                json={"group_id": gid},
+            )
 
     async def delete_memories(
         self,
         *,
-        event_id: str | None = None,
+        memory_id: str | None = None,
         user_id: str | None = None,
         group_id: str | None = None,
     ) -> dict:
@@ -224,8 +371,8 @@ class EverMemosClient:
         self._require_key()
 
         payload: dict = {}
-        if event_id:
-            payload["event_id"] = event_id
+        if memory_id:
+            payload["memory_id"] = memory_id
         if user_id:
             payload["user_id"] = user_id
         if group_id:
@@ -233,7 +380,7 @@ class EverMemosClient:
 
         if not payload:
             raise EverMemosError(
-                "At least one filter (event_id / user_id / group_id) required for delete",
+                "At least one filter (memory_id / user_id / group_id) required for delete",
                 code="INVALID_INPUT",
             )
 

@@ -103,6 +103,14 @@ TOOLS: list[types.Tool] = [
                     "description": "Signal end of a conversation segment",
                     "default": True,
                 },
+                "include_status": {
+                    "type": "boolean",
+                    "description": (
+                        "Whether to also query request status once after queuing "
+                        "the memory write"
+                    ),
+                    "default": False,
+                },
             },
             "required": ["content", "space_id"],
         },
@@ -134,8 +142,41 @@ TOOLS: list[types.Tool] = [
                 "retrieve_method": {
                     "type": "string",
                     "description": "Search strategy",
-                    "enum": ["keyword", "hybrid", "vector"],
+                    "enum": ["keyword", "hybrid", "vector", "rrf", "agentic"],
                     "default": "hybrid",
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": (
+                        "ISO 8601 start time with timezone "
+                        "(e.g. 2024-01-01T00:00:00+00:00). "
+                        "For search results, this only filters episodic_memory items."
+                    ),
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "ISO 8601 end time with timezone. "
+                        "For search results, this only filters episodic_memory items."
+                    ),
+                },
+                "current_time": {
+                    "type": "string",
+                    "description": (
+                        "ISO 8601 current time with timezone for foresight relevance filtering"
+                    ),
+                },
+                "radius": {
+                    "type": "number",
+                    "description": (
+                        "Cosine similarity threshold (0-1). "
+                        "Effective for vector and hybrid retrieval, default from upstream is 0.6"
+                    ),
+                },
+                "include_metadata": {
+                    "type": "boolean",
+                    "description": "Whether to include memory metadata in results",
+                    "default": False,
                 },
             },
             "required": ["query", "space_id"],
@@ -159,6 +200,14 @@ TOOLS: list[types.Tool] = [
                     "type": "integer",
                     "description": "Max items per section",
                     "default": 8,
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "ISO 8601 start time with timezone for filtering",
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "ISO 8601 end time with timezone for filtering",
                 },
             },
             "required": ["space_id"],
@@ -233,6 +282,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             description=args.get("description"),
             sender=args.get("sender", "user"),
             flush=args.get("flush", True),
+            include_status=args.get("include_status", False),
         )
 
     if name == "recall":
@@ -241,12 +291,19 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             space_id=args["space_id"],
             top_k=args.get("top_k", 5),
             retrieve_method=args.get("retrieve_method", "hybrid"),
+            start_time=args.get("start_time"),
+            end_time=args.get("end_time"),
+            current_time=args.get("current_time"),
+            radius=args.get("radius"),
+            include_metadata=args.get("include_metadata", False),
         )
 
     if name == "briefing":
         return await svc.briefing(
             space_id=args["space_id"],
             max_items=args.get("max_items", 8),
+            start_time=args.get("start_time"),
+            end_time=args.get("end_time"),
         )
 
     if name == "forget":

@@ -22,7 +22,7 @@
 3. 确认 3 个空间至少各有 1 条可召回结果
 
 ```bash
-uv run python scripts/demo_preload.py --wait --timeout 480 --interval 20
+uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 ```
 
 ## 4. 3-5 分钟脚本建议
@@ -60,7 +60,7 @@ uv run python scripts/demo_preload.py --wait --timeout 480 --interval 20
 
 ```bash
 # 预加载
-uv run python scripts/demo_preload.py --wait
+uv run python scripts/demo_preload.py --wait --check-status
 
 # 现场走查（list/recall/briefing，可选 forget）
 uv run python scripts/demo_live_walkthrough.py
@@ -69,6 +69,7 @@ uv run python scripts/demo_live_walkthrough.py
 ## 6. 常见故障与处理
 
 - recall 为空但 pending_count > 0：提取还在进行，等待后重试
+- remember 返回了 request_status 但 found=false：状态记录可能还没可查，稍后再试（不影响异步写入已排队）
 - Cloud 网络抖动：重跑 recall，或在视频中展示错误语义（UPSTREAM_UNAVAILABLE）
 - list_spaces 不完整：先执行一次 preload，再 list_spaces
 

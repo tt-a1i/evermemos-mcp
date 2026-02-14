@@ -16,6 +16,7 @@ def _make_svc(
     search_rv=None,
     fetch_rv=None,
     delete_rv=None,
+    status_rv=None,
 ):
     """Create a MemoryService with a fully mocked client."""
     client = AsyncMock(spec=EverMemosClient)
@@ -31,6 +32,14 @@ def _make_svc(
     )
     client.delete_memories = AsyncMock(
         return_value=delete_rv or {"result": {"count": 1}}
+    )
+    client.get_request_status = AsyncMock(
+        return_value=status_rv
+        or {
+            "success": True,
+            "found": True,
+            "data": {"request_id": "req-123", "status": "queued"},
+        }
     )
     catalog = SpaceCatalogService(client)
     return MemoryService(client, catalog), client
@@ -97,6 +106,17 @@ async def test_remember_with_description_registers_space():
     await svc.remember("study:ml", "Neural nets", description="ML course")
     result = await svc.list_spaces()
     assert result["spaces"][0]["description"] == "ML course"
+
+
+@pytest.mark.asyncio
+async def test_remember_include_status_fetches_request_status():
+    svc, client = _make_svc()
+    result = await svc.remember("study:ml", "Neural nets", include_status=True)
+
+    assert result["ok"] is True
+    assert result["request_id"] == "req-123"
+    assert result["request_status"]["success"] is True
+    client.get_request_status.assert_called_once_with("req-123")
 
 
 @pytest.mark.asyncio
@@ -192,6 +212,31 @@ async def test_recall_reports_pending():
 
 
 @pytest.mark.asyncio
+async def test_recall_includes_profile_results():
+    search_response = {
+        "result": {
+            "memories": [],
+            "profiles": [
+                {
+                    "item_type": "explicit_info",
+                    "description": "Prefers concise technical answers",
+                    "score": 0.92,
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.recall("style", "coding:app")
+    assert result["ok"] is True
+    assert len(result["results"]) == 1
+    assert result["results"][0]["memory_type"] == "profile"
+    assert "concise" in result["results"][0]["snippet"]
+
+
+@pytest.mark.asyncio
 async def test_recall_no_pending_key_when_empty():
     svc, _ = _make_svc()
     svc._catalog.ensure_space("coding:app")
@@ -203,8 +248,41 @@ async def test_recall_no_pending_key_when_empty():
 async def test_recall_invalid_retrieve_method_raises():
     svc, _ = _make_svc()
     with pytest.raises(EverMemosError) as exc_info:
-        await svc.recall("x", "coding:app", retrieve_method="rrf")
+        await svc.recall("x", "coding:app", retrieve_method="invalid")
     assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_keyword_does_not_force_memory_types():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("x", "coding:app", retrieve_method="keyword")
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] is None
+
+
+@pytest.mark.asyncio
+async def test_recall_vector_does_not_force_memory_types():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("x", "coding:app", retrieve_method="vector")
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] is None
+
+
+@pytest.mark.asyncio
+async def test_recall_hybrid_forces_profile_and_episodic_memory_types():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("x", "coding:app", retrieve_method="hybrid")
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] == ["profile", "episodic_memory"]
 
 
 # -- briefing --
@@ -222,14 +300,10 @@ async def test_briefing_assembles_three_types():
                 "result": {
                     "memories": [
                         {
-                            "profiles": [
-                                {
-                                    "profile_data": {
-                                        "summary": "Developer who prefers TypeScript",
-                                        "timestamp": "2026-02-10T10:00:00Z",
-                                    }
-                                }
-                            ]
+                            "profile_data": {
+                                "summary": "Developer who prefers TypeScript"
+                            },
+                            "updated_at": "2026-02-10T10:00:00Z",
                         }
                     ]
                 }
@@ -256,6 +330,17 @@ async def test_briefing_assembles_three_types():
                     ]
                 }
             }
+        if memory_type == "foresight":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "summary": "Need to prepare migration plan next sprint",
+                            "target_time": "2026-03-01T09:00:00Z",
+                        }
+                    ]
+                }
+            }
         return {"result": {"memories": []}}
 
     svc, client = _make_svc()
@@ -264,14 +349,14 @@ async def test_briefing_assembles_three_types():
 
     result = await svc.briefing("coding:app")
     assert result["ok"] is True
-    assert call_count == 3  # profile + episodic + event_log
+    assert call_count == 4  # profile + episodic + event_log + foresight
     assert (
         "profile" in result["summary"].lower() or "episode" in result["summary"].lower()
     )
-    assert len(result["highlights"]) == 3
+    assert len(result["highlights"]) == 4
 
     types_found = {h["type"] for h in result["highlights"]}
-    assert types_found == {"profile", "episodic_memory", "event_log"}
+    assert types_found == {"profile", "episodic_memory", "event_log", "foresight"}
 
 
 @pytest.mark.asyncio
@@ -349,12 +434,8 @@ async def test_forget_deletes_by_id():
 
 @pytest.mark.asyncio
 async def test_forget_partial_failure():
-    call_count = 0
-
-    async def mock_delete(*, event_id=None, group_id=None, **kw):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 2:
+    async def mock_delete(*, memory_id=None, group_id=None, **kw):
+        if memory_id == "bad-2":
             raise EverMemosError("not found", code="NOT_FOUND", status_code=404)
         return {"result": {"count": 1}}
 
@@ -386,3 +467,84 @@ async def test_forget_deduplicates_ids_before_delete_calls():
     assert result["ok"] is True
     assert result["deleted_count"] == 2
     assert client.delete_memories.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_recall_with_time_range_passes_to_client():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall(
+        "query",
+        "coding:app",
+        start_time="2024-01-01T00:00:00+00:00",
+        end_time="2024-12-31T23:59:59+00:00",
+        current_time="2024-06-01T00:00:00+00:00",
+        radius=0.6,
+        include_metadata=True,
+    )
+
+    client.search_memories.assert_called_once()
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
+    assert kwargs["end_time"] == "2024-12-31T23:59:59+00:00"
+    assert kwargs["current_time"] == "2024-06-01T00:00:00+00:00"
+    assert kwargs["radius"] == 0.6
+    assert kwargs["include_metadata"] is True
+
+
+@pytest.mark.asyncio
+async def test_briefing_with_time_range_passes_to_client():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.briefing(
+        "coding:app",
+        start_time="2024-01-01T00:00:00+00:00",
+        end_time="2024-12-31T23:59:59+00:00",
+    )
+
+    # briefing calls fetch_memories 4 times. profile has no time filters.
+    for call in client.fetch_memories.call_args_list:
+        _, kwargs = call
+        mtype = kwargs.get("memory_type")
+        if mtype in ["episodic_memory", "event_log", "foresight"]:
+            assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
+            assert kwargs["end_time"] == "2024-12-31T23:59:59+00:00"
+        elif mtype == "profile":
+            assert kwargs.get("start_time") is None
+            assert kwargs.get("end_time") is None
+
+
+@pytest.mark.asyncio
+async def test_recall_rejects_naive_time_without_timezone():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall(
+            "query",
+            "coding:app",
+            start_time="2024-01-01T00:00:00",
+        )
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_rejects_out_of_range_radius():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("query", "coding:app", radius=1.5)
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_briefing_rejects_naive_time_without_timezone():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.briefing("coding:app", end_time="2024-12-31T23:59:59")
+    assert exc_info.value.code == "INVALID_INPUT"

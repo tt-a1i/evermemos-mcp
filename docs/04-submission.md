@@ -47,6 +47,6 @@ I used Codex to review the changes, sanity-check the implementation against exis
 
 ```bash
 uv run pytest
-uv run python scripts/demo_preload.py --wait --timeout 480 --interval 20
+uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 uv run python scripts/demo_live_walkthrough.py
 ```

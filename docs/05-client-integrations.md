@@ -9,6 +9,7 @@
 1. 已安装本项目（或可以从源码运行）
 2. 可执行命令可用：`evermemos-mcp`
 3. Cloud 模式已设置：`EVERMEMOS_API_KEY`
+4. （可选）需要自定义提取模型时，设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 
 > 说明：`EVERMEMOS_BASE_URL` 和 `EVERMEMOS_API_VERSION` 默认已内置为 Cloud（`https://api.evermind.ai` + `v0`），通常不需要再配。
 
@@ -123,8 +124,11 @@ Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command 
 在客户端里调用：
 
 1. `list_spaces`（应返回 `ok=true`）
-2. `remember` 写一条测试内容（应返回 `message_id` + `processing_hint`）
+2. `remember` 写一条测试内容（建议 `include_status=true`）
+   - 应返回 `message_id/request_id/processing_hint`
+   - 若开启 `include_status`，应有 `request_status`
 3. `recall` 查询同空间（短时间可能空，但可看到 `pending_count`）
+   - `retrieve_method` 可选：`keyword|hybrid|vector|rrf|agentic`
 
 ## 7) 常见问题
 
@@ -139,3 +143,7 @@ Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command 
 - 记忆写入后立刻检索不到
   - 原因：Cloud 异步提取（正常）
   - 处理：等待 2-5 分钟，或看 `pending_count` 提示
+
+- `remember` 没有返回 `request_status`
+  - 原因：未传 `include_status=true`，或本次状态查询失败
+  - 处理：开启 `include_status`，或用 `request_id` 做后续状态追踪

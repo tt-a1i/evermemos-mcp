@@ -35,6 +35,7 @@ async def main():
         sid,
         "We use FastAPI with PostgreSQL. Redis for caching. uv as package manager.",
         description="Smoke test project",
+        include_status=True,
     )
     pp("remember", r)
     assert r["ok"], f"remember failed: {r}"
@@ -54,16 +55,7 @@ async def main():
     pp("briefing", r)
     assert r["ok"]
 
-    # 6. recall on pre-existing space with real data
-    old_space = "test::validate-a-160de9"
-    print(f"\n--- recall on old space ({old_space}) ---")
-    try:
-        r = await svc.recall("React TypeScript", old_space)
-        pp("recall (old space)", r)
-    except Exception as e:
-        print(f"  skipped: {e}")
-
-    # 7. forget (use a fake ID — expect error or 0 deleted)
+    # 6. forget (use a fake ID — expect error or 0 deleted)
     r = await svc.forget(["nonexistent-id"], sid)
     pp("forget (fake ID)", r)
 

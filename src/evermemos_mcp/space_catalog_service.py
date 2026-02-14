@@ -9,15 +9,23 @@ from __future__ import annotations
 import logging
 import re
 import time
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .config import CATALOG_GROUP_ID, SPACE_GROUP_PREFIX
+from .config import (
+    CATALOG_GROUP_ID,
+    SPACE_GROUP_PREFIX,
+    EVERMEMOS_CONVERSATION_SCENE,
+    EVERMEMOS_ENABLE_CONVERSATION_META,
+    EVERMEMOS_LLM_CUSTOM_SETTING,
+)
 from .evermemos_client import EverMemosClient, EverMemosError
 
 logger = logging.getLogger(__name__)
 
 _RECOVER_COOLDOWN_SECS = 30.0
+_META_ENRICH_CONCURRENCY = 8
 
 
 # -- helpers --
@@ -88,6 +96,9 @@ class SpaceCatalogService:
 
         # Best-effort persist to catalog space
         await self._persist_entry(space_id, description)
+        await self._persist_conversation_meta(
+            space_id, description, created_at=info.created_at
+        )
         return info
 
     def touch_space(self, space_id: str) -> None:
@@ -163,6 +174,62 @@ class SpaceCatalogService:
         except EverMemosError:
             logger.warning("Failed to persist catalog entry for %s", space_id)
 
+    async def _persist_conversation_meta(
+        self,
+        space_id: str,
+        description: str,
+        *,
+        created_at: str,
+    ) -> None:
+        if not EVERMEMOS_ENABLE_CONVERSATION_META:
+            return
+
+        group_id = to_group_id(space_id)
+        domain = space_id.split(":", 1)[0] if ":" in space_id else "general"
+        payload_description = (
+            description or self._cache.get(space_id, SpaceInfo(space_id)).description
+        )
+
+        scene = EVERMEMOS_CONVERSATION_SCENE
+        if scene not in {"assistant", "group_chat"}:
+            scene = "assistant"
+
+        scene_desc = {
+            "description": payload_description or f"MCP memory space for {space_id}",
+            "space_id": space_id,
+            "domain": domain,
+            "source": "evermemos-mcp",
+        }
+        tags = ["mcp", "memory-space", f"domain:{domain}", f"space:{space_id}"]
+
+        try:
+            await self._client.set_conversation_metadata(
+                group_id=group_id,
+                scene=scene,
+                created_at=created_at,
+                description=payload_description or None,
+                scene_desc=scene_desc,
+                tags=tags,
+                llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
+                default_timezone="UTC",
+            )
+            return
+        except EverMemosError:
+            # Existing metadata or schema variance — fallback to patch.
+            pass
+
+        try:
+            await self._client.update_conversation_metadata(
+                group_id=group_id,
+                description=payload_description or None,
+                scene_desc=scene_desc,
+                tags=tags,
+                llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
+                default_timezone="UTC",
+            )
+        except EverMemosError:
+            logger.warning("Failed to persist conversation metadata for %s", space_id)
+
     def _should_try_recover(self) -> bool:
         """Check if recovery should be attempted."""
         if self._recovered:
@@ -202,6 +269,9 @@ class SpaceCatalogService:
                     timestamp=msg.get("created_at", ""),
                 )
 
+            if self._cache and EVERMEMOS_ENABLE_CONVERSATION_META:
+                await self._enrich_with_conversation_meta()
+
             # Mark success — no more retries
             self._recovered = True
             self._recover_failed_at = 0.0
@@ -214,6 +284,44 @@ class SpaceCatalogService:
                 "Catalog recovery failed, will retry after %.0fs",
                 _RECOVER_COOLDOWN_SECS,
             )
+
+    async def _enrich_with_conversation_meta(self) -> None:
+        semaphore = asyncio.Semaphore(_META_ENRICH_CONCURRENCY)
+
+        async def _fetch_for_space(space_id: str) -> None:
+            async with semaphore:
+                try:
+                    response = await self._client.get_conversation_metadata(
+                        to_group_id(space_id)
+                    )
+                except EverMemosError:
+                    return
+
+                if not isinstance(response, dict):
+                    return
+                result = response.get("result")
+                if not isinstance(result, dict):
+                    return
+
+                info = self._cache.get(space_id)
+                if info is None:
+                    return
+
+                desc = result.get("description")
+                if isinstance(desc, str) and desc.strip():
+                    info.description = desc.strip()
+
+                created = result.get("conversation_created_at") or result.get(
+                    "created_at"
+                )
+                if isinstance(created, str) and created and not info.created_at:
+                    info.created_at = created
+
+                updated = result.get("updated_at") or result.get("created_at")
+                if isinstance(updated, str) and updated:
+                    info.last_used_at = max(info.last_used_at or "", updated)
+
+        await asyncio.gather(*(_fetch_for_space(space_id) for space_id in self._cache))
 
     # -- parsing helpers --
 

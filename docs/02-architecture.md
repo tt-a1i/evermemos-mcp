@@ -41,9 +41,10 @@ EverMemOS API
 ### 3.3 `space_catalog_service`（空间目录）
 - 提供 `list_spaces` 所需的空间元数据：`space_id`, `description`, `memory_count`, `last_used_at`。
 - 元数据存储在 EverMemOS（Cloud-only），不落本地文件。
-- 实现优先级：
-  1. 优先使用 EverMemOS 官方 Memory Space API（若可用）
-  2. 否则使用保留空间 `space::catalog` 存元数据记录
+- 当前实现：
+  1. 使用保留空间 `space::catalog` 做空间枚举（兼容历史数据）
+  2. 同步写入 `conversation-meta`（description/scene/tags/llm_custom_setting）
+  3. recovery 后用 `conversation-meta` 反查并覆盖描述，减少正则解析依赖
 
 ### 3.4 `memory_service`（业务编排）
 - 将通用语义映射到 EverMemOS API
@@ -52,6 +53,7 @@ EverMemOS API
 
 ### 3.5 `evermemos_client`（HTTP 适配）
 - Cloud 优先：封装 `/api/v0/memories` 与 `/api/v0/memories/search`
+- 封装 `/api/v0/status/request`，用于查询异步写入状态
 - 本地兼容：可切换到 `/api/v1/*`（通过配置）
 - 处理鉴权、超时、重试和错误信息提炼
 
@@ -94,14 +96,16 @@ EverMemOS API
   - `description` (optional, 创建新 space 时建议提供)
   - `sender` (optional, default: `user`)
   - `flush` (optional, default: true)
-  - `tags` (optional)
+  - `include_status` (optional, default: false)
 - 行为：写入一条消息并触发 EverMemOS 记忆提取
 - 输出：
   - `ok`
   - `space_id`
   - `message_id`
+  - `request_id`
   - `created_at`
   - `processing_hint`（如 "memory extraction may be async"）
+  - `request_status`（仅 `include_status=true` 时返回）
 
 ### 5.3 `recall`
 - 输入：
@@ -109,17 +113,25 @@ EverMemOS API
   - `space_id` (required)
   - `top_k` (optional, default: 5)
   - `retrieve_method` (optional, default: `hybrid`)
+    - 可选值：`keyword|hybrid|vector|rrf|agentic`
+  - `start_time` / `end_time` (optional, ISO 8601 with timezone)
+    - 仅对 `episodic_memory` 生效
+  - `current_time` (optional, ISO 8601 with timezone)
+  - `radius` (optional, 0-1, 主要用于 `vector/hybrid`)
+  - `include_metadata` (optional, default: false)
 - 行为：检索相关记忆并返回可引用结果
 - 输出：
   - `ok`
   - `space_id`
   - `results[]`（每项包含 `memory_id`, `memory_type`, `snippet`, `timestamp`, `score`）
+  - `pending_count/pending_hint`（存在待提取消息时）
 
 ### 5.4 `briefing`
 - 输入：
   - `space_id` (required)
   - `max_items` (optional, default: 8)
-- 行为：分层抓取后生成上下文简报（profile + episodic + event_log）
+  - `start_time` / `end_time` (optional, ISO 8601 with timezone)
+- 行为：分层抓取后生成上下文简报（profile + episodic + event_log + foresight）
 - 输出：
   - `ok`
   - `space_id`
@@ -182,6 +194,7 @@ EverMemOS API
   1. `profile`：画像/偏好
   2. `episodic_memory`：近期活动（limit N）
   3. `event_log`：关键事实与结论
+  4. `foresight`：未来计划/提醒
 - 目标：体现 EverMemOS 多 memory type 的差异化价值，不做黑盒摘要。
 
 ### 10.3 MCP Transport 选择（中优先级）

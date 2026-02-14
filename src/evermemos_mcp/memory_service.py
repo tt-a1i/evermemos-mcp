@@ -14,8 +14,9 @@ from .evermemos_client import EverMemosClient, EverMemosError
 from .space_catalog_service import SpaceCatalogService, to_group_id
 
 _VALID_SENDERS = {"user", "assistant"}
-_VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector"}
+_VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic"}
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
+_FORGET_DELETE_CONCURRENCY = 8
 
 
 class MemoryService:
@@ -53,6 +54,56 @@ class MemoryService:
             )
         return value
 
+    @staticmethod
+    def _validate_iso_datetime(value: str | None, field_name: str) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise EverMemosError(
+                f"{field_name} must be an ISO 8601 datetime string",
+                code="INVALID_INPUT",
+            )
+
+        raw = value.strip()
+        normalized = raw
+        if raw.endswith("Z"):
+            normalized = f"{raw[:-1]}+00:00"
+        elif raw.endswith("z"):
+            normalized = f"{raw[:-1]}+00:00"
+
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise EverMemosError(
+                f"{field_name} must be ISO 8601 with timezone",
+                code="INVALID_INPUT",
+            ) from exc
+
+        if parsed.tzinfo is None:
+            raise EverMemosError(
+                f"{field_name} must include timezone information",
+                code="INVALID_INPUT",
+            )
+        return raw
+
+    @staticmethod
+    def _validate_radius(radius: float | None) -> float | None:
+        if radius is None:
+            return None
+        if isinstance(radius, bool) or not isinstance(radius, (int, float)):
+            raise EverMemosError(
+                "radius must be a number between 0 and 1",
+                code="INVALID_INPUT",
+            )
+
+        value = float(radius)
+        if value < 0.0 or value > 1.0:
+            raise EverMemosError(
+                "radius must be between 0 and 1",
+                code="INVALID_INPUT",
+            )
+        return value
+
     # -- list_spaces --
 
     async def list_spaces(self, query: str | None = None, limit: int = 20) -> dict:
@@ -81,6 +132,7 @@ class MemoryService:
         description: str | None = None,
         sender: str = "user",
         flush: bool = True,
+        include_status: bool = False,
     ) -> dict:
         space_id = self._validate_space_id(space_id)
         content = self._validate_text(content, "content")
@@ -97,6 +149,11 @@ class MemoryService:
         if not isinstance(flush, bool):
             raise EverMemosError(
                 "flush must be a boolean",
+                code="INVALID_INPUT",
+            )
+        if not isinstance(include_status, bool):
+            raise EverMemosError(
+                "include_status must be a boolean",
                 code="INVALID_INPUT",
             )
 
@@ -120,16 +177,38 @@ class MemoryService:
 
         self._catalog.adjust_memory_count(space_id, 1)
 
-        return {
+        request_id = result.get("request_id", "")
+
+        output: dict = {
             "ok": True,
             "space_id": space_id,
-            "message_id": result.get("request_id", ""),
+            "message_id": request_id,
+            "request_id": request_id,
             "created_at": created_at,
             "processing_hint": (
                 "Memory is queued for extraction. "
                 "It may take a few minutes before it becomes searchable."
             ),
         }
+
+        if include_status and request_id:
+            try:
+                status_res = await self._client.get_request_status(request_id)
+                output["request_status"] = {
+                    "success": status_res.get("success", False),
+                    "found": status_res.get("found", False),
+                    "data": status_res.get("data"),
+                    "message": status_res.get("message", ""),
+                }
+            except EverMemosError as exc:
+                output["request_status"] = {
+                    "success": False,
+                    "found": False,
+                    "message": str(exc),
+                    "error": exc.code,
+                }
+
+        return output
 
     # -- recall --
 
@@ -140,38 +219,96 @@ class MemoryService:
         *,
         top_k: int = 5,
         retrieve_method: str = "hybrid",
+        start_time: str | None = None,
+        end_time: str | None = None,
+        current_time: str | None = None,
+        radius: float | None = None,
+        include_metadata: bool = False,
     ) -> dict:
         query = self._validate_text(query, "query")
         space_id = self._validate_space_id(space_id)
         top_k = self._validate_positive_int(top_k, "top_k")
+        start_time = self._validate_iso_datetime(start_time, "start_time")
+        end_time = self._validate_iso_datetime(end_time, "end_time")
+        current_time = self._validate_iso_datetime(current_time, "current_time")
+        radius = self._validate_radius(radius)
+        if not isinstance(include_metadata, bool):
+            raise EverMemosError(
+                "include_metadata must be a boolean",
+                code="INVALID_INPUT",
+            )
+
         if retrieve_method not in _VALID_RETRIEVE_METHODS:
             raise EverMemosError(
-                "retrieve_method must be one of: keyword, hybrid, vector",
+                "retrieve_method must be one of: keyword, hybrid, vector, rrf, agentic",
                 code="INVALID_INPUT",
             )
 
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
+        # For hybrid/rrf/agentic, the API currently only supports profile and episodic_memory
+        memory_types = None
+        if retrieve_method in {"hybrid", "rrf", "agentic"}:
+            memory_types = ["profile", "episodic_memory"]
+
         result = await self._client.search_memories(
-            query, group_id, retrieve_method=retrieve_method, top_k=top_k
+            query,
+            group_id,
+            retrieve_method=retrieve_method,
+            top_k=top_k,
+            memory_types=memory_types,
+            start_time=start_time,
+            end_time=end_time,
+            current_time=current_time,
+            radius=radius,
+            include_metadata=include_metadata,
         )
         res = result.get("result", {})
 
         results = []
-        for item in res.get("memories", []):
+        scores = res.get("scores", [])
+        for index, item in enumerate(res.get("memories", [])):
             if not isinstance(item, dict):
                 continue
-            snippet = item.get("summary", "") or item.get("atomic_fact", "") or ""
+            atomic_fact = item.get("atomic_fact", "")
+            if isinstance(atomic_fact, list):
+                atomic_fact = "; ".join(str(v) for v in atomic_fact if v)
+
+            snippet = item.get("summary", "") or atomic_fact or ""
+            score = item.get("score")
+            if score is None and index < len(scores):
+                score = scores[index]
+
             results.append(
                 {
                     "memory_id": item.get("id", ""),
                     "memory_type": item.get("memory_type", ""),
                     "snippet": snippet[:500],
                     "timestamp": item.get("timestamp", ""),
-                    "score": item.get("score"),
+                    "score": score,
                 }
             )
+            if include_metadata and "metadata" in item:
+                results[-1]["metadata"] = item.get("metadata")
+
+        for profile in res.get("profiles", []):
+            if not isinstance(profile, dict):
+                continue
+            snippet = profile.get("description", "")
+            if not snippet:
+                continue
+            results.append(
+                {
+                    "memory_id": "",
+                    "memory_type": "profile",
+                    "snippet": snippet[:500],
+                    "timestamp": "",
+                    "score": profile.get("score"),
+                }
+            )
+            if include_metadata and "metadata" in profile:
+                results[-1]["metadata"] = profile.get("metadata")
 
         output: dict = {
             "ok": True,
@@ -191,20 +328,44 @@ class MemoryService:
 
     # -- briefing --
 
-    async def briefing(self, space_id: str, *, max_items: int = 8) -> dict:
+    async def briefing(
+        self,
+        space_id: str,
+        *,
+        max_items: int = 8,
+        start_time: str | None = None,
+        end_time: str | None = None,
+    ) -> dict:
         space_id = self._validate_space_id(space_id)
         max_items = self._validate_positive_int(max_items, "max_items")
+        start_time = self._validate_iso_datetime(start_time, "start_time")
+        end_time = self._validate_iso_datetime(end_time, "end_time")
 
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
-        profile_res, episodic_res, event_res = await asyncio.gather(
+        profile_res, episodic_res, event_res, foresight_res = await asyncio.gather(
             self._client.fetch_memories(group_id, memory_type="profile", limit=1),
             self._client.fetch_memories(
-                group_id, memory_type="episodic_memory", limit=max_items
+                group_id,
+                memory_type="episodic_memory",
+                limit=max_items,
+                start_time=start_time,
+                end_time=end_time,
             ),
             self._client.fetch_memories(
-                group_id, memory_type="event_log", limit=max_items
+                group_id,
+                memory_type="event_log",
+                limit=max_items,
+                start_time=start_time,
+                end_time=end_time,
+            ),
+            self._client.fetch_memories(
+                group_id,
+                memory_type="foresight",
+                limit=max_items,
+                start_time=start_time,
+                end_time=end_time,
             ),
             return_exceptions=True,
         )
@@ -213,6 +374,7 @@ class MemoryService:
             "profile": profile_res,
             "episodic_memory": episodic_res,
             "event_log": event_res,
+            "foresight": foresight_res,
         }
         failures = [
             (memory_type, value)
@@ -239,23 +401,35 @@ class MemoryService:
             for pw in profiles_wrapper[:1]:
                 if not isinstance(pw, dict):
                     continue
-                for pd in pw.get("profiles", [])[:3]:
-                    data = pd.get("profile_data", {})
+                data = pw.get("profile_data", {})
+                if isinstance(data, dict):
                     text = (
-                        data.get("summary", "") if isinstance(data, dict) else str(data)
+                        data.get("summary", "")
+                        or data.get("description", "")
+                        or data.get("content", "")
                     )
-                    if text:
-                        highlights.append(
-                            {
-                                "type": "profile",
-                                "content": text[:300],
-                                "timestamp": (
-                                    data.get("timestamp", "")
-                                    if isinstance(data, dict)
-                                    else ""
-                                ),
-                            }
-                        )
+                    if not text:
+                        kv_pairs = [
+                            f"{k}: {v}"
+                            for k, v in data.items()
+                            if isinstance(v, (str, int, float, bool))
+                        ]
+                        text = "; ".join(kv_pairs)
+                else:
+                    text = str(data)
+
+                if text:
+                    highlights.append(
+                        {
+                            "type": "profile",
+                            "content": text[:300],
+                            "timestamp": (
+                                pw.get("updated_at", "")
+                                or pw.get("created_at", "")
+                                or pw.get("timestamp", "")
+                            ),
+                        }
+                    )
             if highlights:
                 summary_parts.append(f"User profile ({len(highlights)} entries)")
 
@@ -284,6 +458,8 @@ class MemoryService:
                 if not isinstance(ev, dict):
                     continue
                 fact = ev.get("atomic_fact", "")
+                if isinstance(fact, list):
+                    fact = "; ".join(str(v) for v in fact if v)
                 if fact:
                     highlights.append(
                         {
@@ -294,6 +470,33 @@ class MemoryService:
                     )
             if events:
                 summary_parts.append(f"{len(events)} key fact(s)")
+
+        # Foresight
+        if isinstance(foresight_res, dict):
+            foresights = foresight_res.get("result", {}).get("memories", [])
+            for fo in foresights:
+                if not isinstance(fo, dict):
+                    continue
+
+                text = (
+                    fo.get("summary", "")
+                    or fo.get("future_event", "")
+                    or fo.get("content", "")
+                )
+                if text:
+                    highlights.append(
+                        {
+                            "type": "foresight",
+                            "content": str(text)[:300],
+                            "timestamp": (
+                                fo.get("timestamp", "")
+                                or fo.get("target_time", "")
+                                or fo.get("created_at", "")
+                            ),
+                        }
+                    )
+            if foresights:
+                summary_parts.append(f"{len(foresights)} foresight item(s)")
 
         output: dict = {
             "ok": True,
@@ -352,19 +555,34 @@ class MemoryService:
             unique_ids.append(mid)
 
         group_id = to_group_id(space_id)
-        deleted = 0
         errors: list[str] = []
 
-        for mid in unique_ids:
-            try:
-                result = await self._client.delete_memories(
-                    event_id=mid, group_id=group_id
-                )
-                count = result.get("result", {}).get("count", 0)
-                deleted += count
-                self._catalog.adjust_memory_count(space_id, -count)
-            except EverMemosError as e:
-                errors.append(f"{mid}: {e}")
+        semaphore = asyncio.Semaphore(_FORGET_DELETE_CONCURRENCY)
+
+        async def _delete_one(mid: str) -> tuple[str, int, EverMemosError | None]:
+            async with semaphore:
+                try:
+                    result = await self._client.delete_memories(
+                        memory_id=mid,
+                        group_id=group_id,
+                    )
+                    count = result.get("result", {}).get("count", 0)
+                    if not isinstance(count, int):
+                        count = 0
+                    return mid, max(0, count), None
+                except EverMemosError as e:
+                    return mid, 0, e
+
+        delete_results = await asyncio.gather(*(_delete_one(mid) for mid in unique_ids))
+
+        deleted = 0
+        for mid, count, err in delete_results:
+            deleted += count
+            if err is not None:
+                errors.append(f"{mid}: {err}")
+
+        if deleted:
+            self._catalog.adjust_memory_count(space_id, -deleted)
 
         output: dict = {
             "ok": len(errors) == 0,
