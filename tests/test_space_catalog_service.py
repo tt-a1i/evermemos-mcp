@@ -101,6 +101,29 @@ async def test_list_spaces_query_filter():
     assert spaces[0].space_id == "coding:app"
 
 
+def test_adjust_memory_count_increments_and_never_negative():
+    client = AsyncMock(spec=EverMemosClient)
+    catalog = SpaceCatalogService(client)
+
+    catalog.adjust_memory_count("coding:app", 2)
+    info = catalog.get_space("coding:app")
+    assert info is not None
+    assert info.memory_count == 2
+
+    catalog.adjust_memory_count("coding:app", -5)
+    info = catalog.get_space("coding:app")
+    assert info is not None
+    assert info.memory_count == 0
+
+
+def test_adjust_memory_count_negative_unknown_space_is_noop():
+    client = AsyncMock(spec=EverMemosClient)
+    catalog = SpaceCatalogService(client)
+
+    catalog.adjust_memory_count("coding:missing", -1)
+    assert catalog.get_space("coding:missing") is None
+
+
 @pytest.mark.asyncio
 async def test_persist_failure_does_not_block():
     """register_space should succeed even if Cloud write fails."""

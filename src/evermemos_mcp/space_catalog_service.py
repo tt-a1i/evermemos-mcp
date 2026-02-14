@@ -22,6 +22,7 @@ _RECOVER_COOLDOWN_SECS = 30.0
 
 # -- helpers --
 
+
 def to_group_id(space_id: str) -> str:
     """Convert user-facing space_id to EverMemOS group_id."""
     return f"{SPACE_GROUP_PREFIX}{space_id}"
@@ -31,13 +32,14 @@ def from_group_id(group_id: str) -> str | None:
     """Extract space_id from group_id, or None if not a user space."""
     if not group_id.startswith(SPACE_GROUP_PREFIX):
         return None
-    candidate = group_id[len(SPACE_GROUP_PREFIX):]
+    candidate = group_id[len(SPACE_GROUP_PREFIX) :]
     if candidate == "catalog" or candidate.startswith("catalog:"):
         return None
     return candidate
 
 
 # -- data --
+
 
 @dataclass
 class SpaceInfo:
@@ -49,6 +51,7 @@ class SpaceInfo:
 
 
 # -- service --
+
 
 class SpaceCatalogService:
     """In-memory space registry backed by EverMemOS for persistence.
@@ -65,9 +68,7 @@ class SpaceCatalogService:
 
     # -- public API --
 
-    async def register_space(
-        self, space_id: str, description: str = ""
-    ) -> SpaceInfo:
+    async def register_space(self, space_id: str, description: str = "") -> SpaceInfo:
         """Register or update a space. Persists to EverMemOS (best-effort)."""
         now = datetime.now(timezone.utc).isoformat()
 
@@ -92,12 +93,29 @@ class SpaceCatalogService:
     def touch_space(self, space_id: str) -> None:
         """Bump last_used_at for an existing space."""
         if space_id in self._cache:
-            self._cache[space_id].last_used_at = (
-                datetime.now(timezone.utc).isoformat()
-            )
+            self._cache[space_id].last_used_at = datetime.now(timezone.utc).isoformat()
 
     def get_space(self, space_id: str) -> SpaceInfo | None:
         return self._cache.get(space_id)
+
+    def adjust_memory_count(self, space_id: str, delta: int) -> None:
+        """Adjust in-memory memory_count for a space.
+
+        - Positive delta: creates the space if missing.
+        - Negative delta: no-op when space is unknown.
+        - Count never drops below 0.
+        """
+        if delta == 0:
+            return
+
+        info = self._cache.get(space_id)
+        if info is None:
+            if delta < 0:
+                return
+            info = self.ensure_space(space_id)
+
+        info.memory_count = max(0, info.memory_count + delta)
+        info.last_used_at = datetime.now(timezone.utc).isoformat()
 
     def ensure_space(self, space_id: str) -> SpaceInfo:
         """Get or create a minimal space entry (no Cloud write)."""
@@ -206,9 +224,7 @@ class SpaceCatalogService:
         r"Registered memory space:\s*(\S+)(?:\s+[—\-]\s+(.+))?$", re.MULTILINE
     )
 
-    def _parse_content(
-        self, content: str, timestamp: str = ""
-    ) -> None:
+    def _parse_content(self, content: str, timestamp: str = "") -> None:
         if not content:
             return
         for m in self._ENTRY_RE.finditer(content):

@@ -52,6 +52,14 @@ async def test_list_spaces_empty():
 
 
 @pytest.mark.asyncio
+async def test_list_spaces_invalid_limit():
+    svc, _ = _make_svc()
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.list_spaces(limit=0)
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_list_spaces_after_remember():
     svc, _ = _make_svc()
     await svc.remember("coding:app", "some content", description="My app")
@@ -98,6 +106,26 @@ async def test_remember_without_description_ensures_space():
     result = await svc.list_spaces()
     assert result["spaces"][0]["space_id"] == "chat:daily"
     assert result["spaces"][0]["description"] == ""
+
+
+@pytest.mark.asyncio
+async def test_remember_invalid_sender_raises():
+    svc, _ = _make_svc()
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.remember("coding:app", "x", sender="system")
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_memory_count_updates_on_remember_and_forget():
+    svc, _ = _make_svc()
+    await svc.remember("coding:app", "keep this")
+    listed = await svc.list_spaces()
+    assert listed["spaces"][0]["memory_count"] == 1
+
+    await svc.forget(["mem-1"], "coding:app")
+    listed = await svc.list_spaces()
+    assert listed["spaces"][0]["memory_count"] == 0
 
 
 # -- recall --
@@ -169,6 +197,14 @@ async def test_recall_no_pending_key_when_empty():
     svc._catalog.ensure_space("coding:app")
     result = await svc.recall("anything", "coding:app")
     assert "pending_count" not in result
+
+
+@pytest.mark.asyncio
+async def test_recall_invalid_retrieve_method_raises():
+    svc, _ = _make_svc()
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("x", "coding:app", retrieve_method="rrf")
+    assert exc_info.value.code == "INVALID_INPUT"
 
 
 # -- briefing --
@@ -331,3 +367,22 @@ async def test_forget_partial_failure():
     assert result["deleted_count"] == 2
     assert len(result["errors"]) == 1
     assert "bad-2" in result["errors"][0]
+
+
+@pytest.mark.asyncio
+async def test_forget_rejects_empty_memory_ids():
+    svc, _ = _make_svc()
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.forget([], "coding:app")
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_forget_deduplicates_ids_before_delete_calls():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    result = await svc.forget(["dup-1", "dup-1", "dup-2"], "coding:app")
+
+    assert result["ok"] is True
+    assert result["deleted_count"] == 2
+    assert client.delete_memories.call_count == 2

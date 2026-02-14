@@ -27,6 +27,16 @@ server = Server("evermemos-mcp")
 # Module-level service — set in main() before server.run()
 _svc: MemoryService | None = None
 
+
+def _require_service() -> MemoryService:
+    if _svc is None:
+        raise EverMemosError(
+            "MemoryService is not initialized",
+            code="CONFIG_ERROR",
+        )
+    return _svc
+
+
 # ---------------------------------------------------------------------------
 # Tool definitions
 # ---------------------------------------------------------------------------
@@ -197,8 +207,6 @@ async def handle_list_tools() -> list[types.Tool]:
 async def handle_call_tool(
     name: str, arguments: dict[str, Any]
 ) -> list[types.TextContent]:
-    assert _svc is not None, "MemoryService not initialised"
-
     try:
         result = await _dispatch(name, arguments)
     except EverMemosError as exc:
@@ -210,16 +218,16 @@ async def handle_call_tool(
 
 
 async def _dispatch(name: str, args: dict[str, Any]) -> dict:
-    assert _svc is not None
+    svc = _require_service()
 
     if name == "list_spaces":
-        return await _svc.list_spaces(
+        return await svc.list_spaces(
             query=args.get("query"),
             limit=args.get("limit", 20),
         )
 
     if name == "remember":
-        return await _svc.remember(
+        return await svc.remember(
             space_id=args["space_id"],
             content=args["content"],
             description=args.get("description"),
@@ -228,7 +236,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
         )
 
     if name == "recall":
-        return await _svc.recall(
+        return await svc.recall(
             query=args["query"],
             space_id=args["space_id"],
             top_k=args.get("top_k", 5),
@@ -236,13 +244,13 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
         )
 
     if name == "briefing":
-        return await _svc.briefing(
+        return await svc.briefing(
             space_id=args["space_id"],
             max_items=args.get("max_items", 8),
         )
 
     if name == "forget":
-        return await _svc.forget(
+        return await svc.forget(
             memory_ids=args["memory_ids"],
             space_id=args["space_id"],
             reason=args.get("reason"),

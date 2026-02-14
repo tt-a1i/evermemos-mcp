@@ -7,10 +7,15 @@ Each method returns a plain dict that server.py serialises to the MCP client.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 
 from .evermemos_client import EverMemosClient, EverMemosError
 from .space_catalog_service import SpaceCatalogService, to_group_id
+
+_VALID_SENDERS = {"user", "assistant"}
+_VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector"}
+_SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 
 
 class MemoryService:
@@ -18,9 +23,40 @@ class MemoryService:
         self._client = client
         self._catalog = catalog
 
+    @staticmethod
+    def _validate_space_id(space_id: str) -> str:
+        if not isinstance(space_id, str) or not space_id.strip():
+            raise EverMemosError("space_id is required", code="INVALID_INPUT")
+        value = space_id.strip()
+        if not _SPACE_ID_RE.match(value):
+            raise EverMemosError(
+                "space_id must be in <domain>:<slug> format",
+                code="INVALID_INPUT",
+            )
+        return value
+
+    @staticmethod
+    def _validate_text(value: str, field_name: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise EverMemosError(
+                f"{field_name} must be a non-empty string",
+                code="INVALID_INPUT",
+            )
+        return value.strip()
+
+    @staticmethod
+    def _validate_positive_int(value: int, field_name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise EverMemosError(
+                f"{field_name} must be a positive integer",
+                code="INVALID_INPUT",
+            )
+        return value
+
     # -- list_spaces --
 
     async def list_spaces(self, query: str | None = None, limit: int = 20) -> dict:
+        limit = self._validate_positive_int(limit, "limit")
         spaces = await self._catalog.list_spaces(query, limit)
         return {
             "ok": True,
@@ -46,8 +82,26 @@ class MemoryService:
         sender: str = "user",
         flush: bool = True,
     ) -> dict:
+        space_id = self._validate_space_id(space_id)
+        content = self._validate_text(content, "content")
+        if description is not None and not isinstance(description, str):
+            raise EverMemosError(
+                "description must be a string when provided",
+                code="INVALID_INPUT",
+            )
+        if sender not in _VALID_SENDERS:
+            raise EverMemosError(
+                "sender must be either 'user' or 'assistant'",
+                code="INVALID_INPUT",
+            )
+        if not isinstance(flush, bool):
+            raise EverMemosError(
+                "flush must be a boolean",
+                code="INVALID_INPUT",
+            )
+
         if description:
-            await self._catalog.register_space(space_id, description)
+            await self._catalog.register_space(space_id, description.strip())
         else:
             self._catalog.ensure_space(space_id)
 
@@ -64,7 +118,7 @@ class MemoryService:
             create_time=created_at,
         )
 
-        self._catalog.touch_space(space_id)
+        self._catalog.adjust_memory_count(space_id, 1)
 
         return {
             "ok": True,
@@ -87,6 +141,15 @@ class MemoryService:
         top_k: int = 5,
         retrieve_method: str = "hybrid",
     ) -> dict:
+        query = self._validate_text(query, "query")
+        space_id = self._validate_space_id(space_id)
+        top_k = self._validate_positive_int(top_k, "top_k")
+        if retrieve_method not in _VALID_RETRIEVE_METHODS:
+            raise EverMemosError(
+                "retrieve_method must be one of: keyword, hybrid, vector",
+                code="INVALID_INPUT",
+            )
+
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
@@ -129,6 +192,9 @@ class MemoryService:
     # -- briefing --
 
     async def briefing(self, space_id: str, *, max_items: int = 8) -> dict:
+        space_id = self._validate_space_id(space_id)
+        max_items = self._validate_positive_int(max_items, "max_items")
+
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
@@ -259,16 +325,44 @@ class MemoryService:
         *,
         reason: str | None = None,
     ) -> dict:
+        space_id = self._validate_space_id(space_id)
+        if not isinstance(memory_ids, list) or not memory_ids:
+            raise EverMemosError(
+                "memory_ids must be a non-empty array",
+                code="INVALID_INPUT",
+            )
+        if reason is not None and not isinstance(reason, str):
+            raise EverMemosError(
+                "reason must be a string when provided",
+                code="INVALID_INPUT",
+            )
+
+        unique_ids: list[str] = []
+        seen: set[str] = set()
+        for raw_id in memory_ids:
+            if not isinstance(raw_id, str) or not raw_id.strip():
+                raise EverMemosError(
+                    "memory_ids must contain non-empty strings",
+                    code="INVALID_INPUT",
+                )
+            mid = raw_id.strip()
+            if mid in seen:
+                continue
+            seen.add(mid)
+            unique_ids.append(mid)
+
         group_id = to_group_id(space_id)
         deleted = 0
         errors: list[str] = []
 
-        for mid in memory_ids:
+        for mid in unique_ids:
             try:
                 result = await self._client.delete_memories(
                     event_id=mid, group_id=group_id
                 )
-                deleted += result.get("result", {}).get("count", 0)
+                count = result.get("result", {}).get("count", 0)
+                deleted += count
+                self._catalog.adjust_memory_count(space_id, -count)
             except EverMemosError as e:
                 errors.append(f"{mid}: {e}")
 

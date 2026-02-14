@@ -129,8 +129,32 @@ async def test_missing_required_field(svc):
 
 
 @pytest.mark.asyncio
+async def test_invalid_sender_mapped_to_invalid_input(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "x",
+            "space_id": "coding:app",
+            "sender": "system",
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_unknown_tool(svc):
     result = await server_mod.handle_call_tool("nonexistent", {})
     data = _parse(result)
     assert data["ok"] is False
     assert data["error"] == "UNKNOWN_TOOL"
+
+
+@pytest.mark.asyncio
+async def test_uninitialized_service_returns_config_error():
+    server_mod._svc = None
+    result = await server_mod.handle_call_tool("list_spaces", {})
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["error"] == "CONFIG_ERROR"
