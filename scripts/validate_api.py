@@ -12,8 +12,6 @@ Tests:
 import asyncio
 import json
 import os
-import sys
-import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -78,10 +76,12 @@ async def test_connectivity(client: httpx.AsyncClient):
         break  # Only test one version for connectivity
 
 
-async def test_store_single(client: httpx.AsyncClient, api_base: str, label: str, flush: bool = False):
+async def test_store_single(
+    client: httpx.AsyncClient, api_base: str, label: str, flush: bool = False
+):
     """Test 2/3: Store a single message and observe response."""
     print(f"\n=== Test: Store single message ({label}, flush={flush}) ===")
-    payload = {
+    payload: dict[str, object] = {
         "message_id": msg_id(),
         "create_time": ts(),
         "sender": USER_ID,
@@ -95,7 +95,9 @@ async def test_store_single(client: httpx.AsyncClient, api_base: str, label: str
         payload["flush"] = True
 
     try:
-        r = await client.post(f"{api_base}/memories", headers=header(), json=payload, timeout=30)
+        r = await client.post(
+            f"{api_base}/memories", headers=header(), json=payload, timeout=30
+        )
         print(f"  Status: {r.status_code}")
         print(f"  Response: {json.dumps(r.json(), indent=2, ensure_ascii=False)[:500]}")
         return r.json()
@@ -133,16 +135,27 @@ async def test_store_conversation(client: httpx.AsyncClient, api_base: str):
     results = []
     for i, msg in enumerate(messages):
         try:
-            r = await client.post(f"{api_base}/memories", headers=header(), json=msg, timeout=30)
-            print(f"  Message {i+1}: {r.status_code} → {r.json().get('result', {}).get('status_info', 'unknown')}")
+            r = await client.post(
+                f"{api_base}/memories", headers=header(), json=msg, timeout=30
+            )
+            print(
+                f"  Message {i + 1}: {r.status_code} → {r.json().get('result', {}).get('status_info', 'unknown')}"
+            )
             results.append(r.json())
         except Exception as e:
-            print(f"  Message {i+1}: FAILED - {e}")
+            print(f"  Message {i + 1}: FAILED - {e}")
             results.append(None)
     return results
 
 
-async def test_search(client: httpx.AsyncClient, api_base: str, query: str, group_id: str, label: str, method: str = "hybrid"):
+async def test_search(
+    client: httpx.AsyncClient,
+    api_base: str,
+    query: str,
+    group_id: str,
+    label: str,
+    method: str = "hybrid",
+):
     """Test: Search memories."""
     print(f"\n=== Test: Search ({label}) ===")
     print(f"  Query: {query}")
@@ -158,7 +171,13 @@ async def test_search(client: httpx.AsyncClient, api_base: str, query: str, grou
 
     try:
         # EverMemOS search uses GET with JSON body — use request() directly
-        r = await client.request("GET", f"{api_base}/memories/search", headers=header(), json=payload, timeout=30)
+        r = await client.request(
+            "GET",
+            f"{api_base}/memories/search",
+            headers=header(),
+            json=payload,
+            timeout=30,
+        )
         data = r.json()
         print(f"  Status: {r.status_code}")
 
@@ -180,7 +199,9 @@ async def test_search(client: httpx.AsyncClient, api_base: str, query: str, grou
         return None
 
 
-async def test_fetch_by_type(client: httpx.AsyncClient, api_base: str, memory_type: str, group_id: str):
+async def test_fetch_by_type(
+    client: httpx.AsyncClient, api_base: str, memory_type: str, group_id: str
+):
     """Test: Fetch memories by type."""
     print(f"\n=== Test: Fetch {memory_type} from {group_id} ===")
     try:
@@ -221,20 +242,36 @@ async def test_isolation(client: httpx.AsyncClient, api_base: str):
         "group_id": SPACE_B,
         "group_name": "Test Space B",
     }
-    r = await client.post(f"{api_base}/memories", headers=header(), json=payload, timeout=30)
+    r = await client.post(
+        f"{api_base}/memories", headers=header(), json=payload, timeout=30
+    )
     print(f"  Stored in SPACE_B: {r.status_code}")
 
     await asyncio.sleep(3)
 
     # Search SPACE_A for Vue → should NOT find it
-    result = await test_search(client, api_base, "Vue.js Pinia", SPACE_A, "isolation: search A for B's content", "keyword")
+    await test_search(
+        client,
+        api_base,
+        "Vue.js Pinia",
+        SPACE_A,
+        "isolation: search A for B's content",
+        "keyword",
+    )
 
     # Search SPACE_B for Vue → should find it
-    result = await test_search(client, api_base, "Vue.js Pinia", SPACE_B, "isolation: search B for B's content", "keyword")
+    await test_search(
+        client,
+        api_base,
+        "Vue.js Pinia",
+        SPACE_B,
+        "isolation: search B for B's content",
+        "keyword",
+    )
 
 
 async def main():
-    print(f"EverMemOS API Validation")
+    print("EverMemOS API Validation")
     print(f"Base URL: {BASE_URL}")
     print(f"API Key: {'set' if API_KEY else 'NOT SET'}")
     print(f"Space A: {SPACE_A}")
@@ -260,8 +297,17 @@ async def main():
         print("\n--- Waiting 30s for Cloud memory extraction ---")
         await asyncio.sleep(30)
 
-        await test_search(client, api_base, "React TypeScript Zustand", SPACE_A, "after store", "keyword")
-        await test_search(client, api_base, "state management", SPACE_A, "semantic", "hybrid")
+        await test_search(
+            client,
+            api_base,
+            "React TypeScript Zustand",
+            SPACE_A,
+            "after store",
+            "keyword",
+        )
+        await test_search(
+            client, api_base, "state management", SPACE_A, "semantic", "hybrid"
+        )
 
         # 6. Fetch by type
         for mem_type in ["episodic_memory", "profile", "foresight", "event_log"]:

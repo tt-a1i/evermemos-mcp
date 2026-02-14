@@ -9,7 +9,6 @@
 import asyncio
 import json
 import os
-import time
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
@@ -51,7 +50,12 @@ async def check_old_space(client: httpx.AsyncClient):
         r = await client.get(
             f"{API_BASE}/memories",
             headers=headers(),
-            params={"group_id": OLD_SPACE, "user_id": USER_ID, "memory_type": mem_type, "limit": 5},
+            params={
+                "group_id": OLD_SPACE,
+                "user_id": USER_ID,
+                "memory_type": mem_type,
+                "limit": 5,
+            },
             timeout=15,
         )
         data = r.json()
@@ -63,9 +67,15 @@ async def check_old_space(client: httpx.AsyncClient):
 
     # Also try search
     r = await client.request(
-        "GET", f"{API_BASE}/memories/search",
+        "GET",
+        f"{API_BASE}/memories/search",
         headers=headers(),
-        json={"query": "React TypeScript", "group_id": OLD_SPACE, "retrieve_method": "keyword", "top_k": 5},
+        json={
+            "query": "React TypeScript",
+            "group_id": OLD_SPACE,
+            "retrieve_method": "keyword",
+            "top_k": 5,
+        },
         timeout=15,
     )
     data = r.json()
@@ -98,7 +108,12 @@ async def setup_conversation_meta(client: httpx.AsyncClient, group_id: str):
             },
         },
     }
-    r = await client.post(f"{API_BASE}/memories/conversation-meta", headers=headers(), json=payload, timeout=15)
+    r = await client.post(
+        f"{API_BASE}/memories/conversation-meta",
+        headers=headers(),
+        json=payload,
+        timeout=15,
+    )
     print(f"  Status: {r.status_code}")
     print(f"  Response: {r.text[:300]}")
     return r.json()
@@ -108,16 +123,46 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
     """Send a longer conversation to force boundary detection."""
     print(f"\n=== Send long conversation to {group_id} ===")
     conversation = [
-        ("user", "I'm starting a new Python project for a REST API. What framework should I use?"),
-        ("assistant", "For a modern Python REST API, I'd recommend FastAPI. It's async-first, has great OpenAPI docs generation, and excellent type safety with Pydantic."),
-        ("user", "Good choice. We'll use FastAPI. For the database, let's go with PostgreSQL and SQLAlchemy 2.0 with async support."),
-        ("assistant", "Great stack choice. SQLAlchemy 2.0's async support with asyncpg works really well with FastAPI. Do you want to use Alembic for migrations?"),
-        ("user", "Yes, Alembic for migrations. Also, we need Redis for caching and Celery for background tasks."),
-        ("assistant", "Noted. Your full stack: FastAPI + PostgreSQL + SQLAlchemy 2.0 + Alembic + Redis + Celery. That's a solid, production-ready setup."),
-        ("user", "One more thing - we're using a monorepo structure with uv as the package manager. Code style: black + ruff."),
-        ("assistant", "Perfect. I'll remember: monorepo with uv, formatting with black, linting with ruff. Any specific ruff rules or black line length?"),
-        ("user", "Line length 100, and enable all ruff rules except E501 since black handles line length."),
-        ("assistant", "Got it: black --line-length 100, ruff with all rules except E501. This is a well-thought-out setup."),
+        (
+            "user",
+            "I'm starting a new Python project for a REST API. What framework should I use?",
+        ),
+        (
+            "assistant",
+            "For a modern Python REST API, I'd recommend FastAPI. It's async-first, has great OpenAPI docs generation, and excellent type safety with Pydantic.",
+        ),
+        (
+            "user",
+            "Good choice. We'll use FastAPI. For the database, let's go with PostgreSQL and SQLAlchemy 2.0 with async support.",
+        ),
+        (
+            "assistant",
+            "Great stack choice. SQLAlchemy 2.0's async support with asyncpg works really well with FastAPI. Do you want to use Alembic for migrations?",
+        ),
+        (
+            "user",
+            "Yes, Alembic for migrations. Also, we need Redis for caching and Celery for background tasks.",
+        ),
+        (
+            "assistant",
+            "Noted. Your full stack: FastAPI + PostgreSQL + SQLAlchemy 2.0 + Alembic + Redis + Celery. That's a solid, production-ready setup.",
+        ),
+        (
+            "user",
+            "One more thing - we're using a monorepo structure with uv as the package manager. Code style: black + ruff.",
+        ),
+        (
+            "assistant",
+            "Perfect. I'll remember: monorepo with uv, formatting with black, linting with ruff. Any specific ruff rules or black line length?",
+        ),
+        (
+            "user",
+            "Line length 100, and enable all ruff rules except E501 since black handles line length.",
+        ),
+        (
+            "assistant",
+            "Got it: black --line-length 100, ruff with all rules except E501. This is a well-thought-out setup.",
+        ),
     ]
 
     for i, (role, content) in enumerate(conversation):
@@ -132,9 +177,11 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
             "group_id": group_id,
             "group_name": "API Validation",
         }
-        r = await client.post(f"{API_BASE}/memories", headers=headers(), json=payload, timeout=15)
+        r = await client.post(
+            f"{API_BASE}/memories", headers=headers(), json=payload, timeout=15
+        )
         status = r.json().get("status", "?")
-        print(f"  [{i+1}/10] {role}: {status} ({r.status_code})")
+        print(f"  [{i + 1}/10] {role}: {status} ({r.status_code})")
         await asyncio.sleep(0.5)
 
     # Send flush signal
@@ -150,7 +197,9 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
         "group_name": "API Validation",
         "flush": True,
     }
-    r = await client.post(f"{API_BASE}/memories", headers=headers(), json=flush_payload, timeout=15)
+    r = await client.post(
+        f"{API_BASE}/memories", headers=headers(), json=flush_payload, timeout=15
+    )
     print(f"  flush: {r.json().get('status', '?')} ({r.status_code})")
 
 
@@ -162,9 +211,15 @@ async def search_and_fetch(client: httpx.AsyncClient, group_id: str, wait: int):
     # Search
     for method in ["keyword", "hybrid"]:
         r = await client.request(
-            "GET", f"{API_BASE}/memories/search",
+            "GET",
+            f"{API_BASE}/memories/search",
             headers=headers(),
-            json={"query": "FastAPI PostgreSQL", "group_id": group_id, "retrieve_method": method, "top_k": 5},
+            json={
+                "query": "FastAPI PostgreSQL",
+                "group_id": group_id,
+                "retrieve_method": method,
+                "top_k": 5,
+            },
             timeout=30,
         )
         data = r.json()
@@ -175,14 +230,21 @@ async def search_and_fetch(client: httpx.AsyncClient, group_id: str, wait: int):
             for group in memories[:2]:
                 for mem_type, mems in group.items():
                     for m in mems[:2]:
-                        print(f"    [{mem_type}] {str(m.get('summary', m.get('content', '')))[:120]}")
+                        print(
+                            f"    [{mem_type}] {str(m.get('summary', m.get('content', '')))[:120]}"
+                        )
 
     # Fetch by type
     for mem_type in ["episodic_memory", "profile", "event_log"]:
         r = await client.get(
             f"{API_BASE}/memories",
             headers=headers(),
-            params={"group_id": group_id, "user_id": USER_ID, "memory_type": mem_type, "limit": 5},
+            params={
+                "group_id": group_id,
+                "user_id": USER_ID,
+                "memory_type": mem_type,
+                "limit": 5,
+            },
             timeout=15,
         )
         memories = r.json().get("result", {}).get("memories", [])
@@ -195,7 +257,7 @@ async def search_and_fetch(client: httpx.AsyncClient, group_id: str, wait: int):
 
 
 async def main():
-    print(f"EverMemOS Cloud API - Deep Validation")
+    print("EverMemOS Cloud API - Deep Validation")
     print(f"Base: {API_BASE}")
 
     async with httpx.AsyncClient() as client:

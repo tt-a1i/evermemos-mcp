@@ -24,6 +24,12 @@ Universal MCP memory layer powered by EverMemOS.
 - 可直接复制的 JSON 片段：`docs/mcp-config-snippets/`
 - 演示脚本见：`scripts/demo_preload.py`、`scripts/demo_live_walkthrough.py`
 
+## Development
+- 安装开发依赖：`uv sync --group dev`
+- Lint：`uv run ruff check`
+- Test：`uv run pytest`
+- CI 工作流：`.github/workflows/ci.yml`（每次 push / PR 执行 ruff + pytest）
+
 ## Design Docs
 - Requirements: `docs/01-requirements.md`
 - Architecture: `docs/02-architecture.md`

@@ -9,7 +9,6 @@ sys.path.insert(0, "src")
 from evermemos_mcp.evermemos_client import EverMemosClient, EverMemosError
 from evermemos_mcp.space_catalog_service import (
     SpaceCatalogService,
-    SpaceInfo,
     to_group_id,
 )
 
@@ -20,7 +19,7 @@ async def test_client():
     space_id = f"test:smoke-{tag}"
     group_id = to_group_id(space_id)
 
-    print(f"=== evermemos_client smoke test ===")
+    print("=== evermemos_client smoke test ===")
     print(f"Space: {space_id}  →  group_id: {group_id}")
 
     # 1. add_message
@@ -75,7 +74,7 @@ async def test_catalog():
     client = EverMemosClient()
     catalog = SpaceCatalogService(client)
 
-    print(f"\n=== space_catalog_service smoke test ===")
+    print("\n=== space_catalog_service smoke test ===")
 
     # 1. register space
     tag = uuid4().hex[:6]
@@ -93,7 +92,7 @@ async def test_catalog():
         print(f"  {s.space_id}: {s.description}")
 
     # 3. list_spaces with query
-    print(f"\n--- list_spaces(query='catalog') ---")
+    print("\n--- list_spaces(query='catalog') ---")
     spaces = await catalog.list_spaces(query="catalog")
     print(f"  matched: {len(spaces)}")
 
@@ -103,14 +102,15 @@ async def test_catalog():
     print(f"  found: {info is not None}")
 
     # 5. ensure_space (no Cloud write)
-    print(f"\n--- ensure_space('test:ephemeral') ---")
+    print("\n--- ensure_space('test:ephemeral') ---")
     info = catalog.ensure_space("test:ephemeral")
     print(f"  space_id: {info.space_id}")
 
     # 6. touch_space
     catalog.touch_space(sid)
     print(f"\n--- touch_space({sid}) ---")
-    print(f"  last_used_at updated: {catalog.get_space(sid).last_used_at}")
+    touched = catalog.get_space(sid)
+    print(f"  last_used_at updated: {touched.last_used_at if touched else 'n/a'}")
 
     await client.close()
     print("\n✓ space_catalog_service OK")
