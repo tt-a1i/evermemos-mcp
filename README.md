@@ -22,6 +22,12 @@ Universal MCP memory layer powered by EverMemOS.
 - `space_id` is the only isolation key (`<domain>:<slug>`)
 - Routing is expected to use `list_spaces` and descriptions, not cwd/git auto-detection
 
+## Why `space::catalog` Exists
+- EverMemOS metadata APIs are scoped by `group_id` (`get/set/update`) and do not provide a global list endpoint
+- `list_spaces` therefore uses a reserved catalog group (`space::catalog`) as a durable index
+- Space registration uses best-effort dual-write: catalog entry text + `conversation-meta` metadata sync
+- On recovery, catalog entries are read first, then `conversation-meta` is used to enrich descriptions
+
 ## Quick Start
 - Cloud defaults are built in: `EVERMEMOS_BASE_URL=https://api.evermind.ai`, `EVERMEMOS_API_VERSION=v0`
 - Required for Cloud: `EVERMEMOS_API_KEY`

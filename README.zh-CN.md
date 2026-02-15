@@ -22,6 +22,12 @@
 - `space_id` 是唯一隔离键（格式 `<domain>:<slug>`）
 - 默认路由依赖 `list_spaces` + 描述，不做 cwd/git 自动猜测
 
+## 为什么需要 `space::catalog`
+- EverMemOS 的 metadata 接口都要求传具体 `group_id`（`get/set/update`），没有全局会话列表接口
+- 因此 `list_spaces` 需要通过保留分组 `space::catalog` 维护一份可恢复的空间索引
+- 空间注册采用 best-effort 双写：catalog 文本条目 + `conversation-meta` 同步
+- 恢复时先读 catalog 条目，再用 `conversation-meta` 做描述补全
+
 ## 快速开始
 - Cloud 默认值已内置：`EVERMEMOS_BASE_URL=https://api.evermind.ai`、`EVERMEMOS_API_VERSION=v0`
 - Cloud 需要配置：`EVERMEMOS_API_KEY`
