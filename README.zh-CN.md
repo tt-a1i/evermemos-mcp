@@ -63,15 +63,18 @@
 若已全局安装，可改为：`"command": "evermemos-mcp", "args": []`。
 
 ## Tool 契约说明
+- `list_spaces`: Cloud 模式下 `memory_count` 为近似值（异步提取）
 - `remember`: 支持 `include_status`（可选），开启后会附带一次 `request_status`
 - `remember` 输出包含：`message_id`、`request_id`、`created_at`、`processing_hint`
+- `remember`: 还会返回 `memory_count_hint`，说明 Cloud 模式下计数是近似值
+- `remember`: 会显式透传 `flush`（`true/false`），避免依赖上游默认值
 - `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic`
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
 - `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
-- `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，仅对 `episodic_memory/event_log` 生效）
+- `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，仅对 `episodic_memory/event_log` 生效，不作用于 `profile/foresight`）
 - Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
 
 ## MCP 客户端接入
@@ -83,6 +86,7 @@
 - 安装开发依赖：`uv sync --group dev`
 - Lint：`uv run ruff check`
 - Test：`uv run pytest`
+- 可选集成测试：`EVERMEMOS_RUN_INTEGRATION_TESTS=true uv run pytest -m integration`
 - CI 工作流：`.github/workflows/ci.yml`（每次 push / PR 执行 ruff + pytest）
 
 ## 文档索引

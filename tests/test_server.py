@@ -123,6 +123,22 @@ async def test_dispatch_recall_with_extended_filters(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_recall_invalid_memory_types_returns_invalid_input(svc):
+    svc._catalog.ensure_space("coding:app")
+    result = await server_mod.handle_call_tool(
+        "recall",
+        {
+            "query": "FastAPI",
+            "space_id": "coding:app",
+            "memory_types": ["not-a-type"],
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_briefing(svc):
     svc._catalog.ensure_space("coding:app")
     result = await server_mod.handle_call_tool("briefing", {"space_id": "coding:app"})

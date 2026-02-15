@@ -250,8 +250,8 @@ class EverMemosClient:
         }
         if group_name:
             payload["group_name"] = group_name
-        if flush:
-            payload["flush"] = True
+        # Always send flush explicitly to avoid relying on upstream defaults.
+        payload["flush"] = flush
 
         return await self._request("POST", "/memories", json=payload)
 

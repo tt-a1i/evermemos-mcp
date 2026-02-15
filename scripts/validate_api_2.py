@@ -7,12 +7,13 @@
 """
 
 import asyncio
+import argparse
 import json
 import os
-from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
 import httpx
+from common import auth_headers, new_message_id, utc_now_iso
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,40 +22,32 @@ BASE_URL = os.getenv("EVERMEMOS_BASE_URL", "https://api.evermind.ai")
 API_KEY = os.getenv("EVERMEMOS_API_KEY", "")
 API_BASE = f"{BASE_URL}/api/v0"
 
-# Reuse the space from first run (has had time to process)
-OLD_SPACE = "test::validate-a-160de9"
-NEW_SPACE = f"test::conv-{uuid4().hex[:6]}"
+# Optional: reuse a previous validation space (set via env/cli)
+OLD_SPACE = os.getenv("EVERMEMOS_OLD_SPACE_ID", "").strip()
+NEW_SPACE = f"test:conv-{uuid4().hex[:6]}"
 USER_ID = "mcp-test-user"
-
-
-def ts(offset_min: int = 0) -> str:
-    return (datetime.now(timezone.utc) + timedelta(minutes=offset_min)).isoformat()
-
-
-def msg_id() -> str:
-    return f"msg_{uuid4().hex[:8]}"
-
-
-def headers() -> dict:
-    return {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {API_KEY}",
-        "X-API-Key": API_KEY,
-    }
 
 
 async def check_old_space(client: httpx.AsyncClient):
     """Check if first run's memories have been processed."""
+    if not OLD_SPACE:
+        print(
+            "\n=== Check old space: skipped (set EVERMEMOS_OLD_SPACE_ID to enable) ==="
+        )
+        return
+
     print(f"\n=== Check old space: {OLD_SPACE} ===")
     for mem_type in ["episodic_memory", "profile", "event_log"]:
-        r = await client.get(
+        r = await client.request(
+            "GET",
             f"{API_BASE}/memories",
-            headers=headers(),
-            params={
-                "group_id": OLD_SPACE,
+            headers=auth_headers(API_KEY),
+            json={
+                "group_ids": [OLD_SPACE],
                 "user_id": USER_ID,
                 "memory_type": mem_type,
-                "limit": 5,
+                "page": 1,
+                "page_size": 5,
             },
             timeout=15,
         )
@@ -69,10 +62,11 @@ async def check_old_space(client: httpx.AsyncClient):
     r = await client.request(
         "GET",
         f"{API_BASE}/memories/search",
-        headers=headers(),
+        headers=auth_headers(API_KEY),
         json={
             "query": "React TypeScript",
-            "group_id": OLD_SPACE,
+            "group_ids": [OLD_SPACE],
+            "user_id": USER_ID,
             "retrieve_method": "keyword",
             "top_k": 5,
         },
@@ -96,7 +90,7 @@ async def setup_conversation_meta(client: httpx.AsyncClient, group_id: str):
         "name": "API Validation Conversation",
         "description": "Testing memory extraction behavior",
         "group_id": group_id,
-        "created_at": ts(),
+        "created_at": utc_now_iso(),
         "user_details": {
             USER_ID: {
                 "full_name": "Test User",
@@ -110,7 +104,7 @@ async def setup_conversation_meta(client: httpx.AsyncClient, group_id: str):
     }
     r = await client.post(
         f"{API_BASE}/memories/conversation-meta",
-        headers=headers(),
+        headers=auth_headers(API_KEY),
         json=payload,
         timeout=15,
     )
@@ -168,8 +162,8 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
     for i, (role, content) in enumerate(conversation):
         sender = USER_ID if role == "user" else "assistant"
         payload = {
-            "message_id": msg_id(),
-            "create_time": ts(offset_min=i),
+            "message_id": new_message_id(),
+            "create_time": utc_now_iso(offset_minutes=i),
             "sender": sender,
             "sender_name": "Test User" if role == "user" else "AI Assistant",
             "role": role,
@@ -178,7 +172,10 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
             "group_name": "API Validation",
         }
         r = await client.post(
-            f"{API_BASE}/memories", headers=headers(), json=payload, timeout=15
+            f"{API_BASE}/memories",
+            headers=auth_headers(API_KEY),
+            json=payload,
+            timeout=15,
         )
         status = r.json().get("status", "?")
         print(f"  [{i + 1}/10] {role}: {status} ({r.status_code})")
@@ -187,8 +184,8 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
     # Send flush signal
     print("  Sending flush...")
     flush_payload = {
-        "message_id": msg_id(),
-        "create_time": ts(offset_min=11),
+        "message_id": new_message_id(),
+        "create_time": utc_now_iso(offset_minutes=11),
         "sender": USER_ID,
         "sender_name": "Test User",
         "role": "user",
@@ -198,7 +195,10 @@ async def send_long_conversation(client: httpx.AsyncClient, group_id: str):
         "flush": True,
     }
     r = await client.post(
-        f"{API_BASE}/memories", headers=headers(), json=flush_payload, timeout=15
+        f"{API_BASE}/memories",
+        headers=auth_headers(API_KEY),
+        json=flush_payload,
+        timeout=15,
     )
     print(f"  flush: {r.json().get('status', '?')} ({r.status_code})")
 
@@ -213,10 +213,11 @@ async def search_and_fetch(client: httpx.AsyncClient, group_id: str, wait: int):
         r = await client.request(
             "GET",
             f"{API_BASE}/memories/search",
-            headers=headers(),
+            headers=auth_headers(API_KEY),
             json={
                 "query": "FastAPI PostgreSQL",
-                "group_id": group_id,
+                "group_ids": [group_id],
+                "user_id": USER_ID,
                 "retrieve_method": method,
                 "top_k": 5,
             },
@@ -236,14 +237,16 @@ async def search_and_fetch(client: httpx.AsyncClient, group_id: str, wait: int):
 
     # Fetch by type
     for mem_type in ["episodic_memory", "profile", "event_log"]:
-        r = await client.get(
+        r = await client.request(
+            "GET",
             f"{API_BASE}/memories",
-            headers=headers(),
-            params={
-                "group_id": group_id,
+            headers=auth_headers(API_KEY),
+            json={
+                "group_ids": [group_id],
                 "user_id": USER_ID,
                 "memory_type": mem_type,
-                "limit": 5,
+                "page": 1,
+                "page_size": 5,
             },
             timeout=15,
         )
@@ -257,8 +260,25 @@ async def search_and_fetch(client: httpx.AsyncClient, group_id: str, wait: int):
 
 
 async def main():
+    global OLD_SPACE
+
+    parser = argparse.ArgumentParser(description="EverMemOS Cloud deep validation")
+    parser.add_argument(
+        "--old-space",
+        type=str,
+        default=OLD_SPACE,
+        help="Optional existing group_id from a previous run",
+    )
+    args = parser.parse_args()
+    OLD_SPACE = args.old_space.strip()
+
     print("EverMemOS Cloud API - Deep Validation")
     print(f"Base: {API_BASE}")
+    if OLD_SPACE:
+        print(f"Old space: {OLD_SPACE}")
+    else:
+        print("Old space: <not set>")
+    print(f"New space: {NEW_SPACE}")
 
     async with httpx.AsyncClient() as client:
         # 1. Check old space

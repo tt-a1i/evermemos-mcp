@@ -139,6 +139,8 @@ class MemoryService:
         end_time: str | None,
     ) -> tuple[str | None, str | None]:
         if start_time is None or end_time is None:
+            # Open-ended windows are allowed. Each endpoint is validated separately
+            # by _validate_iso_datetime before this cross-field check.
             return start_time, end_time
 
         start_dt = datetime.fromisoformat(start_time)
@@ -166,6 +168,10 @@ class MemoryService:
                 }
                 for s in spaces
             ],
+            "memory_count_hint": (
+                "memory_count is approximate in Cloud mode because extraction is async "
+                "and one message can yield zero or multiple memories."
+            ),
         }
 
     # -- remember --
@@ -241,6 +247,10 @@ class MemoryService:
             "processing_hint": (
                 "Memory is queued for extraction. "
                 "It may take a few minutes before it becomes searchable."
+            ),
+            "memory_count_hint": (
+                "Space memory_count is approximate in Cloud mode. "
+                "A queued message can produce zero or multiple memories."
             ),
         }
 
@@ -431,6 +441,8 @@ class MemoryService:
                 group_id,
                 memory_type="foresight",
                 limit=max_items,
+                # Intentional: briefing time window currently scopes only
+                # episodic_memory/event_log, not profile/foresight.
             ),
             return_exceptions=True,
         )
@@ -637,6 +649,15 @@ class MemoryService:
                     return mid, max(0, count), None
                 except EverMemosError as e:
                     return mid, 0, e
+                except Exception as e:  # pragma: no cover - defensive safeguard
+                    return (
+                        mid,
+                        0,
+                        EverMemosError(
+                            f"unexpected delete error: {e}",
+                            code="UPSTREAM_ERROR",
+                        ),
+                    )
 
         delete_results = await asyncio.gather(*(_delete_one(mid) for mid in unique_ids))
 

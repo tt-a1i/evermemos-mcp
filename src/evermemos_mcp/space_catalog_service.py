@@ -235,9 +235,24 @@ class SpaceCatalogService:
                 default_timezone="UTC",
             )
             return
-        except EverMemosError:
+        except EverMemosError as exc:
+            recoverable_statuses = {400, 404, 409, 422}
+            if exc.code == "UPSTREAM_UNAVAILABLE" or (
+                exc.status_code is not None and exc.status_code >= 500
+            ):
+                logger.warning(
+                    "Failed to set conversation metadata for %s: %s", space_id, exc
+                )
+                return
+            if (
+                exc.status_code is not None
+                and exc.status_code not in recoverable_statuses
+            ):
+                logger.warning(
+                    "Failed to set conversation metadata for %s: %s", space_id, exc
+                )
+                return
             # Existing metadata or schema variance — fallback to patch.
-            pass
 
         try:
             await self._client.update_conversation_metadata(
@@ -248,8 +263,10 @@ class SpaceCatalogService:
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                 default_timezone="UTC",
             )
-        except EverMemosError:
-            logger.warning("Failed to persist conversation metadata for %s", space_id)
+        except EverMemosError as exc:
+            logger.warning(
+                "Failed to persist conversation metadata for %s: %s", space_id, exc
+            )
 
     def _should_try_recover(self) -> bool:
         """Check if recovery should be attempted."""

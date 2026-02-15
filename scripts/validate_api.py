@@ -12,10 +12,10 @@ Tests:
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
+from common import auth_headers, new_message_id, utc_now_iso
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,25 +30,9 @@ API_PATHS = {
     "v1": f"{BASE_URL}/api/v1",
 }
 
-SPACE_A = f"test::validate-a-{uuid4().hex[:6]}"
-SPACE_B = f"test::validate-b-{uuid4().hex[:6]}"
+SPACE_A = f"test:validate-a-{uuid4().hex[:6]}"
+SPACE_B = f"test:validate-b-{uuid4().hex[:6]}"
 USER_ID = "mcp-test-user"
-
-
-def ts() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def msg_id() -> str:
-    return f"msg_{uuid4().hex[:8]}"
-
-
-def header() -> dict:
-    h = {"Content-Type": "application/json"}
-    if API_KEY:
-        h["Authorization"] = f"Bearer {API_KEY}"
-        h["X-API-Key"] = API_KEY
-    return h
 
 
 async def test_connectivity(client: httpx.AsyncClient):
@@ -57,17 +41,26 @@ async def test_connectivity(client: httpx.AsyncClient):
     for version, base in API_PATHS.items():
         try:
             # Try health endpoint
-            r = await client.get(f"{BASE_URL}/health", headers=header(), timeout=10)
+            r = await client.get(
+                f"{BASE_URL}/health", headers=auth_headers(API_KEY), timeout=10
+            )
             print(f"  /health: {r.status_code} {r.text[:200]}")
         except Exception as e:
             print(f"  /health: FAILED - {e}")
 
         try:
             # Try memories endpoint with GET
-            r = await client.get(
+            r = await client.request(
+                "GET",
                 f"{base}/memories",
-                headers=header(),
-                params={"user_id": USER_ID, "group_id": SPACE_A, "limit": 1},
+                headers=auth_headers(API_KEY),
+                json={
+                    "group_ids": [SPACE_A],
+                    "user_id": USER_ID,
+                    "memory_type": "episodic_memory",
+                    "page": 1,
+                    "page_size": 1,
+                },
                 timeout=10,
             )
             print(f"  {version} GET /memories: {r.status_code} {r.text[:300]}")
@@ -82,8 +75,8 @@ async def test_store_single(
     """Test 2/3: Store a single message and observe response."""
     print(f"\n=== Test: Store single message ({label}, flush={flush}) ===")
     payload: dict[str, object] = {
-        "message_id": msg_id(),
-        "create_time": ts(),
+        "message_id": new_message_id(),
+        "create_time": utc_now_iso(),
         "sender": USER_ID,
         "sender_name": "Test User",
         "role": "user",
@@ -96,7 +89,10 @@ async def test_store_single(
 
     try:
         r = await client.post(
-            f"{api_base}/memories", headers=header(), json=payload, timeout=30
+            f"{api_base}/memories",
+            headers=auth_headers(API_KEY),
+            json=payload,
+            timeout=30,
         )
         print(f"  Status: {r.status_code}")
         print(f"  Response: {json.dumps(r.json(), indent=2, ensure_ascii=False)[:500]}")
@@ -111,8 +107,8 @@ async def test_store_conversation(client: httpx.AsyncClient, api_base: str):
     print("\n=== Test: Store mini conversation (2 messages) ===")
     messages = [
         {
-            "message_id": msg_id(),
-            "create_time": ts(),
+            "message_id": new_message_id(),
+            "create_time": utc_now_iso(),
             "sender": USER_ID,
             "sender_name": "Test User",
             "role": "user",
@@ -121,8 +117,8 @@ async def test_store_conversation(client: httpx.AsyncClient, api_base: str):
             "group_name": "Test Space A",
         },
         {
-            "message_id": msg_id(),
-            "create_time": ts(),
+            "message_id": new_message_id(),
+            "create_time": utc_now_iso(),
             "sender": "assistant",
             "sender_name": "AI Assistant",
             "role": "assistant",
@@ -136,7 +132,10 @@ async def test_store_conversation(client: httpx.AsyncClient, api_base: str):
     for i, msg in enumerate(messages):
         try:
             r = await client.post(
-                f"{api_base}/memories", headers=header(), json=msg, timeout=30
+                f"{api_base}/memories",
+                headers=auth_headers(API_KEY),
+                json=msg,
+                timeout=30,
             )
             print(
                 f"  Message {i + 1}: {r.status_code} → {r.json().get('result', {}).get('status_info', 'unknown')}"
@@ -164,7 +163,8 @@ async def test_search(
 
     payload = {
         "query": query,
-        "group_id": group_id,
+        "group_ids": [group_id],
+        "user_id": USER_ID,
         "retrieve_method": method,
         "top_k": 5,
     }
@@ -174,7 +174,7 @@ async def test_search(
         r = await client.request(
             "GET",
             f"{api_base}/memories/search",
-            headers=header(),
+            headers=auth_headers(API_KEY),
             json=payload,
             timeout=30,
         )
@@ -205,14 +205,16 @@ async def test_fetch_by_type(
     """Test: Fetch memories by type."""
     print(f"\n=== Test: Fetch {memory_type} from {group_id} ===")
     try:
-        r = await client.get(
+        r = await client.request(
+            "GET",
             f"{api_base}/memories",
-            headers=header(),
-            params={
-                "group_id": group_id,
+            headers=auth_headers(API_KEY),
+            json={
+                "group_ids": [group_id],
                 "user_id": USER_ID,
                 "memory_type": memory_type,
-                "limit": 5,
+                "page": 1,
+                "page_size": 5,
             },
             timeout=30,
         )
@@ -233,8 +235,8 @@ async def test_isolation(client: httpx.AsyncClient, api_base: str):
     print("\n=== Test: Space Isolation ===")
     # Store in SPACE_B
     payload = {
-        "message_id": msg_id(),
-        "create_time": ts(),
+        "message_id": new_message_id(),
+        "create_time": utc_now_iso(),
         "sender": USER_ID,
         "sender_name": "Test User",
         "role": "user",
@@ -243,7 +245,10 @@ async def test_isolation(client: httpx.AsyncClient, api_base: str):
         "group_name": "Test Space B",
     }
     r = await client.post(
-        f"{api_base}/memories", headers=header(), json=payload, timeout=30
+        f"{api_base}/memories",
+        headers=auth_headers(API_KEY),
+        json=payload,
+        timeout=30,
     )
     print(f"  Stored in SPACE_B: {r.status_code}")
 

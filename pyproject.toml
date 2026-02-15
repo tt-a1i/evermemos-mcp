@@ -24,6 +24,9 @@ packages = ["src/evermemos_mcp"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that call real EverMemOS APIs (disabled by default)",
+]
 
 [tool.ruff]
 line-length = 88

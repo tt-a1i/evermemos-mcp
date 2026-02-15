@@ -5,37 +5,19 @@ Usage:
   uv run python scripts/demo_live_walkthrough.py --do-forget
 """
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
-import sys
+from common import add_project_src_to_path, demo_space_ids, pp
 
-sys.path.insert(0, "src")
+add_project_src_to_path()
 
 from evermemos_mcp.evermemos_client import EverMemosClient
 from evermemos_mcp.memory_service import MemoryService
 from evermemos_mcp.space_catalog_service import SpaceCatalogService
-
-
-def _pp(title: str, payload: dict) -> None:
-    print(f"\n--- {title} ---")
-    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str)[:1400])
-
-
-def _space_ids(prefix: str) -> dict[str, str]:
-    if not prefix:
-        return {
-            "coding": "coding:demo-app",
-            "chat": "chat:daily",
-            "study": "study:ml-notes",
-        }
-    return {
-        "coding": f"coding:{prefix}-app",
-        "chat": f"chat:{prefix}-daily",
-        "study": f"study:{prefix}-ml-notes",
-    }
 
 
 QUERIES = {
@@ -60,14 +42,13 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    ids = _space_ids(args.prefix.strip())
+    ids = demo_space_ids(args.prefix.strip())
 
-    client = EverMemosClient()
-    catalog = SpaceCatalogService(client)
-    svc = MemoryService(client, catalog)
+    async with EverMemosClient() as client:
+        catalog = SpaceCatalogService(client)
+        svc = MemoryService(client, catalog)
 
-    try:
-        _pp("list_spaces", await svc.list_spaces(limit=20))
+        pp("list_spaces", await svc.list_spaces(limit=20), max_len=1400)
 
         recall_results: dict[str, dict] = {}
         for domain, space_id in ids.items():
@@ -78,10 +59,10 @@ async def main() -> int:
                 retrieve_method="hybrid",
             )
             recall_results[domain] = result
-            _pp(f"recall:{space_id}", result)
+            pp(f"recall:{space_id}", result, max_len=1400)
 
         briefing = await svc.briefing(space_id=ids["coding"], max_items=8)
-        _pp(f"briefing:{ids['coding']}", briefing)
+        pp(f"briefing:{ids['coding']}", briefing, max_len=1400)
 
         if args.do_forget:
             coding_results = recall_results.get("coding", {}).get("results", [])
@@ -97,18 +78,16 @@ async def main() -> int:
                         space_id=ids["coding"],
                         reason="demo cleanup",
                     )
-                    _pp("forget", forget_result)
+                    pp("forget", forget_result, max_len=1400)
                     verify = await svc.recall(
                         query=QUERIES["coding"],
                         space_id=ids["coding"],
                         top_k=5,
                         retrieve_method="hybrid",
                     )
-                    _pp("recall_after_forget", verify)
+                    pp("recall_after_forget", verify, max_len=1400)
 
         return 0
-    finally:
-        await client.close()
 
 
 if __name__ == "__main__":

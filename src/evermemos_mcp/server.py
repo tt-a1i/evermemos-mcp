@@ -350,26 +350,26 @@ def _to_json(data: dict) -> str:
 async def _run() -> None:
     global _svc
 
-    client = EverMemosClient()
-    catalog = SpaceCatalogService(client)
-    _svc = MemoryService(client, catalog)
+    async with EverMemosClient() as client:
+        catalog = SpaceCatalogService(client)
+        _svc = MemoryService(client, catalog)
 
-    try:
-        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream,
-                write_stream,
-                InitializationOptions(
-                    server_name="evermemos-mcp",
-                    server_version=__version__,
-                    capabilities=server.get_capabilities(
-                        notification_options=NotificationOptions(),
-                        experimental_capabilities={},
+        try:
+            async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+                await server.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name="evermemos-mcp",
+                        server_version=__version__,
+                        capabilities=server.get_capabilities(
+                            notification_options=NotificationOptions(),
+                            experimental_capabilities={},
+                        ),
                     ),
-                ),
-            )
-    finally:
-        await client.close()
+                )
+        finally:
+            _svc = None
 
 
 def main() -> None:

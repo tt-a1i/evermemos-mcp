@@ -230,6 +230,24 @@ async def test_fetch_memories_uses_get_json_body_contract():
 
 
 @pytest.mark.asyncio
+async def test_fetch_memories_passes_time_filters_when_provided():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
+
+    await c.fetch_memories(
+        "space::coding:app",
+        memory_type="event_log",
+        start_time="2024-01-01T00:00:00+00:00",
+        end_time="2024-12-31T23:59:59+00:00",
+    )
+
+    _, kwargs = c._request.call_args
+    payload = kwargs["json"]
+    assert payload["start_time"] == "2024-01-01T00:00:00+00:00"
+    assert payload["end_time"] == "2024-12-31T23:59:59+00:00"
+
+
+@pytest.mark.asyncio
 async def test_fetch_memories_adds_proxy_hint_for_missing_required_fields():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(
@@ -244,6 +262,17 @@ async def test_fetch_memories_adds_proxy_hint_for_missing_required_fields():
         await c.fetch_memories("space::coding:app")
 
     assert "GET request JSON body may be stripped" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_add_message_sends_flush_false_explicitly():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "queued", "request_id": "req-1"})
+
+    await c.add_message("space::coding:app", "hello", flush=False)
+
+    _, kwargs = c._request.call_args
+    assert kwargs["json"]["flush"] is False
 
 
 @pytest.mark.asyncio

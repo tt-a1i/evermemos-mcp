@@ -58,6 +58,7 @@ async def test_list_spaces_empty():
     result = await svc.list_spaces()
     assert result["ok"] is True
     assert result["spaces"] == []
+    assert "approximate" in result["memory_count_hint"].lower()
 
 
 @pytest.mark.asyncio
@@ -93,6 +94,7 @@ async def test_remember_returns_queued():
         "queued" in result["processing_hint"].lower()
         or "minutes" in result["processing_hint"].lower()
     )
+    assert "approximate" in result["memory_count_hint"].lower()
 
     # Verify Cloud call
     client.add_message.assert_called_once()
@@ -490,6 +492,25 @@ async def test_forget_partial_failure():
     assert result["deleted_count"] == 2
     assert len(result["errors"]) == 1
     assert "bad-2" in result["errors"][0]
+
+
+@pytest.mark.asyncio
+async def test_forget_unexpected_exception_is_isolated_as_partial_error():
+    async def mock_delete(*, memory_id=None, group_id=None, **kw):
+        if memory_id == "boom":
+            raise RuntimeError("socket closed")
+        return {"result": {"count": 1}}
+
+    svc, client = _make_svc()
+    client.delete_memories = AsyncMock(side_effect=mock_delete)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["ok-1", "boom", "ok-2"], "coding:app")
+    assert result["ok"] is False
+    assert result["deleted_count"] == 2
+    assert len(result["errors"]) == 1
+    assert "boom" in result["errors"][0]
+    assert "unexpected delete error" in result["errors"][0]
 
 
 @pytest.mark.asyncio

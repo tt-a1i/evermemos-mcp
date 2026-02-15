@@ -4,38 +4,21 @@ Usage:
   uv run python scripts/demo_preload.py --wait --check-status
 """
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
-import sys
 import time
 
-sys.path.insert(0, "src")
+from common import add_project_src_to_path, demo_space_ids, pp
+
+add_project_src_to_path()
 
 from evermemos_mcp.evermemos_client import EverMemosClient
 from evermemos_mcp.memory_service import MemoryService
 from evermemos_mcp.space_catalog_service import SpaceCatalogService
-
-
-def _pp(title: str, payload: dict) -> None:
-    print(f"\n--- {title} ---")
-    print(json.dumps(payload, ensure_ascii=False, indent=2, default=str)[:1200])
-
-
-def _space_ids(prefix: str) -> dict[str, str]:
-    if not prefix:
-        return {
-            "coding": "coding:demo-app",
-            "chat": "chat:daily",
-            "study": "study:ml-notes",
-        }
-    return {
-        "coding": f"coding:{prefix}-app",
-        "chat": f"chat:{prefix}-daily",
-        "study": f"study:{prefix}-ml-notes",
-    }
 
 
 DEMO_DATA = {
@@ -170,21 +153,17 @@ async def main() -> int:
     )
     args = parser.parse_args()
 
-    ids = _space_ids(args.prefix.strip())
-    _pp("Target spaces", ids)
+    ids = demo_space_ids(args.prefix.strip())
+    pp("Target spaces", ids)
 
-    client = EverMemosClient()
-    catalog = SpaceCatalogService(client)
-    svc = MemoryService(client, catalog)
-
-    try:
+    async with EverMemosClient() as client:
+        catalog = SpaceCatalogService(client)
+        svc = MemoryService(client, catalog)
         await preload(svc, ids, check_status=args.check_status)
         if args.wait:
             ok = await wait_until_ready(svc, ids, args.timeout, args.interval)
             return 0 if ok else 1
         return 0
-    finally:
-        await client.close()
 
 
 if __name__ == "__main__":

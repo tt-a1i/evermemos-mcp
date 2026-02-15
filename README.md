@@ -63,13 +63,16 @@ Use this generic config in any MCP client that supports `command + args + env`:
 If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 
 ## Tool Contract Notes
+- `list_spaces`: `memory_count` is approximate in Cloud mode due async extraction
 - `remember`: optional `include_status`; returns `message_id`, `request_id`, `created_at`, `processing_hint`
+- `remember`: also returns `memory_count_hint` to clarify Cloud-mode counts are approximate
+- `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic`
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`)
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
-- `briefing` time filters apply to `episodic_memory` and `event_log` (not `foresight`)
+- `briefing` time filters apply to `episodic_memory` and `event_log` (not `profile` or `foresight`)
 - Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
 
 ## MCP Client Integration
@@ -81,6 +84,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - Install dev dependencies: `uv sync --group dev`
 - Lint: `uv run ruff check`
 - Test: `uv run pytest`
+- Optional integration tests: `EVERMEMOS_RUN_INTEGRATION_TESTS=true uv run pytest -m integration`
 - CI: `.github/workflows/ci.yml` (runs ruff + pytest on push/PR)
 
 ## Documentation
