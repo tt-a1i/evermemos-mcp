@@ -114,7 +114,7 @@ EverMemOS API
 - 输入：
   - `query` (required)
   - `space_id` (required)
-  - `top_k` (optional, default: 5)
+  - `top_k` (optional, default: 10, 范围 1-50)
   - `retrieve_method` (optional, default: `hybrid`)
     - 可选值：`keyword|hybrid|vector|rrf|agentic`
   - `memory_types` (optional)

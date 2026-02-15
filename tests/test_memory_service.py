@@ -195,6 +195,17 @@ async def test_recall_maps_search_results():
 
 
 @pytest.mark.asyncio
+async def test_recall_defaults_top_k_to_10():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("query", "coding:app")
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["top_k"] == 10
+
+
+@pytest.mark.asyncio
 async def test_recall_maps_grouped_search_results():
     search_response = {
         "result": {
@@ -698,6 +709,16 @@ async def test_recall_rejects_out_of_range_radius():
 
     with pytest.raises(EverMemosError) as exc_info:
         await svc.recall("query", "coding:app", radius=1.5)
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_rejects_top_k_above_limit():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("query", "coding:app", top_k=51)
     assert exc_info.value.code == "INVALID_INPUT"
 
 

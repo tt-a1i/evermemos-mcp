@@ -95,6 +95,10 @@ async def test_dispatch_recall(svc):
     assert data["ok"] is True
     assert "results" in data
 
+    svc._client.search_memories.assert_called_once()
+    _, kwargs = svc._client.search_memories.call_args
+    assert kwargs["top_k"] == 10
+
 
 @pytest.mark.asyncio
 async def test_dispatch_recall_with_extended_filters(svc):

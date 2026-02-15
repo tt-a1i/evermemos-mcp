@@ -16,6 +16,8 @@ from .space_catalog_service import SpaceCatalogService, to_group_id
 
 _VALID_SENDERS = {"user", "assistant"}
 _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic"}
+_DEFAULT_RECALL_TOP_K = 10
+_MAX_RECALL_TOP_K = 50
 _MEMORY_TYPE_ORDER = ("episodic_memory", "profile", "foresight", "event_log")
 _VALID_MEMORY_TYPES = set(_MEMORY_TYPE_ORDER)
 _HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
@@ -57,6 +59,16 @@ class MemoryService:
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise EverMemosError(
                 f"{field_name} must be a positive integer",
+                code="INVALID_INPUT",
+            )
+        return value
+
+    @staticmethod
+    def _validate_top_k(value: int) -> int:
+        value = MemoryService._validate_positive_int(value, "top_k")
+        if value > _MAX_RECALL_TOP_K:
+            raise EverMemosError(
+                f"top_k must be less than or equal to {_MAX_RECALL_TOP_K}",
                 code="INVALID_INPUT",
             )
         return value
@@ -330,7 +342,7 @@ class MemoryService:
         query: str,
         space_id: str,
         *,
-        top_k: int = 5,
+        top_k: int = _DEFAULT_RECALL_TOP_K,
         retrieve_method: str = "hybrid",
         start_time: str | None = None,
         end_time: str | None = None,
@@ -341,7 +353,7 @@ class MemoryService:
     ) -> dict:
         query = self._validate_text(query, "query")
         space_id = self._validate_space_id(space_id)
-        top_k = self._validate_positive_int(top_k, "top_k")
+        top_k = self._validate_top_k(top_k)
         start_time = self._validate_iso_datetime(start_time, "start_time")
         end_time = self._validate_iso_datetime(end_time, "end_time")
         start_time, end_time = self._validate_time_window(start_time, end_time)

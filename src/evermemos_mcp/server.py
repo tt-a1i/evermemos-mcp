@@ -136,8 +136,10 @@ TOOLS: list[types.Tool] = [
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Max number of results",
-                    "default": 5,
+                    "description": "Max number of results (1-50)",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 10,
                 },
                 "retrieve_method": {
                     "type": "string",
@@ -312,7 +314,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
         return await svc.recall(
             query=args["query"],
             space_id=args["space_id"],
-            top_k=args.get("top_k", 5),
+            top_k=args.get("top_k", 10),
             retrieve_method=args.get("retrieve_method", "hybrid"),
             start_time=args.get("start_time"),
             end_time=args.get("end_time"),

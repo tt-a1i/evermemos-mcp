@@ -300,7 +300,7 @@ class EverMemosClient:
         *,
         retrieve_method: str = "hybrid",
         memory_types: list[str] | None = None,
-        top_k: int = 5,
+        top_k: int = 10,
         user_id: str | None = None,
         start_time: str | None = None,
         end_time: str | None = None,

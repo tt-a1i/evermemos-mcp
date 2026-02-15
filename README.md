@@ -74,6 +74,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `remember`: also returns `memory_count_hint` to clarify Cloud-mode counts are approximate
 - `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic`
+- `recall`: default `top_k=10`; accepted range is `1-50`
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`, and custom values are restricted to these two

@@ -98,7 +98,7 @@ EverMemOS API
 - Input:
   - `query` (required)
   - `space_id` (required)
-  - `top_k?=5`
+  - `top_k?=10` (range: 1-50)
   - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic`)
   - `memory_types?` (`profile|episodic_memory|foresight|event_log`)
     - for `hybrid|rrf|agentic`: defaults to `profile + episodic_memory`
