@@ -101,6 +101,8 @@ EverMemOS API
   - `top_k?=5`
   - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic`)
   - `memory_types?` (`profile|episodic_memory|foresight|event_log`)
+    - for `hybrid|rrf|agentic`: defaults to `profile + episodic_memory`
+    - for `hybrid|rrf|agentic`: custom values are restricted to `profile|episodic_memory`
   - `start_time?`, `end_time?` (ISO 8601; naive values default to UTC; applied to episodic memory)
   - `current_time?` (ISO 8601)
   - `radius?` (0-1)

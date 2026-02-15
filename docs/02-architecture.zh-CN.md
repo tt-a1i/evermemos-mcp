@@ -119,7 +119,8 @@ EverMemOS API
     - 可选值：`keyword|hybrid|vector|rrf|agentic`
   - `memory_types` (optional)
     - 可选值：`profile|episodic_memory|foresight|event_log`
-    - 不传则使用 upstream 默认检索策略
+    - 对 `hybrid|rrf|agentic`：不传时默认收敛到 `profile|episodic_memory`
+    - 对 `hybrid|rrf|agentic`：若自定义，也仅允许 `profile|episodic_memory`
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
     - 仅对 `episodic_memory` 生效
   - `current_time` (optional, ISO 8601 with timezone)

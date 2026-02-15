@@ -72,10 +72,19 @@
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
+- `recall`: 对 `hybrid|rrf|agentic`，默认会收敛到 `profile+episodic_memory`，且自定义值也仅允许这两类
 - `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
 - `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，仅对 `episodic_memory/event_log` 生效，不作用于 `profile/foresight`）
 - Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
+
+### `flush` 边界规则
+- `flush` 由调用方（MCP 客户端/Agent）控制，本服务不做自动推断
+- 建议始终显式传 `flush`，不要依赖上游默认值
+- 同一段持续多轮对话的中间轮次用 `flush=false`
+- 收尾/总结/话题切换/会话结束或超时时用 `flush=true`
+- 若无法判断边界，默认使用 `flush=true` 更稳妥
+- 可直接复用的提示词和调用约束见：`docs/05-client-integrations.zh-CN.md`
 
 ## MCP 客户端接入
 - Claude Code / Cursor / Cline / Cherry 配置见：`docs/05-client-integrations.zh-CN.md`

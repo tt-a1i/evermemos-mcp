@@ -16,7 +16,10 @@ from .space_catalog_service import SpaceCatalogService, to_group_id
 
 _VALID_SENDERS = {"user", "assistant"}
 _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic"}
-_VALID_MEMORY_TYPES = {"profile", "episodic_memory", "foresight", "event_log"}
+_MEMORY_TYPE_ORDER = ("episodic_memory", "profile", "foresight", "event_log")
+_VALID_MEMORY_TYPES = set(_MEMORY_TYPE_ORDER)
+_HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
+_HYBRID_ALLOWED_MEMORY_TYPES = {"profile", "episodic_memory"}
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
 
@@ -151,6 +154,53 @@ class MemoryService:
                 code="INVALID_INPUT",
             )
         return start_time, end_time
+
+    @staticmethod
+    def _normalize_search_memory_items(
+        raw_memories: object,
+    ) -> list[tuple[int, dict, float | None]]:
+        """Normalize search memories to a flat list.
+
+        Supports both upstream shapes:
+        - Flat: [{"id": ..., "memory_type": ...}, ...]
+        - Grouped: [{"episodic_memory": [...], "profile": [...]}, ...]
+        """
+
+        normalized: list[tuple[int, dict, float | None]] = []
+        if not isinstance(raw_memories, list):
+            return normalized
+
+        for source_index, entry in enumerate(raw_memories):
+            if not isinstance(entry, dict):
+                continue
+
+            grouped_items: list[dict] = []
+            group_score = entry.get("score")
+            if isinstance(group_score, bool) or not isinstance(
+                group_score, (int, float)
+            ):
+                group_score = None
+
+            for memory_type in _MEMORY_TYPE_ORDER:
+                items = entry.get(memory_type)
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    item_copy = dict(item)
+                    item_copy.setdefault("memory_type", memory_type)
+                    grouped_items.append(item_copy)
+
+            # Grouped shape normally has no top-level id/memory_type.
+            if grouped_items and "memory_type" not in entry and "id" not in entry:
+                for grouped_item in grouped_items:
+                    normalized.append((source_index, grouped_item, group_score))
+                continue
+
+            normalized.append((source_index, entry, None))
+
+        return normalized
 
     # -- list_spaces --
 
@@ -310,6 +360,22 @@ class MemoryService:
                 code="INVALID_INPUT",
             )
 
+        if retrieve_method in _HYBRID_RESTRICTED_METHODS:
+            if memory_types is None:
+                memory_types = ["profile", "episodic_memory"]
+            else:
+                disallowed = [
+                    value
+                    for value in memory_types
+                    if value not in _HYBRID_ALLOWED_MEMORY_TYPES
+                ]
+                if disallowed:
+                    raise EverMemosError(
+                        "For hybrid/rrf/agentic retrieval, memory_types can only include "
+                        "profile and episodic_memory",
+                        code="INVALID_INPUT",
+                    )
+
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
@@ -329,24 +395,37 @@ class MemoryService:
 
         results = []
         scores = res.get("scores", [])
-        for index, item in enumerate(res.get("memories", [])):
+        if not isinstance(scores, list):
+            scores = []
+
+        memory_items = self._normalize_search_memory_items(res.get("memories", []))
+        for source_index, item, group_score in memory_items:
             if not isinstance(item, dict):
                 continue
             atomic_fact = item.get("atomic_fact", "")
             if isinstance(atomic_fact, list):
                 atomic_fact = "; ".join(str(v) for v in atomic_fact if v)
 
-            snippet = item.get("summary", "") or atomic_fact or ""
+            snippet = (
+                item.get("summary", "")
+                or atomic_fact
+                or item.get("description", "")
+                or item.get("content", "")
+                or ""
+            )
             score = item.get("score")
-            if score is None and index < len(scores):
-                score = scores[index]
+            if score is None and group_score is not None:
+                score = group_score
+            if score is None and source_index < len(scores):
+                score = scores[source_index]
 
             results.append(
                 {
                     "memory_id": item.get("id", ""),
                     "memory_type": item.get("memory_type", ""),
                     "snippet": snippet[:500],
-                    "timestamp": item.get("timestamp", ""),
+                    "timestamp": item.get("timestamp", "")
+                    or item.get("created_at", ""),
                     "score": score,
                 }
             )

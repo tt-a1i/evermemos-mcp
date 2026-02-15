@@ -182,7 +182,9 @@ TOOLS: list[types.Tool] = [
                     "type": "array",
                     "description": (
                         "Optional memory type filter override. "
-                        "Allowed: profile, episodic_memory, foresight, event_log."
+                        "Allowed: profile, episodic_memory, foresight, event_log. "
+                        "For hybrid/rrf/agentic retrieval, only profile and "
+                        "episodic_memory are supported."
                     ),
                     "items": {
                         "type": "string",

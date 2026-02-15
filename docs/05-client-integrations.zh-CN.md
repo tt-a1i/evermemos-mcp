@@ -123,7 +123,31 @@
 ## 7) 源码片段
 如果未安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`。
 
-## 8) 接入后 30 秒自检
+## 8) `flush` 边界策略（推荐）
+
+`flush` 是 `remember` 的会话边界信号，本服务不会自动推断。
+
+建议在宿主侧实现确定性规则：
+1. 始终显式传 `flush`（`true` 或 `false`）。
+2. 同一段持续对话的中间轮次使用 `flush=false`。
+3. 收尾答复、总结、话题切换、会话关闭或超时时使用 `flush=true`。
+4. 边界不确定时，兜底使用 `flush=true`。
+
+建议给 Agent 的提示词片段：
+
+```text
+When calling remember:
+1) Always pass flush explicitly (never omit).
+2) Use flush=false for intermediate turns in the same ongoing conversation.
+3) Use flush=true when:
+   - providing a final answer/summary,
+   - topic switches,
+   - user says session is done,
+   - app signals conversation close/timeout.
+4) If boundary is uncertain, use flush=true as safe fallback.
+```
+
+## 9) 接入后 30 秒自检
 在客户端里依次调用：
 
 1. `list_spaces`（应返回 `ok=true`）
@@ -134,7 +158,7 @@
    - 刚写完可能为空（Cloud 异步提取）
    - 可观察 `pending_count/pending_hint`
 
-## 9) 常见问题
+## 10) 常见问题
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
   - 原因：未配置 API Key
   - 处理：在 MCP server 的 `env` 增加 `EVERMEMOS_API_KEY`

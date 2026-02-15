@@ -139,6 +139,23 @@ async def test_dispatch_recall_invalid_memory_types_returns_invalid_input(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_recall_hybrid_rejects_event_log_memory_types(svc):
+    svc._catalog.ensure_space("coding:app")
+    result = await server_mod.handle_call_tool(
+        "recall",
+        {
+            "query": "FastAPI",
+            "space_id": "coding:app",
+            "retrieve_method": "hybrid",
+            "memory_types": ["event_log"],
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_briefing(svc):
     svc._catalog.ensure_space("coding:app")
     result = await server_mod.handle_call_tool("briefing", {"space_id": "coding:app"})
@@ -242,6 +259,14 @@ async def test_unknown_tool(svc):
     data = _parse(result)
     assert data["ok"] is False
     assert data["error"] == "UNKNOWN_TOOL"
+
+
+@pytest.mark.asyncio
+async def test_arguments_none_mapped_to_invalid_input(svc):
+    result = await server_mod.handle_call_tool("remember", None)  # type: ignore[arg-type]
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["error"] == "INVALID_INPUT"
 
 
 @pytest.mark.asyncio

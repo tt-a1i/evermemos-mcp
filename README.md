@@ -70,10 +70,19 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic`
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
+- `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`, and custom values are restricted to these two
 - `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`)
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
 - `briefing` time filters apply to `episodic_memory` and `event_log` (not `profile` or `foresight`)
 - Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
+
+### `flush` Boundary Rule
+- `flush` is caller-controlled (MCP client/agent), not auto-inferred by this server
+- Always pass `flush` explicitly; do not rely on upstream defaults
+- Use `flush=false` for intermediate turns in one ongoing conversation
+- Use `flush=true` for final answer/summary/topic switch/session close or timeout
+- If uncertain, prefer `flush=true` as the safe fallback
+- Prompt template and host-side rules: `docs/05-client-integrations.md`
 
 ## MCP Client Integration
 - Integration guide: `docs/05-client-integrations.md`

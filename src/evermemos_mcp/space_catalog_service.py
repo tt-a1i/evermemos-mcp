@@ -29,6 +29,7 @@ _RECOVER_COOLDOWN_SECS = 30.0
 _META_ENRICH_CONCURRENCY = 8
 _META_ENRICH_MAX_SPACES = 60
 _CATALOG_PAGE_SIZE = 100
+_CATALOG_MAX_FETCH_PAGES = 500
 _ENTRY_JSON_PREFIX = "SPACE_CATALOG_ENTRY:"
 
 
@@ -328,7 +329,7 @@ class SpaceCatalogService:
         saw_valid_fetch = False
         for memory_type in ("event_log", "episodic_memory"):
             page = 1
-            while True:
+            while page <= _CATALOG_MAX_FETCH_PAGES:
                 response = await self._client.fetch_memories(
                     CATALOG_GROUP_ID,
                     memory_type=memory_type,
@@ -363,6 +364,12 @@ class SpaceCatalogService:
                 elif count < _CATALOG_PAGE_SIZE:
                     break
                 page += 1
+            else:
+                logger.warning(
+                    "Catalog recovery stopped at max pages for %s (limit=%d)",
+                    memory_type,
+                    _CATALOG_MAX_FETCH_PAGES,
+                )
 
         return saw_valid_fetch
 

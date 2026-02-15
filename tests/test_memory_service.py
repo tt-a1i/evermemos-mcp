@@ -195,6 +195,52 @@ async def test_recall_maps_search_results():
 
 
 @pytest.mark.asyncio
+async def test_recall_maps_grouped_search_results():
+    search_response = {
+        "result": {
+            "memories": [
+                {
+                    "episodic_memory": [
+                        {
+                            "id": "ep-001",
+                            "summary": "Discussed migration plan",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "profile": [
+                        {
+                            "id": "pf-001",
+                            "description": "Prefers short updates",
+                            "created_at": "2026-02-10T10:02:00Z",
+                        }
+                    ],
+                    "score": 0.88,
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.recall("plan", "coding:app", retrieve_method="keyword")
+    assert result["ok"] is True
+    assert len(result["results"]) == 2
+
+    first = result["results"][0]
+    assert first["memory_id"] == "ep-001"
+    assert first["memory_type"] == "episodic_memory"
+    assert "migration" in first["snippet"]
+
+    second = result["results"][1]
+    assert second["memory_id"] == "pf-001"
+    assert second["memory_type"] == "profile"
+    assert "Prefers" in second["snippet"]
+    assert second["timestamp"] == "2026-02-10T10:02:00Z"
+    assert second["score"] == 0.88
+
+
+@pytest.mark.asyncio
 async def test_recall_reports_pending():
     search_response = {
         "result": {
@@ -277,14 +323,14 @@ async def test_recall_vector_does_not_force_memory_types():
 
 
 @pytest.mark.asyncio
-async def test_recall_hybrid_does_not_force_memory_types():
+async def test_recall_hybrid_defaults_to_profile_and_episodic_memory_types():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
     await svc.recall("x", "coding:app", retrieve_method="hybrid")
 
     _, kwargs = client.search_memories.call_args
-    assert kwargs["memory_types"] is None
+    assert kwargs["memory_types"] == ["profile", "episodic_memory"]
 
 
 @pytest.mark.asyncio
@@ -314,7 +360,7 @@ async def test_recall_invalid_memory_types_raises():
 
 
 @pytest.mark.asyncio
-async def test_recall_hybrid_allows_custom_memory_types_passthrough():
+async def test_recall_hybrid_accepts_profile_or_episodic_subset_only():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
@@ -322,11 +368,52 @@ async def test_recall_hybrid_allows_custom_memory_types_passthrough():
         "x",
         "coding:app",
         retrieve_method="hybrid",
-        memory_types=["event_log"],
+        memory_types=["profile"],
     )
 
     _, kwargs = client.search_memories.call_args
-    assert kwargs["memory_types"] == ["event_log"]
+    assert kwargs["memory_types"] == ["profile"]
+
+
+@pytest.mark.asyncio
+async def test_recall_hybrid_rejects_event_log_memory_types():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall(
+            "x",
+            "coding:app",
+            retrieve_method="hybrid",
+            memory_types=["event_log"],
+        )
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_rrf_defaults_to_profile_and_episodic_memory_types():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("x", "coding:app", retrieve_method="rrf")
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] == ["profile", "episodic_memory"]
+
+
+@pytest.mark.asyncio
+async def test_recall_agentic_rejects_non_profile_or_episodic_memory_types():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall(
+            "x",
+            "coding:app",
+            retrieve_method="agentic",
+            memory_types=["foresight"],
+        )
+    assert exc_info.value.code == "INVALID_INPUT"
 
 
 # -- briefing --
