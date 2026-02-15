@@ -56,6 +56,7 @@ EverMemOS API
 ### 3.5 `evermemos_client`（HTTP 适配）
 - Cloud 优先：封装 `/api/v0/memories` 与 `/api/v0/memories/search`
 - 封装 `/api/v0/status/request`，用于查询异步写入状态
+- 为兼容不同部署，状态查询失败时会回退尝试 `/api/v0/memories/status`
 - 本地兼容：可切换到 `/api/v1/*`（通过配置）
 - 处理鉴权、超时、重试和错误信息提炼
 - 注意：官方 `fetch/search` 契约是 `GET + JSON body`，在部分代理/WAF 环境可能被剥离请求体
@@ -116,11 +117,12 @@ EverMemOS API
   - `space_id` (required)
   - `top_k` (optional, default: 10, 范围 1-50)
   - `retrieve_method` (optional, default: `hybrid`)
-    - 可选值：`keyword|hybrid|vector|rrf|agentic`
+    - 可选值：`keyword|hybrid|vector|rrf|agentic|auto`
   - `memory_types` (optional)
     - 可选值：`profile|episodic_memory|foresight|event_log`
     - 对 `hybrid|rrf|agentic`：不传时默认收敛到 `profile|episodic_memory`
     - 对 `hybrid|rrf|agentic`：若自定义，也仅允许 `profile|episodic_memory`
+    - 对 `auto`：过滤条件作用于 keyword 分支；hybrid 分支只使用 `profile|episodic_memory` 子集
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
     - 仅对 `episodic_memory` 生效
   - `current_time` (optional, ISO 8601 with timezone)
@@ -131,6 +133,7 @@ EverMemOS API
   - `ok`
   - `space_id`
   - `results[]`（每项包含 `memory_id`, `memory_type`, `snippet`, `timestamp`, `score`）
+  - 使用 `auto` 时会返回 `retrieve_method_actual=auto(hybrid+keyword)`
   - `pending_count/pending_hint`（存在待提取消息时）
 
 ### 5.4 `briefing`

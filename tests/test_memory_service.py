@@ -323,6 +323,129 @@ async def test_recall_keyword_does_not_force_memory_types():
 
 
 @pytest.mark.asyncio
+async def test_recall_auto_runs_hybrid_and_keyword_and_sets_actual_method():
+    svc, client = _make_svc(
+        search_rv={"result": {"memories": [], "pending_messages": []}}
+    )
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.recall("q", "coding:app", retrieve_method="auto")
+
+    assert result["ok"] is True
+    assert result["retrieve_method_actual"] == "auto(hybrid+keyword)"
+    assert client.search_memories.call_count == 2
+    methods = [
+        call.kwargs["retrieve_method"] for call in client.search_memories.call_args_list
+    ]
+    assert set(methods) == {"hybrid", "keyword"}
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_merges_and_deduplicates_results_by_memory_id():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    client.search_memories = AsyncMock(
+        side_effect=[
+            {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "ep-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed migration plan",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                            "score": 0.9,
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            },
+            {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "ep-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "duplicate from keyword",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                            "score": 0.8,
+                        },
+                        {
+                            "id": "ev-001",
+                            "memory_type": "event_log",
+                            "atomic_fact": "Use branch strategy A",
+                            "timestamp": "2026-02-10T10:01:00Z",
+                            "score": 0.7,
+                        },
+                    ],
+                    "pending_messages": [],
+                }
+            },
+        ]
+    )
+
+    result = await svc.recall("plan", "coding:app", retrieve_method="auto")
+
+    assert result["ok"] is True
+    ids = [item["memory_id"] for item in result["results"]]
+    assert ids.count("ep-001") == 1
+    assert "ev-001" in ids
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_partial_when_one_branch_fails():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    client.search_memories = AsyncMock(
+        side_effect=[
+            EverMemosError("hybrid timeout", code="UPSTREAM_UNAVAILABLE"),
+            {"result": {"memories": [], "pending_messages": []}},
+        ]
+    )
+
+    result = await svc.recall("plan", "coding:app", retrieve_method="auto")
+
+    assert result["ok"] is True
+    assert result["partial_hint"]
+    assert result["partial_errors"][0]["branch"] == "hybrid"
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_raises_when_all_branches_fail():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    client.search_memories = AsyncMock(
+        side_effect=[
+            EverMemosError("hybrid timeout", code="UPSTREAM_UNAVAILABLE"),
+            EverMemosError("keyword timeout", code="UPSTREAM_UNAVAILABLE"),
+        ]
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("plan", "coding:app", retrieve_method="auto")
+
+    assert exc_info.value.code == "UPSTREAM_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_event_log_filter_skips_hybrid_branch():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall(
+        "file name",
+        "coding:app",
+        retrieve_method="auto",
+        memory_types=["event_log"],
+    )
+
+    assert client.search_memories.call_count == 1
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["retrieve_method"] == "keyword"
+    assert kwargs["memory_types"] == ["event_log"]
+
+
+@pytest.mark.asyncio
 async def test_recall_vector_does_not_force_memory_types():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")

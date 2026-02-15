@@ -54,6 +54,7 @@ EverMemOS API
 
 ### 3.5 `evermemos_client`
 - Wraps `/api/v0/memories`, `/api/v0/memories/search`, `/api/v0/status/request`
+- Request status falls back to `/api/v0/memories/status` for compatibility
 - Adds auth, timeout, lightweight retries, and error normalization
 - Supports local `v1` endpoints via configuration
 - Note: upstream fetch/search contract is `GET + JSON body`; some proxies/WAFs may strip GET bodies
@@ -99,16 +100,18 @@ EverMemOS API
   - `query` (required)
   - `space_id` (required)
   - `top_k?=10` (range: 1-50)
-  - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic`)
+  - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic|auto`)
   - `memory_types?` (`profile|episodic_memory|foresight|event_log`)
     - for `hybrid|rrf|agentic`: defaults to `profile + episodic_memory`
     - for `hybrid|rrf|agentic`: custom values are restricted to `profile|episodic_memory`
+    - for `auto`: applies to keyword branch; hybrid branch uses profile/episodic subset
   - `start_time?`, `end_time?` (ISO 8601; naive values default to UTC; applied to episodic memory)
   - `current_time?` (ISO 8601)
   - `radius?` (0-1)
   - `include_metadata?=false`
 - Output:
   - `ok`, `space_id`, `results[]`
+  - `retrieve_method_actual=auto(hybrid+keyword)` when auto strategy is used
   - `pending_count/pending_hint` when extraction is pending
   - `partial_hint/partial_errors` when upstream returns partial results
 

@@ -9,13 +9,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Awaitable
 from datetime import datetime, timezone
 
 from .evermemos_client import EverMemosClient, EverMemosError
 from .space_catalog_service import SpaceCatalogService, to_group_id
 
 _VALID_SENDERS = {"user", "assistant"}
-_VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic"}
+_VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic", "auto"}
 _DEFAULT_RECALL_TOP_K = 10
 _MAX_RECALL_TOP_K = 50
 _MEMORY_TYPE_ORDER = ("episodic_memory", "profile", "foresight", "event_log")
@@ -368,7 +369,7 @@ class MemoryService:
 
         if retrieve_method not in _VALID_RETRIEVE_METHODS:
             raise EverMemosError(
-                "retrieve_method must be one of: keyword, hybrid, vector, rrf, agentic",
+                "retrieve_method must be one of: keyword, hybrid, vector, rrf, agentic, auto",
                 code="INVALID_INPUT",
             )
 
@@ -390,6 +391,266 @@ class MemoryService:
 
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
+
+        if retrieve_method == "auto":
+            keyword_memory_types = memory_types
+            if keyword_memory_types is None:
+                hybrid_memory_types = ["profile", "episodic_memory"]
+            else:
+                hybrid_memory_types = [
+                    value
+                    for value in keyword_memory_types
+                    if value in _HYBRID_ALLOWED_MEMORY_TYPES
+                ]
+
+            branch_calls: list[tuple[str, Awaitable[dict]]] = []
+            if hybrid_memory_types:
+                branch_calls.append(
+                    (
+                        "hybrid",
+                        self._client.search_memories(
+                            query,
+                            group_id,
+                            retrieve_method="hybrid",
+                            top_k=top_k,
+                            memory_types=hybrid_memory_types,
+                            start_time=start_time,
+                            end_time=end_time,
+                            current_time=current_time,
+                            radius=radius,
+                            include_metadata=include_metadata,
+                        ),
+                    )
+                )
+
+            branch_calls.append(
+                (
+                    "keyword",
+                    self._client.search_memories(
+                        query,
+                        group_id,
+                        retrieve_method="keyword",
+                        top_k=top_k,
+                        memory_types=keyword_memory_types,
+                        start_time=start_time,
+                        end_time=end_time,
+                        current_time=current_time,
+                        radius=radius,
+                        include_metadata=include_metadata,
+                    ),
+                )
+            )
+
+            branch_coroutines: list[Awaitable[dict]] = [
+                call for _, call in branch_calls
+            ]
+            responses = await asyncio.gather(
+                *branch_coroutines,
+                return_exceptions=True,
+            )
+
+            results: list[dict] = []
+            seen_ids: set[str] = set()
+            seen_text_keys: set[tuple[str, str, str]] = set()
+            merged_pending: list[dict] = []
+            merged_partial_errors: list[dict] = []
+            merged_warnings: list[dict] = []
+            successful_branches = 0
+            first_error: EverMemosError | None = None
+
+            for (branch_name, _), branch_result in zip(branch_calls, responses):
+                if isinstance(branch_result, BaseException):
+                    logger.warning(
+                        "Auto search branch %s failed: %s",
+                        branch_name,
+                        branch_result,
+                    )
+                    if isinstance(branch_result, EverMemosError):
+                        if first_error is None:
+                            first_error = branch_result
+                        merged_partial_errors.append(
+                            {
+                                "branch": branch_name,
+                                "message": str(branch_result),
+                                "code": branch_result.code,
+                            }
+                        )
+                    else:
+                        if first_error is None:
+                            first_error = EverMemosError(
+                                f"Auto search branch {branch_name} failed: {branch_result}",
+                                code="UPSTREAM_UNAVAILABLE",
+                            )
+                        merged_partial_errors.append(
+                            {
+                                "branch": branch_name,
+                                "message": str(branch_result),
+                            }
+                        )
+                    continue
+
+                branch_payload = branch_result
+                if not isinstance(branch_payload, dict):
+                    merged_partial_errors.append(
+                        {
+                            "branch": branch_name,
+                            "message": "Upstream returned invalid response.",
+                        }
+                    )
+                    continue
+
+                successful_branches += 1
+                res = branch_payload.get("result", {})
+                if not isinstance(res, dict):
+                    merged_partial_errors.append(
+                        {
+                            "branch": branch_name,
+                            "message": "Upstream returned invalid result payload.",
+                        }
+                    )
+                    continue
+
+                scores = res.get("scores", [])
+                if not isinstance(scores, list):
+                    scores = []
+
+                memory_items = self._normalize_search_memory_items(
+                    res.get("memories", [])
+                )
+                for source_index, item, group_score in memory_items:
+                    if not isinstance(item, dict):
+                        continue
+
+                    memory_id = item.get("id", "")
+                    if memory_id and memory_id in seen_ids:
+                        continue
+
+                    atomic_fact = item.get("atomic_fact", "")
+                    if isinstance(atomic_fact, list):
+                        atomic_fact = "; ".join(str(v) for v in atomic_fact if v)
+
+                    snippet = (
+                        item.get("summary", "")
+                        or atomic_fact
+                        or item.get("description", "")
+                        or item.get("content", "")
+                        or ""
+                    )
+                    timestamp = item.get("timestamp", "") or item.get("created_at", "")
+                    memory_type = item.get("memory_type", "")
+
+                    if not memory_id:
+                        dedupe_key = (memory_type, snippet[:500], timestamp)
+                        if dedupe_key in seen_text_keys:
+                            continue
+                        seen_text_keys.add(dedupe_key)
+                    else:
+                        seen_ids.add(memory_id)
+
+                    score = item.get("score")
+                    if score is None and group_score is not None:
+                        score = group_score
+                    if score is None and source_index < len(scores):
+                        score = scores[source_index]
+
+                    results.append(
+                        {
+                            "memory_id": memory_id,
+                            "memory_type": memory_type,
+                            "snippet": snippet[:500],
+                            "timestamp": timestamp,
+                            "score": score,
+                        }
+                    )
+                    if include_metadata and "metadata" in item:
+                        results[-1]["metadata"] = item.get("metadata")
+
+                for profile in res.get("profiles", []):
+                    if not isinstance(profile, dict):
+                        continue
+                    snippet = profile.get("description", "")
+                    if not snippet:
+                        continue
+                    dedupe_key = ("profile", snippet[:500], "")
+                    if dedupe_key in seen_text_keys:
+                        continue
+                    seen_text_keys.add(dedupe_key)
+                    results.append(
+                        {
+                            "memory_id": "",
+                            "memory_type": "profile",
+                            "snippet": snippet[:500],
+                            "timestamp": "",
+                            "score": profile.get("score"),
+                        }
+                    )
+                    if include_metadata and "metadata" in profile:
+                        results[-1]["metadata"] = profile.get("metadata")
+
+                pending_messages = res.get("pending_messages", [])
+                if isinstance(pending_messages, list):
+                    for pending in pending_messages:
+                        if isinstance(pending, dict):
+                            merged_pending.append(pending)
+
+                branch_partials = res.get("partial_errors")
+                if isinstance(branch_partials, list) and branch_partials:
+                    merged_partial_errors.extend(branch_partials)
+
+                warnings = res.get("warnings")
+                if isinstance(warnings, list) and warnings:
+                    merged_warnings.extend(
+                        warning for warning in warnings if isinstance(warning, dict)
+                    )
+
+                status = branch_payload.get("status")
+                message = branch_payload.get("message")
+                if status == "partial" and isinstance(message, str) and message:
+                    merged_partial_errors.append(
+                        {
+                            "branch": branch_name,
+                            "message": message,
+                        }
+                    )
+
+            if successful_branches == 0:
+                if first_error is not None:
+                    raise first_error
+                raise EverMemosError(
+                    "Auto retrieval failed for all branches",
+                    code="UPSTREAM_UNAVAILABLE",
+                )
+
+            results.sort(
+                key=lambda item: (
+                    item["score"] is not None,
+                    item["score"] if item["score"] is not None else float("-inf"),
+                ),
+                reverse=True,
+            )
+            results = results[:top_k]
+
+            output: dict = {
+                "ok": True,
+                "space_id": space_id,
+                "results": results,
+                "retrieve_method_actual": "auto(hybrid+keyword)",
+            }
+            if merged_pending:
+                output["pending_count"] = len(merged_pending)
+                output["pending_hint"] = (
+                    f"{len(merged_pending)} message(s) are still being processed "
+                    "and may contain relevant information."
+                )
+            if merged_partial_errors:
+                output["partial_hint"] = (
+                    "Search returned partial results from upstream."
+                )
+                output["partial_errors"] = merged_partial_errors
+            if merged_warnings:
+                output["warnings"] = merged_warnings
+
+            return output
 
         result = await self._client.search_memories(
             query,

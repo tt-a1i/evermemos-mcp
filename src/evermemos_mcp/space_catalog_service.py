@@ -20,6 +20,7 @@ from .config import (
     EVERMEMOS_CONVERSATION_SCENE,
     EVERMEMOS_ENABLE_CONVERSATION_META,
     EVERMEMOS_LLM_CUSTOM_SETTING,
+    EVERMEMOS_USER_DETAILS,
 )
 from .evermemos_client import EverMemosClient, EverMemosError
 
@@ -233,6 +234,7 @@ class SpaceCatalogService:
                 scene_desc=scene_desc,
                 tags=tags,
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
+                user_details=EVERMEMOS_USER_DETAILS,
                 default_timezone="UTC",
             )
             return
@@ -262,6 +264,7 @@ class SpaceCatalogService:
                 scene_desc=scene_desc,
                 tags=tags,
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
+                user_details=EVERMEMOS_USER_DETAILS,
                 default_timezone="UTC",
             )
         except EverMemosError as exc:

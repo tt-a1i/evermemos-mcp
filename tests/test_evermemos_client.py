@@ -337,6 +337,26 @@ async def test_get_request_status_requires_request_id():
 
 
 @pytest.mark.asyncio
+async def test_get_request_status_falls_back_to_memories_status():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(
+        side_effect=[
+            EverMemosError("not found", status_code=404),
+            {"status": "ok", "result": {"request_id": "req-123"}},
+        ]
+    )
+
+    result = await c.get_request_status("req-123")
+
+    assert result["status"] == "ok"
+    assert c._request.call_count == 2
+    first_call = c._request.call_args_list[0]
+    second_call = c._request.call_args_list[1]
+    assert first_call.args[1] == "/status/request"
+    assert second_call.args[1] == "/memories/status"
+
+
+@pytest.mark.asyncio
 async def test_set_conversation_metadata_payload():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(return_value={"status": "ok", "result": {"id": "meta-1"}})
@@ -351,6 +371,7 @@ async def test_set_conversation_metadata_payload():
         llm_custom_setting={
             "boundary": {"provider": "openrouter", "model": "openai/gpt-4.1-mini"}
         },
+        user_details={"mcp-user": {"full_name": "Test User", "role": "user"}},
     )
 
     _, kwargs = c._request.call_args
@@ -359,6 +380,7 @@ async def test_set_conversation_metadata_payload():
     assert payload["scene"] == "assistant"
     assert payload["created_at"] == "2025-01-15T10:00:00+00:00"
     assert payload["description"] == "Coding app memory"
+    assert payload["user_details"]["mcp-user"]["full_name"] == "Test User"
 
 
 @pytest.mark.asyncio
@@ -386,9 +408,11 @@ async def test_update_conversation_metadata_payload():
         group_id="space::coding:app",
         description="Updated",
         tags=["mcp", "space"],
+        user_details={"assistant": {"full_name": "AI Assistant", "role": "assistant"}},
     )
 
     _, kwargs = c._request.call_args
     assert kwargs["json"]["group_id"] == "space::coding:app"
     assert kwargs["json"]["description"] == "Updated"
     assert kwargs["json"]["tags"] == ["mcp", "space"]
+    assert kwargs["json"]["user_details"]["assistant"]["role"] == "assistant"

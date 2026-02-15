@@ -34,6 +34,7 @@ Universal MCP memory layer powered by EverMemOS.
 - Start server: `uv run evermemos-mcp` or `uv run python -m evermemos_mcp.server`
 - Optional: `EVERMEMOS_ENABLE_CONVERSATION_META=true` (enabled by default)
 - Optional: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` to pass `llm_custom_setting`
+- Optional: `EVERMEMOS_USER_DETAILS_JSON` to pass conversation `user_details`
 
 ## Installation
 - Clone repo: `git clone https://github.com/tt-a1i/evermemos-mcp.git`
@@ -73,15 +74,17 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `remember`: optional `include_status`; returns `message_id`, `request_id`, `created_at`, `processing_hint`
 - `remember`: also returns `memory_count_hint` to clarify Cloud-mode counts are approximate
 - `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
-- `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic`
+- `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic|auto`
 - `recall`: default `top_k=10`; accepted range is `1-50`
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`, and custom values are restricted to these two
+- `recall`: `auto` runs `hybrid + keyword` in parallel, deduplicates by `memory_id`, and merges partial failures as hints
 - `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`)
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
 - `briefing` time filters apply to `episodic_memory` and `event_log` (not `profile` or `foresight`)
 - Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
+- Request status uses `/status/request` with `/memories/status` fallback for compatibility
 
 ### `flush` Boundary Rule
 - `flush` is caller-controlled (MCP client/agent), not auto-inferred by this server

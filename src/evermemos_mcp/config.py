@@ -37,6 +37,16 @@ if _LLM_CUSTOM_SETTING_RAW:
 else:
     EVERMEMOS_LLM_CUSTOM_SETTING = None
 
+_USER_DETAILS_RAW = os.getenv("EVERMEMOS_USER_DETAILS_JSON", "").strip()
+if _USER_DETAILS_RAW:
+    try:
+        parsed = json.loads(_USER_DETAILS_RAW)
+        EVERMEMOS_USER_DETAILS = parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        EVERMEMOS_USER_DETAILS = None
+else:
+    EVERMEMOS_USER_DETAILS = None
+
 # Reserved group_id for space catalog metadata
 CATALOG_GROUP_ID = "space::catalog"
 

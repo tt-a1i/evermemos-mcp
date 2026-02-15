@@ -340,17 +340,29 @@ class EverMemosClient:
             raise self._maybe_hint_get_body_stripping(exc, payload) from exc
 
     async def get_request_status(self, request_id: str) -> dict:
-        """Get async processing status for a queued add-memory request."""
+        """Get async processing status for a queued add-memory request.
+
+        Tries primary path /status/request, fallbacks to /memories/status if needed.
+        """
         self._require_key()
 
         if not isinstance(request_id, str) or not request_id.strip():
             raise EverMemosError("request_id is required", code="INVALID_INPUT")
 
-        return await self._request(
-            "GET",
-            "/status/request",
-            params={"request_id": request_id.strip()},
-        )
+        request_id = request_id.strip()
+        params = {"request_id": request_id}
+
+        try:
+            return await self._request("GET", "/status/request", params=params)
+        except EverMemosError as exc:
+            # Fallback for older/different API versions if path not found or invalid
+            if exc.status_code in {400, 404, 405, 422}:
+                try:
+                    return await self._request("GET", "/memories/status", params=params)
+                except EverMemosError:
+                    # If fallback also fails, propagate original error unless fallback gives better info
+                    raise exc
+            raise
 
     async def set_conversation_metadata(
         self,
@@ -362,6 +374,7 @@ class EverMemosClient:
         scene_desc: dict | None = None,
         tags: list[str] | None = None,
         llm_custom_setting: dict | None = None,
+        user_details: dict | None = None,
         default_timezone: str | None = None,
     ) -> dict:
         """Create conversation metadata for a group."""
@@ -380,6 +393,8 @@ class EverMemosClient:
             payload["tags"] = tags
         if llm_custom_setting is not None:
             payload["llm_custom_setting"] = llm_custom_setting
+        if user_details is not None:
+            payload["user_details"] = user_details
         if default_timezone is not None:
             payload["default_timezone"] = default_timezone
 
@@ -393,6 +408,7 @@ class EverMemosClient:
         scene_desc: dict | None = None,
         tags: list[str] | None = None,
         llm_custom_setting: dict | None = None,
+        user_details: dict | None = None,
         default_timezone: str | None = None,
     ) -> dict:
         """Patch conversation metadata for a group."""
@@ -407,6 +423,8 @@ class EverMemosClient:
             payload["tags"] = tags
         if llm_custom_setting is not None:
             payload["llm_custom_setting"] = llm_custom_setting
+        if user_details is not None:
+            payload["user_details"] = user_details
         if default_timezone is not None:
             payload["default_timezone"] = default_timezone
 

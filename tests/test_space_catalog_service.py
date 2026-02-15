@@ -151,6 +151,32 @@ async def test_register_passes_llm_custom_setting(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_register_passes_user_details(monkeypatch):
+    monkeypatch.setattr(
+        catalog_module,
+        "EVERMEMOS_USER_DETAILS",
+        {
+            "mcp-user": {
+                "full_name": "Test User",
+                "role": "user",
+            }
+        },
+    )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.add_message = AsyncMock(return_value={"status": "queued"})
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.register_space("coding:app", "My React app")
+
+    _, kwargs = client.set_conversation_metadata.call_args
+    assert kwargs["user_details"]["mcp-user"]["full_name"] == "Test User"
+
+
+@pytest.mark.asyncio
 async def test_register_updates_description():
     client = AsyncMock(spec=EverMemosClient)
     client.add_message = AsyncMock(return_value={"status": "queued"})

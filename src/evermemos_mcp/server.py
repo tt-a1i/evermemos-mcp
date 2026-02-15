@@ -143,8 +143,11 @@ TOOLS: list[types.Tool] = [
                 },
                 "retrieve_method": {
                     "type": "string",
-                    "description": "Search strategy",
-                    "enum": ["keyword", "hybrid", "vector", "rrf", "agentic"],
+                    "description": (
+                        "Search strategy. "
+                        "auto runs hybrid+keyword in parallel and merges results"
+                    ),
+                    "enum": ["keyword", "hybrid", "vector", "rrf", "agentic", "auto"],
                     "default": "hybrid",
                 },
                 "start_time": {
@@ -186,7 +189,9 @@ TOOLS: list[types.Tool] = [
                         "Optional memory type filter override. "
                         "Allowed: profile, episodic_memory, foresight, event_log. "
                         "For hybrid/rrf/agentic retrieval, only profile and "
-                        "episodic_memory are supported."
+                        "episodic_memory are supported. "
+                        "For auto retrieval, this filter applies to keyword "
+                        "and hybrid uses the profile/episodic subset."
                     ),
                     "items": {
                         "type": "string",

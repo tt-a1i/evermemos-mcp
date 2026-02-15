@@ -34,6 +34,7 @@
 - 启动：`uv run evermemos-mcp` 或 `uv run python -m evermemos_mcp.server`
 - 可选：`EVERMEMOS_ENABLE_CONVERSATION_META=true`（默认开启）
 - 可选：`EVERMEMOS_LLM_CUSTOM_SETTING_JSON` 用于透传 `llm_custom_setting`
+- 可选：`EVERMEMOS_USER_DETAILS_JSON` 用于透传 conversation `user_details`
 
 ## 安装方式
 - 克隆仓库：`git clone https://github.com/tt-a1i/evermemos-mcp.git`
@@ -74,16 +75,18 @@
 - `remember` 输出包含：`message_id`、`request_id`、`created_at`、`processing_hint`
 - `remember`: 还会返回 `memory_count_hint`，说明 Cloud 模式下计数是近似值
 - `remember`: 会显式透传 `flush`（`true/false`），避免依赖上游默认值
-- `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic`
+- `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic|auto`
 - `recall`: 默认 `top_k=10`，可接受范围为 `1-50`
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
 - `recall`: 对 `hybrid|rrf|agentic`，默认会收敛到 `profile+episodic_memory`，且自定义值也仅允许这两类
+- `recall`: `auto` 会并行执行 `hybrid + keyword` 并按 `memory_id` 去重合并，分支失败会以提示形式返回
 - `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
 - `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，仅对 `episodic_memory/event_log` 生效，不作用于 `profile/foresight`）
 - Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
+- 状态查询优先使用 `/status/request`，失败时回退到 `/memories/status`
 
 ### `flush` 边界规则
 - `flush` 由调用方（MCP 客户端/Agent）控制，本服务不做自动推断
