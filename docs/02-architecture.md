@@ -1,11 +1,13 @@
-# evermemos-mcp 技术设计（Phase 2 / V1）
+# Technical Architecture (Phase 2 / V1)
 
-## 1) 设计目标
-- 作为通用 MCP 记忆层，服务多种 AI 客户端（coding/chat/study）
-- 在 V1 内保证：可用、可隔离、可追溯、可删除
-- 对 EverMemOS 保持薄封装，避免过重二次系统
+[English](02-architecture.md) | [Chinese](02-architecture.zh-CN.md)
 
-## 2) 系统边界
+## 1) Design Goals
+- Build a universal MCP memory layer for coding/chat/study clients
+- Guarantee V1 usability, isolation, traceability, and controlled deletion
+- Keep EverMemOS integration thin and pragmatic
+
+## 2) System Boundary
 
 ```text
 MCP Client (Claude/Cursor/Cherry...)
@@ -24,198 +26,146 @@ evermemos-mcp server
 EverMemOS API
 ```
 
-## 3) 核心模块
+## 3) Core Modules
 
-### 3.1 `server`（MCP 入口）
-- 注册 5 个 tools：`list_spaces` / `remember` / `recall` / `briefing` / `forget`
-- 做输入校验、错误映射、统一响应格式
+### 3.1 `server` (MCP entry)
+- Registers 5 tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`
+- Handles input validation, error mapping, and uniform response shape
 
-### 3.2 `space_router`（空间路由）
-- 只做路由，不做目录/仓库猜测。
-- 路由优先级：
-  1. 用户或上层 agent 显式给出的 `space_id`
-  2. `list_spaces` 结果 + 用户 query 的语义匹配
-  3. 环境变量 `EVERMEMOS_SPACE_ID`（兜底）
-- 低置信度场景返回候选列表，要求先确认再写入。
+### 3.2 `space_router`
+- Routing only; no repository/directory guessing
+- Priority:
+  1. Explicit `space_id` from user/agent
+  2. Semantic match from `list_spaces` and descriptions
+  3. Fallback env `EVERMEMOS_SPACE_ID`
 
-### 3.3 `space_catalog_service`（空间目录）
-- 提供 `list_spaces` 所需的空间元数据：`space_id`, `description`, `memory_count`, `last_used_at`。
-- 元数据存储在 EverMemOS（Cloud-only），不落本地文件。
-- 当前实现：
-  1. 使用保留空间 `space::catalog` 做空间枚举（兼容历史数据）
-  2. 同步写入 `conversation-meta`（description/scene/tags/llm_custom_setting）
-  3. recovery 后用 `conversation-meta` 反查并覆盖描述，减少正则解析依赖
+### 3.3 `space_catalog_service`
+- Provides `space_id`, `description`, `memory_count`, `last_used_at`
+- Cloud-only metadata (no local file persistence)
+- Current implementation:
+  1. Enumerate via reserved `space::catalog` (backward compatible)
+  2. Dual-write `conversation-meta` (`description/scene/tags/llm_custom_setting`)
+  3. Recovery can enrich descriptions from `conversation-meta`
 
-### 3.4 `memory_service`（业务编排）
-- 将通用语义映射到 EverMemOS API
-- 负责来源引用组装（时间 + 片段 + 类型 + score）
-- 负责 V1 的安全删除策略（仅按明确 id 删除）
+### 3.4 `memory_service`
+- Maps MCP semantics to EverMemOS API calls
+- Assembles citation fields (`timestamp/snippet/type/score`)
+- Enforces explicit-id deletion safety
 
-### 3.5 `evermemos_client`（HTTP 适配）
-- Cloud 优先：封装 `/api/v0/memories` 与 `/api/v0/memories/search`
-- 封装 `/api/v0/status/request`，用于查询异步写入状态
-- 本地兼容：可切换到 `/api/v1/*`（通过配置）
-- 处理鉴权、超时、重试和错误信息提炼
-- 注意：官方 `fetch/search` 契约是 `GET + JSON body`，在部分代理/WAF 环境可能被剥离请求体
+### 3.5 `evermemos_client`
+- Wraps `/api/v0/memories`, `/api/v0/memories/search`, `/api/v0/status/request`
+- Adds auth, timeout, lightweight retries, and error normalization
+- Supports local `v1` endpoints via configuration
+- Note: upstream fetch/search contract is `GET + JSON body`; some proxies/WAFs may strip GET bodies
 
-## 4) 数据与隔离模型
+## 4) Data & Isolation Model
 
-### 4.1 Cloud-only 数据策略
-- 记忆正文存 EverMemOS。
-- 空间元数据也存 EverMemOS。
-- MCP 服务端不做本地持久化（可有进程内缓存，但不落盘）。
+### 4.1 Cloud-first data strategy
+- Memory bodies are stored in EverMemOS
+- Space metadata is also stored in EverMemOS
+- Server keeps process-local cache only (no disk persistence)
 
-### 4.2 `space_id` 原则
-- `space_id` 是一级隔离键，避免不同场景记忆串味
-- coding/chat/study 只是 domain，不影响统一工具接口
+### 4.2 `space_id` policy
+- `space_id` is the primary isolation key
+- Domains (coding/chat/study) are naming conventions, not API-level tool differences
 
-### 4.3 EverMemOS 映射（V1）
-- 推荐映射：`group_id = "space::<space_id>"`
-- `user_id` 使用固定或可配置值（如 `mcp-user`）
-- 所有写入/检索/删除都带相同 `group_id`，实现空间隔离
+### 4.3 Mapping
+- Recommended mapping: `group_id = "space::<space_id>"`
+- `user_id` is fixed or configurable (`mcp-user` by default)
+- All write/search/delete calls use the same group mapping
 
-### 4.4 示例
-- `coding:my-app` -> `group_id=space::coding:my-app`
-- `chat:daily` -> `group_id=space::chat:daily`
-- `study:ml` -> `group_id=space::study:ml`
-
-## 5) Tool Contract（V1）
+## 5) Tool Contract (V1)
 
 ### 5.1 `list_spaces`
-- 输入：
-  - `query` (optional)
-  - `limit` (optional, default: 20)
-- 行为：返回可路由空间列表（支持 query 过滤）
-- 输出：
-  - `ok`
-  - `spaces[]`（每项包含 `space_id`, `description`, `memory_count`, `last_used_at`）
+- Input: `query?`, `limit?=20`
+- Output: `ok`, `spaces[]` (`space_id/description/memory_count/last_used_at`)
 
 ### 5.2 `remember`
-- 输入：
+- Input:
   - `content` (required)
   - `space_id` (required)
-  - `description` (optional, 创建新 space 时建议提供)
-  - `sender` (optional, default: `user`)
-  - `flush` (optional, default: true)
-  - `include_status` (optional, default: false)
-- 行为：写入一条消息并触发 EverMemOS 记忆提取
-- 输出：
-  - `ok`
-  - `space_id`
-  - `message_id`
-  - `request_id`
-  - `created_at`
-  - `processing_hint`（如 "memory extraction may be async"）
-  - `request_status`（仅 `include_status=true` 时返回）
+  - `description?`
+  - `sender?=user`
+  - `flush?=true`
+  - `include_status?=false`
+- Output:
+  - `ok`, `space_id`
+  - `message_id` (if upstream does not return message id, falls back to request id)
+  - `request_id`, `created_at`, `processing_hint`
+  - `request_status` (when `include_status=true`)
 
 ### 5.3 `recall`
-- 输入：
+- Input:
   - `query` (required)
   - `space_id` (required)
-  - `top_k` (optional, default: 5)
-  - `retrieve_method` (optional, default: `hybrid`)
-    - 可选值：`keyword|hybrid|vector|rrf|agentic`
-  - `memory_types` (optional)
-    - 可选值：`profile|episodic_memory|foresight|event_log`
-    - 不传则使用 upstream 默认检索策略
-  - `start_time` / `end_time` (optional, ISO 8601 with timezone)
-    - 仅对 `episodic_memory` 生效
-  - `current_time` (optional, ISO 8601 with timezone)
-  - `radius` (optional, 0-1, 主要用于 `vector/hybrid`)
-  - `include_metadata` (optional, default: false)
-- 行为：检索相关记忆并返回可引用结果
-- 输出：
-  - `ok`
-  - `space_id`
-  - `results[]`（每项包含 `memory_id`, `memory_type`, `snippet`, `timestamp`, `score`）
-  - `pending_count/pending_hint`（存在待提取消息时）
+  - `top_k?=5`
+  - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic`)
+  - `memory_types?` (`profile|episodic_memory|foresight|event_log`)
+  - `start_time?`, `end_time?` (ISO 8601; naive values default to UTC; applied to episodic memory)
+  - `current_time?` (ISO 8601)
+  - `radius?` (0-1)
+  - `include_metadata?=false`
+- Output:
+  - `ok`, `space_id`, `results[]`
+  - `pending_count/pending_hint` when extraction is pending
+  - `partial_hint/partial_errors` when upstream returns partial results
 
 ### 5.4 `briefing`
-- 输入：
-  - `space_id` (required)
-  - `max_items` (optional, default: 8)
-  - `start_time` / `end_time` (optional, ISO 8601 with timezone)
-- 行为：分层抓取后生成上下文简报（profile + episodic + event_log + foresight）
-  - `start_time/end_time` 仅作用于 `episodic_memory` 与 `event_log`，不限制 `foresight`
-- 输出：
-  - `ok`
-  - `space_id`
-  - `summary`
-  - `highlights[]`（带引用）
+- Input: `space_id`, `max_items?=8`, `start_time?`, `end_time?`
+- Behavior: layered fetch and synthesis from `profile + episodic_memory + event_log + foresight`
+- Time filters apply to `episodic_memory` and `event_log` only
+- Output: `ok`, `space_id`, `summary`, `highlights[]`
 
 ### 5.5 `forget`
-- 输入：
-  - `memory_ids` (required, array)
-  - `space_id` (required)
-  - `reason` (optional)
-- 行为：删除指定记忆（V1 只支持显式 id，避免误删）
-- 输出：
-  - `ok`
-  - `space_id`
-  - `deleted_count`
+- Input: `memory_ids[]`, `space_id`, `reason?`
+- Behavior: explicit-id deletion only; concurrent deletes with partial-failure reporting
+- Output: `ok`, `space_id`, `deleted_count`, optional `errors[]`
 
-## 6) 来源引用策略（V1 必做）
-- recall/briefing 输出必须带轻量引用：
+## 6) Citation Policy (V1)
+- `recall/briefing` results include traceable evidence fields:
   - `timestamp`
-  - `snippet`（截断后的上下文片段）
+  - `snippet`
   - `memory_type`
-  - `score`（若检索结果提供）
-- 目标：让结果可追溯、可验证、可解释
+  - `score` (if available)
 
-## 7) 错误语义
-- `CONFIG_ERROR`：环境变量缺失或配置非法
-- `UPSTREAM_UNAVAILABLE`：EverMemOS 不可用/超时
-- `INVALID_INPUT`：tool 参数校验失败
-- `NOT_FOUND`：查询为空或待删除对象不存在
+## 7) Error Semantics
+- `CONFIG_ERROR`: missing/invalid config
+- `UPSTREAM_UNAVAILABLE`: timeout/network/upstream outage
+- `INVALID_INPUT`: tool argument validation error
+- `NOT_FOUND`: empty query result or missing target
 
-## 8) 最小测试矩阵（V1）
-- 合同测试：5 个 tools 的输入输出结构
-- 隔离测试：不同 `space_id` 互不召回
-- 引用测试：recall/briefing 必须返回时间+片段
-- 安全测试：forget 仅允许显式 id 删除
-- 路由测试：`list_spaces` + query 能返回正确候选
-- 失败测试：EverMemOS 断开时返回可理解错误
+## 8) Test Matrix (V1)
+- Contract tests for all 5 tools
+- Isolation tests across different `space_id`
+- Citation field tests for `recall/briefing`
+- Safety tests for explicit-id deletion
+- Failure tests for upstream outage and malformed responses
 
-## 9) Demo 技术脚本（建议）
-- 场景 A（coding）：记住架构决策 -> 新会话 recall
-- 场景 B（chat）：记住偏好 -> 问答召回
-- 场景 C（study）：记住学习要点 -> briefing 总结
+## 9) Demo Strategy
+- Scenario A (coding): remember architecture decisions -> recall in new session
+- Scenario B (chat): remember preference -> retrieve in follow-up Q&A
+- Scenario C (study): remember learning notes -> briefing restoration
 
-每个场景都演示：写入 -> 检索 -> 引用 -> 隔离。
+## 10) Technical Risks & Mitigations
 
-## 10) 已识别技术风险与应对
+### 10.1 Async extraction latency
+- Risk: Cloud write is queued; recall is not immediately available
+- Mitigation: preload memories before live demo, expose pending hints in recall
 
-### 10.1 边界检测延迟（高优先级）
-- 风险：EverMemOS 存储后不一定立即可检索，可能需要边界检测完成后才提取记忆。
-- 影响：`remember` 后立即 `recall` 可能为空，影响体验和 demo 稳定性。
-- 应对策略（按优先级）：
-  1. 先做 API 行为验证（单条写入、双条 mini conversation、等待时间）
-  2. `remember` 默认 `flush=true`，降低提取延迟不确定性
-  3. `recall` 空结果时提供 graceful 提示，不把空结果当系统错误
-  4. 若上游支持强制提取参数，则作为可选能力接入
+### 10.2 Briefing synthesis quality
+- Use layered fetch (profile/episodic/event_log/foresight) instead of opaque summarization
 
-### 10.2 `briefing` 组装路径（中优先级）
-- V1 采用分层抓取并结构化拼装：
-  1. `profile`：画像/偏好
-  2. `episodic_memory`：近期活动（limit N）
-  3. `event_log`：关键事实与结论
-  4. `foresight`：未来计划/提醒
-- 目标：体现 EverMemOS 多 memory type 的差异化价值，不做黑盒摘要。
+### 10.3 MCP transport
+- V1 defaults to `stdio` for compatibility and reproducibility
 
-### 10.3 MCP Transport 选择（中优先级）
-- V1 默认 `stdio`：
-  - 客户端兼容性好（Claude Code/Cursor/Cherry Studio）
-  - 无需额外 HTTP 服务，安装与配置最轻
-  - 更适合比赛演示的可复现性
+## 11) Delivery Order
+1. Validate EverMemOS API behavior
+2. Implement `evermemos_client` + catalog/router
+3. Implement `remember` + `recall`
+4. Implement `briefing` + `forget`
+5. Add citation fields and complete test matrix
 
-## 11) 实施顺序（已调整）
-1. 验证 EverMemOS API 行为（边界检测、写入后可检索时机）
-2. 实现 `evermemos_client` + `space_catalog_service` + `space_router`
-3. 实现 `remember` + `recall`（核心闭环）
-4. 实现 `briefing` + `forget`
-5. 补来源引用字段与测试矩阵
-
-## 12) V1 非目标
-- 自动摘要写回（V1.1）
-- 团队协作 group scope（V1.1）
-- 高级脱敏与权限策略（后续）
+## 12) Non-goals for V1
+- Auto summary write-back (V1.1)
+- Team collaboration scope (V1.1)
+- Advanced redaction/policy engine (later)

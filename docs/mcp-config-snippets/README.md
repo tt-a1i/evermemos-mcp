@@ -1,15 +1,15 @@
 # MCP Config Snippets
 
-这些片段用于快速接入 `evermemos-mcp`。
+[English](README.md) | [Chinese](README.zh-CN.md)
 
-## 使用说明
+These snippets are provided for quick `evermemos-mcp` integration.
 
-1. 按你的客户端复制对应 JSON
-2. 把 `YOUR_KEY` 替换为真实 `EVERMEMOS_API_KEY`
-3. 若未安装全局命令，使用 `from-source.json` 并替换绝对路径
+## Usage
+1. Copy the JSON snippet for your MCP client
+2. Replace `YOUR_KEY` with your real `EVERMEMOS_API_KEY`
+3. If the global command is not installed, use `from-source.json` and update the absolute path
 
-## 文件列表
-
+## Files
 - `claude-code.json`
 - `cursor.json`
 - `cline.json`

@@ -1,21 +1,22 @@
-# MCP 客户端接入指南（Claude Code / Cursor / Cline）
+# MCP Client Integration Guide (Claude Code / Cursor / Cline / Cherry)
 
-本文给出 `evermemos-mcp` 的可复制接入配置。
+[English](05-client-integrations.md) | [Chinese](05-client-integrations.zh-CN.md)
 
-现成配置片段目录：`docs/mcp-config-snippets/`
+This document provides copy-paste MCP server configuration for `evermemos-mcp`.
 
-## 1) 前置条件
+Config snippet directory: `docs/mcp-config-snippets/`
 
-1. 已安装本项目（或可以从源码运行）
-2. 可执行命令可用：`evermemos-mcp`
-3. Cloud 模式已设置：`EVERMEMOS_API_KEY`
-4. （可选）需要自定义提取模型时，设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
+## 1) Prerequisites
+1. Project installed or runnable from source
+2. Executable command available (`evermemos-mcp` or `uv`)
+3. Cloud key configured: `EVERMEMOS_API_KEY`
+4. Optional custom extraction config: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 
-> 说明：`EVERMEMOS_BASE_URL` 和 `EVERMEMOS_API_VERSION` 默认已内置为 Cloud（`https://api.evermind.ai` + `v0`），通常不需要再配。
+> `EVERMEMOS_BASE_URL` and `EVERMEMOS_API_VERSION` already default to Cloud (`https://api.evermind.ai` + `v0`) in this project.
 
-## 2) 推荐启动方式
+## 2) Recommended Startup
 
-### 方式 A：已安装命令（推荐）
+### Option A: Installed command (recommended)
 
 ```json
 {
@@ -27,7 +28,7 @@
 }
 ```
 
-### 方式 B：从源码启动（未安装全局命令时）
+### Option B: Run from source
 
 ```json
 {
@@ -39,9 +40,7 @@
 }
 ```
 
-## 3) Cursor 配置示例
-
-在 Cursor 的 MCP 配置里添加：
+## 3) Cursor Example
 
 ```json
 {
@@ -57,11 +56,9 @@
 }
 ```
 
-对应片段文件：`docs/mcp-config-snippets/cursor.json`
+Reference snippet: `docs/mcp-config-snippets/cursor.json`
 
-## 4) Cline 配置示例
-
-在 Cline 的 MCP Servers 配置里添加：
+## 4) Cline Example
 
 ```json
 {
@@ -77,11 +74,9 @@
 }
 ```
 
-对应片段文件：`docs/mcp-config-snippets/cline.json`
+Reference snippet: `docs/mcp-config-snippets/cline.json`
 
-## 5) Claude Code 配置示例
-
-Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command + args + env`。
+## 5) Claude Code Example
 
 ```json
 {
@@ -97,53 +92,53 @@ Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command 
 }
 ```
 
-如果你是源码方式运行，把 `command/args` 替换成第 2 节的方式 B。
+If running from source, replace with Option B.
 
-对应片段文件：`docs/mcp-config-snippets/claude-code.json`
+Reference snippet: `docs/mcp-config-snippets/claude-code.json`
 
-## 5.1) 源码启动片段
-
-如果你还没安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`
+## 6) Cherry Studio Example
 
 ```json
 {
   "mcpServers": {
-    "evermemos": {
+    "evermemos-mcp": {
+      "type": "stdio",
       "command": "uv",
-      "args": ["run", "--directory", "/ABS/PATH/evermemos-mcp", "evermemos-mcp"],
+      "args": [
+        "run",
+        "--directory",
+        "/ABS/PATH/evermemos-mcp",
+        "evermemos-mcp"
+      ],
       "env": {
-        "EVERMEMOS_API_KEY": "YOUR_KEY"
-      }
+        "EVERMEMOS_API_KEY": "YOUR_KEY",
+        "EVERMEMOS_USER_ID": "mcp-user"
+      },
+      "isActive": true
     }
   }
 }
 ```
 
-## 6) 接入后自检（30 秒）
+## 7) Source Snippet Reference
+Use `docs/mcp-config-snippets/from-source.json` when global command install is not available.
 
-在客户端里调用：
+## 8) 30-Second Smoke Check
+In your MCP client:
+1. `list_spaces` (expect `ok=true`)
+2. `remember` with `include_status=true`
+   - expect `message_id/request_id/processing_hint`
+   - expect `request_status` when status check succeeds
+3. `recall` in the same space
+   - immediate recall can be empty due to async extraction
+   - look for `pending_count` and `pending_hint`
 
-1. `list_spaces`（应返回 `ok=true`）
-2. `remember` 写一条测试内容（建议 `include_status=true`）
-   - 应返回 `message_id/request_id/processing_hint`
-   - 若开启 `include_status`，应有 `request_status`
-3. `recall` 查询同空间（短时间可能空，但可看到 `pending_count`）
-   - `retrieve_method` 可选：`keyword|hybrid|vector|rrf|agentic`
-
-## 7) 常见问题
-
+## 9) Common Issues
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
-  - 原因：Cloud 模式没配 key
-  - 处理：在 MCP server 的 `env` 增加 `EVERMEMOS_API_KEY`
-
+  - add `EVERMEMOS_API_KEY` in MCP server `env`
 - `UNKNOWN_TOOL`
-  - 原因：客户端缓存了旧配置或连接到错误 server
-  - 处理：重启客户端并确认 server 名称是 `evermemos`
-
-- 记忆写入后立刻检索不到
-  - 原因：Cloud 异步提取（正常）
-  - 处理：等待 2-5 分钟，或看 `pending_count` 提示
-
-- `remember` 没有返回 `request_status`
-  - 原因：未传 `include_status=true`，或本次状态查询失败
-  - 处理：开启 `include_status`，或用 `request_id` 做后续状态追踪
+  - restart client and verify the active server is `evermemos`
+- Remember succeeds but recall is empty
+  - Cloud extraction is async (wait 2-5 minutes)
+- Missing required field errors behind proxy/WAF
+  - your network may strip GET request bodies used by upstream `fetch/search`
