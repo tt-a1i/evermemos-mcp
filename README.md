@@ -29,6 +29,39 @@ Universal MCP memory layer powered by EverMemOS.
 - Optional: `EVERMEMOS_ENABLE_CONVERSATION_META=true` (enabled by default)
 - Optional: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` to pass `llm_custom_setting`
 
+## Installation
+- Clone repo: `git clone https://github.com/tt-a1i/evermemos-mcp.git`
+- Enter project: `cd evermemos-mcp`
+- Create env file: `cp .env.example .env` and set `EVERMEMOS_API_KEY`
+- Run from source (recommended): `uv run --directory . evermemos-mcp`
+- Optional global install: `uv tool install --from . evermemos-mcp`
+
+## Generic MCP Configuration (stdio)
+Use this generic config in any MCP client that supports `command + args + env`:
+
+```json
+{
+  "mcpServers": {
+    "evermemos-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/ABS/PATH/evermemos-mcp",
+        "evermemos-mcp"
+      ],
+      "env": {
+        "EVERMEMOS_API_KEY": "YOUR_KEY",
+        "EVERMEMOS_USER_ID": "mcp-user"
+      }
+    }
+  }
+}
+```
+
+If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
+
 ## Tool Contract Notes
 - `remember`: optional `include_status`; returns `message_id`, `request_id`, `created_at`, `processing_hint`
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic`

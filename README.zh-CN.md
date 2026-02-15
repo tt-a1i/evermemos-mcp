@@ -29,6 +29,39 @@
 - 可选：`EVERMEMOS_ENABLE_CONVERSATION_META=true`（默认开启）
 - 可选：`EVERMEMOS_LLM_CUSTOM_SETTING_JSON` 用于透传 `llm_custom_setting`
 
+## 安装方式
+- 克隆仓库：`git clone https://github.com/tt-a1i/evermemos-mcp.git`
+- 进入目录：`cd evermemos-mcp`
+- 创建环境变量文件：`cp .env.example .env`，并配置 `EVERMEMOS_API_KEY`
+- 推荐源码运行：`uv run --directory . evermemos-mcp`
+- 可选全局安装：`uv tool install --from . evermemos-mcp`
+
+## 通用 MCP 配置（stdio）
+支持 `command + args + env` 的 MCP 客户端都可以直接使用下面模板：
+
+```json
+{
+  "mcpServers": {
+    "evermemos-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/你的绝对路径/evermemos-mcp",
+        "evermemos-mcp"
+      ],
+      "env": {
+        "EVERMEMOS_API_KEY": "你的KEY",
+        "EVERMEMOS_USER_ID": "mcp-user"
+      }
+    }
+  }
+}
+```
+
+若已全局安装，可改为：`"command": "evermemos-mcp", "args": []`。
+
 ## Tool 契约说明
 - `remember`: 支持 `include_status`（可选），开启后会附带一次 `request_status`
 - `remember` 输出包含：`message_id`、`request_id`、`created_at`、`processing_hint`
