@@ -1,4 +1,4 @@
-# MCP Config Snippets
+# MCP 配置片段
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 

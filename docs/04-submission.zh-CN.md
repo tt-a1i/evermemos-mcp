@@ -22,14 +22,14 @@
 
 ## 3. 提交描述建议结构
 
-1. Problem
-2. Solution
-3. Why MCP + EverMemOS
-4. Live capabilities (5 tools)
-5. Demo highlights
-6. Future roadmap
+1. 问题定义
+2. 方案说明
+3. 为什么选择 MCP + EverMemOS
+4. 线上能力展示（5 个 tools）
+5. 演示亮点（Demo highlights）
+6. 后续路线图
 
-## 4. Demo 讲解要点（可直接复用）
+## 4. 演示讲解要点（可直接复用）
 
 - "We use `space_id` as the primary isolation key to prevent context leakage across tasks."
 - "Writes are queued on Cloud, so we preload memories before live retrieval demos."

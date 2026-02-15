@@ -1,19 +1,18 @@
-# MCP 客户端接入指南（Claude Code / Cursor / Cline）
+# MCP 客户端接入指南（Claude Code / Cursor / Cline / Cherry）
 
 [English](05-client-integrations.md) | [简体中文](05-client-integrations.zh-CN.md)
 
-本文给出 `evermemos-mcp` 的可复制接入配置。
+本文提供 `evermemos-mcp` 的可复制接入配置。
 
-现成配置片段目录：`docs/mcp-config-snippets/`
+配置片段目录：`docs/mcp-config-snippets/`
 
 ## 1) 前置条件
+1. 已安装本项目，或可从源码运行
+2. 可执行命令可用（`evermemos-mcp` 或 `uv`）
+3. 已配置 Cloud API Key：`EVERMEMOS_API_KEY`
+4. （可选）若需要自定义提取模型，可设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 
-1. 已安装本项目（或可以从源码运行）
-2. 可执行命令可用：`evermemos-mcp`
-3. Cloud 模式已设置：`EVERMEMOS_API_KEY`
-4. （可选）需要自定义提取模型时，设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
-
-> 说明：`EVERMEMOS_BASE_URL` 和 `EVERMEMOS_API_VERSION` 默认已内置为 Cloud（`https://api.evermind.ai` + `v0`），通常不需要再配。
+> 本项目默认内置 Cloud 地址和版本：`EVERMEMOS_BASE_URL=https://api.evermind.ai`、`EVERMEMOS_API_VERSION=v0`。
 
 ## 2) 推荐启动方式
 
@@ -29,7 +28,7 @@
 }
 ```
 
-### 方式 B：从源码启动（未安装全局命令时）
+### 方式 B：从源码启动
 
 ```json
 {
@@ -43,8 +42,6 @@
 
 ## 3) Cursor 配置示例
 
-在 Cursor 的 MCP 配置里添加：
-
 ```json
 {
   "mcpServers": {
@@ -59,12 +56,10 @@
 }
 ```
 
-对应片段文件：`docs/mcp-config-snippets/cursor.json`
+对应片段：`docs/mcp-config-snippets/cursor.json`
 
 ## 4) Cline 配置示例
 
-在 Cline 的 MCP Servers 配置里添加：
-
 ```json
 {
   "mcpServers": {
@@ -79,12 +74,10 @@
 }
 ```
 
-对应片段文件：`docs/mcp-config-snippets/cline.json`
+对应片段：`docs/mcp-config-snippets/cline.json`
 
 ## 5) Claude Code 配置示例
 
-Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command + args + env`。
-
 ```json
 {
   "mcpServers": {
@@ -99,53 +92,61 @@ Claude Code 支持添加 stdio MCP server。配置字段同样使用：`command 
 }
 ```
 
-如果你是源码方式运行，把 `command/args` 替换成第 2 节的方式 B。
+若你使用源码启动，请改为“方式 B”。
 
-对应片段文件：`docs/mcp-config-snippets/claude-code.json`
+对应片段：`docs/mcp-config-snippets/claude-code.json`
 
-## 5.1) 源码启动片段
-
-如果你还没安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`
+## 6) Cherry Studio 配置示例
 
 ```json
 {
   "mcpServers": {
-    "evermemos": {
+    "evermemos-mcp": {
+      "type": "stdio",
       "command": "uv",
-      "args": ["run", "--directory", "/ABS/PATH/evermemos-mcp", "evermemos-mcp"],
+      "args": [
+        "run",
+        "--directory",
+        "/ABS/PATH/evermemos-mcp",
+        "evermemos-mcp"
+      ],
       "env": {
-        "EVERMEMOS_API_KEY": "YOUR_KEY"
-      }
+        "EVERMEMOS_API_KEY": "YOUR_KEY",
+        "EVERMEMOS_USER_ID": "mcp-user"
+      },
+      "isActive": true
     }
   }
 }
 ```
 
-## 6) 接入后自检（30 秒）
+## 7) 源码片段
+如果未安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`。
 
-在客户端里调用：
+## 8) 接入后 30 秒自检
+在客户端里依次调用：
 
 1. `list_spaces`（应返回 `ok=true`）
-2. `remember` 写一条测试内容（建议 `include_status=true`）
+2. `remember`（建议 `include_status=true`）
    - 应返回 `message_id/request_id/processing_hint`
-   - 若开启 `include_status`，应有 `request_status`
-3. `recall` 查询同空间（短时间可能空，但可看到 `pending_count`）
-   - `retrieve_method` 可选：`keyword|hybrid|vector|rrf|agentic`
+   - 若状态查询成功，应返回 `request_status`
+3. `recall`（同一个 `space_id`）
+   - 刚写完可能为空（Cloud 异步提取）
+   - 可观察 `pending_count/pending_hint`
 
-## 7) 常见问题
-
+## 9) 常见问题
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
-  - 原因：Cloud 模式没配 key
+  - 原因：未配置 API Key
   - 处理：在 MCP server 的 `env` 增加 `EVERMEMOS_API_KEY`
 
 - `UNKNOWN_TOOL`
-  - 原因：客户端缓存了旧配置或连接到错误 server
-  - 处理：重启客户端并确认 server 名称是 `evermemos`
+  - 原因：客户端连接了旧 server 或缓存未刷新
+  - 处理：重启客户端并确认启用的是 `evermemos`
 
-- 记忆写入后立刻检索不到
-  - 原因：Cloud 异步提取（正常）
-  - 处理：等待 2-5 分钟，或看 `pending_count` 提示
+- `remember` 成功但 `recall` 为空
+  - 原因：Cloud 提取是异步
+  - 处理：等待 2-5 分钟后重试
 
-- `remember` 没有返回 `request_status`
-  - 原因：未传 `include_status=true`，或本次状态查询失败
-  - 处理：开启 `include_status`，或用 `request_id` 做后续状态追踪
+- 在代理/WAF 环境出现缺字段错误
+  - 原因：中间件可能剥离了 GET 请求体（上游 fetch/search 使用 `GET + JSON body`）
+  - 处理：更换网络、配置白名单或绕过相关代理策略

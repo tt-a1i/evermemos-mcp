@@ -1,8 +1,8 @@
-# evermemos-mcp Demo Playbook (Phase 4)
+# evermemos-mcp 演示手册（Phase 4）
 
 [English](03-demo-playbook.md) | [简体中文](03-demo-playbook.zh-CN.md)
 
-本手册用于 Memory Genesis 2026 提交视频（3-5 分钟）演示。
+本手册用于 Memory Genesis 2026 的 3-5 分钟提交视频演示。
 
 ## 1. 演示目标
 
@@ -29,30 +29,30 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 
 ## 4. 3-5 分钟脚本建议
 
-### Part A (30-45s): 问题与定位
+### Part A（30-45 秒）：问题与定位
 
 - AI 客户端每次新会话会失忆
 - 我们提供 MCP 记忆层，不改客户端也能获得长期记忆
 
-### Part B (45-60s): 空间发现与路由
+### Part B（45-60 秒）：空间发现与路由
 
 1. 调用 `list_spaces`
 2. 看到 `coding:*`, `chat:*`, `study:*` 三类空间
 3. 说明 `space_id` 是唯一隔离键
 
-### Part C (60-90s): recall 实时演示
+### Part C（60-90 秒）：`recall` 实时演示
 
 1. `recall(query="FastAPI PostgreSQL", space_id="coding:demo-app")`
 2. 展示结果中的 `memory_type/snippet/timestamp/score`
 3. 切换到 `chat:daily` 再 `recall`，证明不会串味
 
-### Part D (45-60s): briefing 实时演示
+### Part D（45-60 秒）：`briefing` 实时演示
 
 1. `briefing(space_id="coding:demo-app")`
 2. 展示 `summary + highlights[]`
 3. 强调 profile/episodic/event_log 分层来源
 
-### Part E (30-45s): forget 可控删除
+### Part E（30-45 秒）：`forget` 可控删除
 
 1. 从 recall 中拿到某个 `memory_id`
 2. 调用 `forget(memory_ids=[...])`
@@ -77,6 +77,6 @@ uv run python scripts/demo_live_walkthrough.py
 
 ## 7. 评分点映射
 
-- Innovation：MCP 通用记忆层 + `space_id` 路由
-- Technical Depth：5 tools 闭环 + 错误语义 + 引用字段
-- Consumer Value：跨会话连续性、可查可删、可验证
+- 创新性：MCP 通用记忆层 + `space_id` 路由
+- 技术深度：5 个 tools 闭环 + 错误语义 + 引用字段
+- 用户价值：跨会话连续性、可查可删、可验证

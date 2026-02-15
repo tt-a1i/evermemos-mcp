@@ -81,7 +81,7 @@ EverMemOS API
 - `chat:daily` -> `group_id=space::chat:daily`
 - `study:ml` -> `group_id=space::study:ml`
 
-## 5) Tool Contract（V1）
+## 5) Tool 契约（V1）
 
 ### 5.1 `list_spaces`
 - 输入：
@@ -178,7 +178,7 @@ EverMemOS API
 - 路由测试：`list_spaces` + query 能返回正确候选
 - 失败测试：EverMemOS 断开时返回可理解错误
 
-## 9) Demo 技术脚本（建议）
+## 9) 演示脚本建议
 - 场景 A（coding）：记住架构决策 -> 新会话 recall
 - 场景 B（chat）：记住偏好 -> 问答召回
 - 场景 C（study）：记住学习要点 -> briefing 总结
