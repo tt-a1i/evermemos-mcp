@@ -143,6 +143,28 @@ class SpaceCatalogService:
             )
         return self._cache[space_id]
 
+    async def ensure_conversation_meta(
+        self,
+        space_id: str,
+        description: str | None = None,
+    ) -> None:
+        """Best-effort metadata upsert for a space.
+
+        Useful when remember() writes to a space that has no explicit description.
+        """
+        info = self.ensure_space(space_id)
+        if description is not None and description.strip():
+            info.description = description.strip()
+
+        created_at = info.created_at or datetime.now(timezone.utc).isoformat()
+        if not info.created_at:
+            info.created_at = created_at
+        await self._persist_conversation_meta(
+            space_id,
+            info.description,
+            created_at=created_at,
+        )
+
     async def list_spaces(
         self, query: str | None = None, limit: int = 20
     ) -> list[SpaceInfo]:

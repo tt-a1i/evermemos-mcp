@@ -40,8 +40,10 @@ else:
 _USER_DETAILS_RAW = os.getenv("EVERMEMOS_USER_DETAILS_JSON", "").strip()
 if _USER_DETAILS_RAW:
     try:
-        parsed = json.loads(_USER_DETAILS_RAW)
-        EVERMEMOS_USER_DETAILS = parsed if isinstance(parsed, dict) else None
+        parsed_user_details = json.loads(_USER_DETAILS_RAW)
+        EVERMEMOS_USER_DETAILS = (
+            parsed_user_details if isinstance(parsed_user_details, dict) else None
+        )
     except json.JSONDecodeError:
         EVERMEMOS_USER_DETAILS = None
 else:

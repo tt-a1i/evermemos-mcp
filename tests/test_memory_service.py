@@ -99,7 +99,7 @@ async def test_remember_returns_queued():
     # Verify Cloud call
     client.add_message.assert_called_once()
     call_kwargs = client.add_message.call_args
-    assert call_kwargs.kwargs.get("flush") or call_kwargs[1].get("flush", True)
+    assert call_kwargs.kwargs.get("flush") is False
 
 
 @pytest.mark.asyncio
@@ -133,8 +133,15 @@ async def test_remember_without_description_ensures_space():
 @pytest.mark.asyncio
 async def test_remember_invalid_sender_raises():
     svc, _ = _make_svc()
+    result = await svc.remember("coding:app", "x", sender="system")
+    assert result["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_remember_role_validation_raises_on_invalid_role():
+    svc, _ = _make_svc()
     with pytest.raises(EverMemosError) as exc_info:
-        await svc.remember("coding:app", "x", sender="system")
+        await svc.remember("coding:app", "x", role="system")
     assert exc_info.value.code == "INVALID_INPUT"
 
 
@@ -556,6 +563,7 @@ async def test_recall_agentic_rejects_non_profile_or_episodic_memory_types():
 @pytest.mark.asyncio
 async def test_briefing_assembles_four_types():
     call_count = 0
+    search_count = 0
 
     async def mock_fetch(group_id, *, memory_type="episodic_memory", limit=40, **kw):
         nonlocal call_count
@@ -595,26 +603,35 @@ async def test_briefing_assembles_four_types():
                     ]
                 }
             }
-        if memory_type == "foresight":
-            return {
-                "result": {
-                    "memories": [
-                        {
-                            "summary": "Need to prepare migration plan next sprint",
-                            "target_time": "2026-03-01T09:00:00Z",
-                        }
-                    ]
-                }
-            }
         return {"result": {"memories": []}}
+
+    async def mock_search(query, group_ids=None, **kw):
+        nonlocal search_count
+        search_count += 1
+        assert kw.get("memory_types") == ["foresight"]
+        assert kw.get("current_time")
+        return {
+            "result": {
+                "memories": [
+                    {
+                        "id": "fo-1",
+                        "memory_type": "foresight",
+                        "summary": "Need to prepare migration plan next sprint",
+                        "target_time": "2026-03-01T09:00:00Z",
+                    }
+                ]
+            }
+        }
 
     svc, client = _make_svc()
     client.fetch_memories = AsyncMock(side_effect=mock_fetch)
+    client.search_memories = AsyncMock(side_effect=mock_search)
     svc._catalog.ensure_space("coding:app")
 
     result = await svc.briefing("coding:app")
     assert result["ok"] is True
-    assert call_count == 4  # profile + episodic + event_log + foresight
+    assert call_count == 3  # profile + episodic + event_log
+    assert search_count == 1  # foresight via search
     assert (
         "profile" in result["summary"].lower() or "episode" in result["summary"].lower()
     )
@@ -639,6 +656,9 @@ async def test_briefing_all_fetches_fail_returns_error():
     """When all 3 parallel fetches fail, briefing must raise (→ ok:false via server)."""
     svc, client = _make_svc()
     client.fetch_memories = AsyncMock(
+        side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
+    )
+    client.search_memories = AsyncMock(
         side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
     )
     svc._catalog.ensure_space("coding:app")
@@ -798,16 +818,21 @@ async def test_briefing_with_time_range_passes_to_client():
         end_time="2024-12-31T23:59:59+00:00",
     )
 
-    # briefing calls fetch_memories 4 times.
+    # briefing calls fetch_memories 3 times.
     for call in client.fetch_memories.call_args_list:
         _, kwargs = call
         mtype = kwargs.get("memory_type")
         if mtype in ["episodic_memory", "event_log"]:
             assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
             assert kwargs["end_time"] == "2024-12-31T23:59:59+00:00"
-        elif mtype in ["profile", "foresight"]:
+        elif mtype == "profile":
             assert kwargs.get("start_time") is None
             assert kwargs.get("end_time") is None
+
+    client.search_memories.assert_called_once()
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["memory_types"] == ["foresight"]
+    assert kwargs["current_time"]
 
 
 @pytest.mark.asyncio
@@ -841,8 +866,19 @@ async def test_recall_rejects_top_k_above_limit():
     svc._catalog.ensure_space("coding:app")
 
     with pytest.raises(EverMemosError) as exc_info:
-        await svc.recall("query", "coding:app", top_k=51)
+        await svc.recall("query", "coding:app", top_k=101)
     assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_accepts_top_k_minus_one_for_all_results():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("query", "coding:app", top_k=-1)
+
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["top_k"] == -1
 
 
 @pytest.mark.asyncio
@@ -888,8 +924,10 @@ async def test_briefing_accepts_naive_time_and_normalizes_to_utc():
         _, kwargs = call
         if kwargs.get("memory_type") in {"episodic_memory", "event_log"}:
             assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
-        if kwargs.get("memory_type") == "foresight":
-            assert kwargs.get("end_time") is None
+
+    client.search_memories.assert_called_once()
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["current_time"]
 
 
 @pytest.mark.asyncio

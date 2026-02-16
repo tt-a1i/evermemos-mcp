@@ -276,6 +276,32 @@ async def test_add_message_sends_flush_false_explicitly():
 
 
 @pytest.mark.asyncio
+async def test_add_message_defaults_flush_to_false():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "queued", "request_id": "req-1"})
+
+    await c.add_message("space::coding:app", "hello")
+
+    _, kwargs = c._request.call_args
+    assert kwargs["json"]["flush"] is False
+
+
+@pytest.mark.asyncio
+async def test_add_message_rejects_create_time_without_timezone():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "queued", "request_id": "req-1"})
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.add_message(
+            "space::coding:app",
+            "hello",
+            create_time="2024-01-01T00:00:00",
+        )
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_search_memories_uses_group_ids_in_json_body():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
@@ -286,6 +312,31 @@ async def test_search_memories_uses_group_ids_in_json_body():
     _, kwargs = c._request.call_args
     assert kwargs["json"]["group_ids"] == ["space::coding:app"]
     assert kwargs["json"]["retrieve_method"] == "agentic"
+
+
+@pytest.mark.asyncio
+async def test_search_memories_supports_multiple_group_ids():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
+
+    await c.search_memories(
+        "fastapi",
+        ["space::coding:app", "space::coding:infra", "space::coding:app"],
+    )
+
+    _, kwargs = c._request.call_args
+    assert kwargs["json"]["group_ids"] == ["space::coding:app", "space::coding:infra"]
+
+
+@pytest.mark.asyncio
+async def test_search_memories_allows_none_group_ids_for_global_search():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
+
+    await c.search_memories("fastapi", None)
+
+    _, kwargs = c._request.call_args
+    assert "group_ids" not in kwargs["json"]
 
 
 @pytest.mark.asyncio

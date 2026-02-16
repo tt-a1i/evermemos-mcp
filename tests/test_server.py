@@ -188,9 +188,14 @@ async def test_dispatch_briefing_with_time_filters(svc):
         if memory_type in {"episodic_memory", "event_log"}:
             assert kwargs.get("start_time") == "2024-01-01T00:00:00+00:00"
             assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
-        if memory_type in {"profile", "foresight"}:
+        if memory_type == "profile":
             assert kwargs.get("start_time") is None
             assert kwargs.get("end_time") is None
+
+    svc._client.search_memories.assert_called_once()
+    _, kwargs = svc._client.search_memories.call_args
+    assert kwargs.get("memory_types") == ["foresight"]
+    assert kwargs.get("current_time")
 
 
 @pytest.mark.asyncio
@@ -243,13 +248,13 @@ async def test_missing_required_field(svc):
 
 
 @pytest.mark.asyncio
-async def test_invalid_sender_mapped_to_invalid_input(svc):
+async def test_invalid_role_mapped_to_invalid_input(svc):
     result = await server_mod.handle_call_tool(
         "remember",
         {
             "content": "x",
             "space_id": "coding:app",
-            "sender": "system",
+            "role": "system",
         },
     )
     data = _parse(result)

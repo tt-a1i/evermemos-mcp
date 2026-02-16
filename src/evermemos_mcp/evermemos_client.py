@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Iterable
 from uuid import uuid4
 
 import httpx
@@ -216,6 +217,100 @@ class EverMemosClient:
             f"{msg} ({hint})", code=error.code, status_code=error.status_code
         )
 
+    @staticmethod
+    def _normalize_group_ids(
+        group_ids: str | Iterable[str] | None,
+        *,
+        field_name: str = "group_ids",
+        allow_none: bool = True,
+        max_groups: int = 10,
+    ) -> list[str] | None:
+        if group_ids is None:
+            if allow_none:
+                return None
+            raise EverMemosError(f"{field_name} is required", code="INVALID_INPUT")
+
+        if isinstance(group_ids, str):
+            value = group_ids.strip()
+            if not value:
+                raise EverMemosError(
+                    f"{field_name} must contain non-empty strings",
+                    code="INVALID_INPUT",
+                )
+            return [value]
+
+        if isinstance(group_ids, dict):
+            raise EverMemosError(
+                f"{field_name} must be a string array",
+                code="INVALID_INPUT",
+            )
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in group_ids:
+            if not isinstance(item, str) or not item.strip():
+                raise EverMemosError(
+                    f"{field_name} must contain non-empty strings",
+                    code="INVALID_INPUT",
+                )
+            value = item.strip()
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+
+        if not normalized:
+            raise EverMemosError(
+                f"{field_name} must contain at least one group id",
+                code="INVALID_INPUT",
+            )
+        if len(normalized) > max_groups:
+            raise EverMemosError(
+                f"{field_name} supports at most {max_groups} groups",
+                code="INVALID_INPUT",
+            )
+        return normalized
+
+    @staticmethod
+    def _validate_create_time(create_time: str | None) -> str | None:
+        if create_time is None:
+            return None
+        if not isinstance(create_time, str) or not create_time.strip():
+            raise EverMemosError(
+                "create_time must be an ISO 8601 datetime string",
+                code="INVALID_INPUT",
+            )
+
+        raw = create_time.strip()
+        normalized = raw[:-1] + "+00:00" if raw.endswith(("Z", "z")) else raw
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise EverMemosError(
+                "create_time must be a valid ISO 8601 datetime",
+                code="INVALID_INPUT",
+            ) from exc
+
+        if parsed.tzinfo is None:
+            raise EverMemosError(
+                "create_time must include timezone information",
+                code="INVALID_INPUT",
+            )
+        return parsed.isoformat()
+
+    async def _request_get_with_json_fallback(self, path: str, payload: dict) -> dict:
+        """Prefer GET+JSON body, fallback to POST if intermediaries strip body."""
+        try:
+            return await self._request("GET", path, json=payload)
+        except EverMemosError as exc:
+            hinted = self._maybe_hint_get_body_stripping(exc, payload)
+            if hinted is not exc:
+                try:
+                    return await self._request("POST", path, json=payload)
+                except EverMemosError:
+                    raise hinted from exc
+            raise
+
     # -- public API --
 
     async def add_message(
@@ -226,10 +321,11 @@ class EverMemosClient:
         sender: str | None = None,
         sender_name: str | None = None,
         role: str = "user",
-        flush: bool = True,
+        flush: bool = False,
         message_id: str | None = None,
         create_time: str | None = None,
         group_name: str | None = None,
+        refer_list: list[str] | None = None,
     ) -> dict:
         """Write a message to EverMemOS.
 
@@ -238,10 +334,13 @@ class EverMemosClient:
         """
         self._require_key()
 
+        normalized_create_time = self._validate_create_time(create_time)
+
         effective_sender = sender or self._user_id
         payload: dict = {
             "message_id": message_id or f"msg_{uuid4().hex[:12]}",
-            "create_time": create_time or datetime.now(timezone.utc).isoformat(),
+            "create_time": normalized_create_time
+            or datetime.now(timezone.utc).isoformat(),
             "sender": effective_sender,
             "sender_name": sender_name or effective_sender,
             "role": role,
@@ -250,6 +349,15 @@ class EverMemosClient:
         }
         if group_name:
             payload["group_name"] = group_name
+        if refer_list is not None:
+            if not isinstance(refer_list, list) or not all(
+                isinstance(item, str) and item.strip() for item in refer_list
+            ):
+                raise EverMemosError(
+                    "refer_list must be an array of non-empty strings",
+                    code="INVALID_INPUT",
+                )
+            payload["refer_list"] = [item.strip() for item in refer_list]
         # Always send flush explicitly to avoid relying on upstream defaults.
         payload["flush"] = flush
 
@@ -257,8 +365,9 @@ class EverMemosClient:
 
     async def fetch_memories(
         self,
-        group_id: str,
+        group_ids: str | Iterable[str] | None = None,
         *,
+        group_id: str | None = None,
         memory_type: str = "episodic_memory",
         user_id: str | None = None,
         limit: int = 40,
@@ -276,28 +385,30 @@ class EverMemosClient:
         safe_offset = max(0, offset)
         page = (safe_offset // page_size) + 1
 
+        effective_group_ids = group_ids if group_ids is not None else group_id
+        normalized_group_ids = self._normalize_group_ids(effective_group_ids)
+
         payload: dict = {
-            "group_ids": [group_id],
             "user_id": user_id or self._user_id,
             "memory_type": memory_type,
             "page": page,
             "page_size": page_size,
         }
+        if normalized_group_ids is not None:
+            payload["group_ids"] = normalized_group_ids
         if start_time:
             payload["start_time"] = start_time
         if end_time:
             payload["end_time"] = end_time
 
-        try:
-            return await self._request("GET", "/memories", json=payload)
-        except EverMemosError as exc:
-            raise self._maybe_hint_get_body_stripping(exc, payload) from exc
+        return await self._request_get_with_json_fallback("/memories", payload)
 
     async def search_memories(
         self,
         query: str,
-        group_id: str,
+        group_ids: str | Iterable[str] | None = None,
         *,
+        group_id: str | None = None,
         retrieve_method: str = "hybrid",
         memory_types: list[str] | None = None,
         top_k: int = 10,
@@ -314,13 +425,17 @@ class EverMemosClient:
         """
         self._require_key()
 
+        effective_group_ids = group_ids if group_ids is not None else group_id
+        normalized_group_ids = self._normalize_group_ids(effective_group_ids)
+
         payload: dict = {
             "query": query,
-            "group_ids": [group_id],
             "user_id": user_id or self._user_id,
             "retrieve_method": retrieve_method,
             "top_k": top_k,
         }
+        if normalized_group_ids is not None:
+            payload["group_ids"] = normalized_group_ids
         if memory_types:
             payload["memory_types"] = memory_types
         if start_time:
@@ -334,10 +449,7 @@ class EverMemosClient:
         if include_metadata is not None:
             payload["include_metadata"] = include_metadata
 
-        try:
-            return await self._request("GET", "/memories/search", json=payload)
-        except EverMemosError as exc:
-            raise self._maybe_hint_get_body_stripping(exc, payload) from exc
+        return await self._request_get_with_json_fallback("/memories/search", payload)
 
     async def get_request_status(self, request_id: str) -> dict:
         """Get async processing status for a queued add-memory request.

@@ -95,13 +95,33 @@ TOOLS: list[types.Tool] = [
                 },
                 "sender": {
                     "type": "string",
-                    "description": "Who is speaking: 'user' or 'assistant'",
+                    "description": (
+                        "Backward-compatible alias."
+                        "Use 'user'/'assistant' as role alias, or pass explicit sender user_id"
+                    ),
                     "default": "user",
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "Optional sender user_id override (API sender field)",
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Message role: 'user' or 'assistant'",
+                    "enum": ["user", "assistant"],
                 },
                 "flush": {
                     "type": "boolean",
-                    "description": "Signal end of a conversation segment",
-                    "default": True,
+                    "description": (
+                        "Whether to force immediate boundary detection/extraction."
+                        "Default false allows natural boundary detection"
+                    ),
+                    "default": False,
+                },
+                "refer_list": {
+                    "type": "array",
+                    "description": "Optional referenced message ID list",
+                    "items": {"type": "string"},
                 },
                 "include_status": {
                     "type": "boolean",
@@ -136,17 +156,14 @@ TOOLS: list[types.Tool] = [
                 },
                 "top_k": {
                     "type": "integer",
-                    "description": "Max number of results (1-50)",
-                    "minimum": 1,
-                    "maximum": 50,
+                    "description": "Max number of results (-1 means all, capped by upstream at 100)",
+                    "minimum": -1,
+                    "maximum": 100,
                     "default": 10,
                 },
                 "retrieve_method": {
                     "type": "string",
-                    "description": (
-                        "Search strategy. "
-                        "auto runs hybrid+keyword in parallel and merges results"
-                    ),
+                    "description": "Search strategy",
                     "enum": ["keyword", "hybrid", "vector", "rrf", "agentic", "auto"],
                     "default": "hybrid",
                 },
@@ -189,9 +206,7 @@ TOOLS: list[types.Tool] = [
                         "Optional memory type filter override. "
                         "Allowed: profile, episodic_memory, foresight, event_log. "
                         "For hybrid/rrf/agentic retrieval, only profile and "
-                        "episodic_memory are supported. "
-                        "For auto retrieval, this filter applies to keyword "
-                        "and hybrid uses the profile/episodic subset."
+                        "episodic_memory are supported."
                     ),
                     "items": {
                         "type": "string",
@@ -311,7 +326,10 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             content=args["content"],
             description=args.get("description"),
             sender=args.get("sender", "user"),
-            flush=args.get("flush", True),
+            user_id=args.get("user_id"),
+            role=args.get("role"),
+            flush=args.get("flush", False),
+            refer_list=args.get("refer_list"),
             include_status=args.get("include_status", False),
         )
 
