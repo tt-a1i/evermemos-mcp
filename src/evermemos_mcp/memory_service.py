@@ -210,6 +210,24 @@ class MemoryService:
         return start_time, end_time
 
     @staticmethod
+    def _is_profile_unsupported_search_error(error: EverMemosError) -> bool:
+        if error.status_code not in {400, 422}:
+            return False
+        message = str(error).lower()
+        if "profile" not in message:
+            return False
+
+        unsupported_markers = (
+            "not supported",
+            "unsupported",
+            "does not support",
+            "doesn't support",
+            "only supports",
+            "only support",
+        )
+        return any(marker in message for marker in unsupported_markers)
+
+    @staticmethod
     def _normalize_search_memory_items(
         raw_memories: object,
     ) -> list[tuple[int, dict, float | None]]:
@@ -562,18 +580,68 @@ class MemoryService:
         async def _run_single(
             method: str, method_memory_types: list[str] | None
         ) -> dict:
-            return await self._client.search_memories(
-                query,
-                group_id,
-                retrieve_method=method,
-                top_k=top_k,
-                memory_types=method_memory_types,
-                start_time=start_time,
-                end_time=end_time,
-                current_time=current_time,
-                radius=radius,
-                include_metadata=include_metadata,
-            )
+            try:
+                return await self._client.search_memories(
+                    query,
+                    group_id,
+                    retrieve_method=method,
+                    top_k=top_k,
+                    memory_types=method_memory_types,
+                    start_time=start_time,
+                    end_time=end_time,
+                    current_time=current_time,
+                    radius=radius,
+                    include_metadata=include_metadata,
+                )
+            except EverMemosError as exc:
+                has_profile = (
+                    bool(method_memory_types) and "profile" in method_memory_types
+                )
+                has_episodic = bool(method_memory_types) and (
+                    "episodic_memory" in method_memory_types
+                )
+                if (
+                    method not in _HYBRID_RESTRICTED_METHODS
+                    or not has_profile
+                    or not has_episodic
+                    or not self._is_profile_unsupported_search_error(exc)
+                ):
+                    raise
+
+                assert method_memory_types is not None
+                fallback_memory_types = [
+                    value for value in method_memory_types if value != "profile"
+                ]
+                fallback = await self._client.search_memories(
+                    query,
+                    group_id,
+                    retrieve_method=method,
+                    top_k=top_k,
+                    memory_types=fallback_memory_types,
+                    start_time=start_time,
+                    end_time=end_time,
+                    current_time=current_time,
+                    radius=radius,
+                    include_metadata=include_metadata,
+                )
+
+                if isinstance(fallback, dict):
+                    result_payload = fallback.get("result")
+                    if isinstance(result_payload, dict):
+                        warning = {
+                            "code": "PROFILE_UNSUPPORTED_FALLBACK",
+                            "message": (
+                                "Upstream search rejected profile memory type for "
+                                f"{method}; retried with episodic_memory only."
+                            ),
+                        }
+                        warnings = result_payload.get("warnings")
+                        if not isinstance(warnings, list):
+                            result_payload["warnings"] = [warning]
+                        else:
+                            warnings.append(warning)
+
+                return fallback
 
         if retrieve_method != "auto":
             normalized_types = _normalize_types_for_method(

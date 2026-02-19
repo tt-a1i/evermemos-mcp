@@ -163,7 +163,11 @@ TOOLS: list[types.Tool] = [
                 },
                 "retrieve_method": {
                     "type": "string",
-                    "description": "Search strategy",
+                    "description": (
+                        "Search strategy. "
+                        "auto is an MCP-layer strategy that runs hybrid+keyword "
+                        "in parallel and merges results"
+                    ),
                     "enum": ["keyword", "hybrid", "vector", "rrf", "agentic", "auto"],
                     "default": "hybrid",
                 },

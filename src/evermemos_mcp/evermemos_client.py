@@ -218,6 +218,17 @@ class EverMemosClient:
         )
 
     @staticmethod
+    def _should_retry_delete_with_event_id(error: EverMemosError) -> bool:
+        """Whether delete should fallback from memory_id to event_id."""
+        if error.status_code not in {400, 422}:
+            return False
+
+        msg = str(error).lower()
+        if "event_id" in msg:
+            return True
+        return "memory_id" in msg and "unknown" in msg
+
+    @staticmethod
     def _normalize_group_ids(
         group_ids: str | Iterable[str] | None,
         *,
@@ -611,4 +622,16 @@ class EverMemosClient:
                 code="INVALID_INPUT",
             )
 
-        return await self._request("DELETE", "/memories", json=payload)
+        try:
+            return await self._request("DELETE", "/memories", json=payload)
+        except EverMemosError as exc:
+            if (
+                memory_id is None
+                or not self._should_retry_delete_with_event_id(exc)
+                or "memory_id" not in payload
+            ):
+                raise
+
+            fallback_payload = dict(payload)
+            fallback_payload["event_id"] = fallback_payload.pop("memory_id")
+            return await self._request("DELETE", "/memories", json=fallback_payload)

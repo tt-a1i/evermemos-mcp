@@ -380,6 +380,50 @@ async def test_delete_memories_uses_memory_id_in_json_body():
 
 
 @pytest.mark.asyncio
+async def test_delete_memories_falls_back_to_event_id_when_memory_id_is_rejected():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(
+        side_effect=[
+            EverMemosError(
+                "Missing required field event_id",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            ),
+            {"status": "ok", "result": {"count": 1}},
+        ]
+    )
+
+    result = await c.delete_memories(memory_id="mem-123")
+
+    assert result["status"] == "ok"
+    assert c._request.call_count == 2
+    first_call = c._request.call_args_list[0]
+    second_call = c._request.call_args_list[1]
+    assert first_call.kwargs["json"]["memory_id"] == "mem-123"
+    assert "event_id" not in first_call.kwargs["json"]
+    assert second_call.kwargs["json"]["event_id"] == "mem-123"
+    assert "memory_id" not in second_call.kwargs["json"]
+
+
+@pytest.mark.asyncio
+async def test_delete_memories_does_not_fallback_for_non_schema_errors():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(
+        side_effect=EverMemosError(
+            "memory not found",
+            code="NOT_FOUND",
+            status_code=404,
+        )
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.delete_memories(memory_id="mem-404")
+
+    assert exc_info.value.code == "NOT_FOUND"
+    assert c._request.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_get_request_status_requires_request_id():
     c = EverMemosClient(api_key="fake", api_version="v0")
     with pytest.raises(EverMemosError) as exc_info:

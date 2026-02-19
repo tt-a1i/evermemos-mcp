@@ -475,6 +475,51 @@ async def test_recall_hybrid_defaults_to_profile_and_episodic_memory_types():
 
 
 @pytest.mark.asyncio
+async def test_recall_hybrid_falls_back_when_profile_search_is_unsupported():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    client.search_memories = AsyncMock(
+        side_effect=[
+            EverMemosError(
+                "profile memory type is not supported in the search interface",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            ),
+            {"result": {"memories": [], "pending_messages": []}},
+        ]
+    )
+
+    result = await svc.recall("x", "coding:app", retrieve_method="hybrid")
+
+    assert result["ok"] is True
+    assert result["warnings"][0]["code"] == "PROFILE_UNSUPPORTED_FALLBACK"
+    assert client.search_memories.call_count == 2
+    first_call = client.search_memories.call_args_list[0]
+    second_call = client.search_memories.call_args_list[1]
+    assert first_call.kwargs["memory_types"] == ["profile", "episodic_memory"]
+    assert second_call.kwargs["memory_types"] == ["episodic_memory"]
+
+
+@pytest.mark.asyncio
+async def test_recall_hybrid_does_not_fallback_on_unrelated_profile_errors():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    client.search_memories = AsyncMock(
+        side_effect=EverMemosError(
+            "invalid profile payload format",
+            code="INVALID_PARAMETER",
+            status_code=400,
+        )
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("x", "coding:app", retrieve_method="hybrid")
+
+    assert exc_info.value.code == "INVALID_PARAMETER"
+    assert client.search_memories.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_recall_explicit_memory_types_override_for_vector_search():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
