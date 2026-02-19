@@ -99,7 +99,7 @@ EverMemOS API
   - `space_id` (required)
   - `description` (optional, 创建新 space 时建议提供)
   - `sender` (optional, default: `user`)
-  - `flush` (optional, default: true)
+  - `flush` (optional, default: false)
   - `include_status` (optional, default: false)
 - 行为：写入一条消息并触发 EverMemOS 记忆提取
 - 输出：
@@ -115,7 +115,7 @@ EverMemOS API
 - 输入：
   - `query` (required)
   - `space_id` (required)
-  - `top_k` (optional, default: 10, 范围 1-50)
+  - `top_k` (optional, default: 10, 范围为 -1 或 1-100；`-1` 表示返回全部，仍受上游上限约束)
   - `retrieve_method` (optional, default: `hybrid`)
     - 可选值：`keyword|hybrid|vector|rrf|agentic|auto`
   - `memory_types` (optional)
@@ -196,7 +196,7 @@ EverMemOS API
 - 影响：`remember` 后立即 `recall` 可能为空，影响体验和 demo 稳定性。
 - 应对策略（按优先级）：
   1. 先做 API 行为验证（单条写入、双条 mini conversation、等待时间）
-  2. `remember` 默认 `flush=true`，降低提取延迟不确定性
+  2. `remember` 默认 `flush=false`，并由调用方在明确边界时显式传 `flush=true`
   3. `recall` 空结果时提供 graceful 提示，不把空结果当系统错误
   4. 若上游支持强制提取参数，则作为可选能力接入
 

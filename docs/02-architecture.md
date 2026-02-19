@@ -87,7 +87,7 @@ EverMemOS API
   - `space_id` (required)
   - `description?`
   - `sender?=user`
-  - `flush?=true`
+  - `flush?=false`
   - `include_status?=false`
 - Output:
   - `ok`, `space_id`
@@ -99,7 +99,7 @@ EverMemOS API
 - Input:
   - `query` (required)
   - `space_id` (required)
-  - `top_k?=10` (range: 1-50)
+  - `top_k?=10` (range: -1 or 1-100; `-1` means all, capped by upstream)
   - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic|auto`)
   - `memory_types?` (`profile|episodic_memory|foresight|event_log`)
     - for `hybrid|rrf|agentic`: defaults to `profile + episodic_memory`

@@ -74,8 +74,9 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `remember`: optional `include_status`; returns `message_id`, `request_id`, `created_at`, `processing_hint`
 - `remember`: also returns `memory_count_hint` to clarify Cloud-mode counts are approximate
 - `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
+- `remember`: default `flush=false`; use `flush=true` only at clear conversation boundaries
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic|auto`
-- `recall`: default `top_k=10`; accepted range is `1-50`
+- `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means all, capped by upstream)
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`, and custom values are restricted to these two

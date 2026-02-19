@@ -96,8 +96,8 @@ TOOLS: list[types.Tool] = [
                 "sender": {
                     "type": "string",
                     "description": (
-                        "Backward-compatible alias."
-                        "Use 'user'/'assistant' as role alias, or pass explicit sender user_id"
+                        "Backward-compatible alias. "
+                        "Use 'user'/'assistant' as role alias, or pass a sender user_id"
                     ),
                     "default": "user",
                 },
@@ -113,7 +113,7 @@ TOOLS: list[types.Tool] = [
                 "flush": {
                     "type": "boolean",
                     "description": (
-                        "Whether to force immediate boundary detection/extraction."
+                        "Whether to force immediate boundary detection/extraction. "
                         "Default false allows natural boundary detection"
                     ),
                     "default": False,

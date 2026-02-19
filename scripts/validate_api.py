@@ -15,7 +15,7 @@ import os
 from uuid import uuid4
 
 import httpx
-from common import auth_headers, new_message_id, utc_now_iso
+from common import auth_headers, flatten_search_memories, new_message_id, utc_now_iso
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,37 +33,6 @@ API_PATHS = {
 SPACE_A = f"test:validate-a-{uuid4().hex[:6]}"
 SPACE_B = f"test:validate-b-{uuid4().hex[:6]}"
 USER_ID = "mcp-test-user"
-
-
-def flatten_search_memories(result: dict) -> list[tuple[str, dict]]:
-    """Normalize search memories from flat or grouped response shapes."""
-    flattened: list[tuple[str, dict]] = []
-    memories = result.get("memories", []) if isinstance(result, dict) else []
-    if not isinstance(memories, list):
-        return flattened
-
-    valid_types = {"profile", "episodic_memory", "foresight", "event_log"}
-    for entry in memories:
-        if not isinstance(entry, dict):
-            continue
-
-        grouped_found = False
-        for memory_type in valid_types:
-            grouped_items = entry.get(memory_type)
-            if not isinstance(grouped_items, list):
-                continue
-            grouped_found = True
-            for item in grouped_items:
-                if isinstance(item, dict):
-                    flattened.append((memory_type, item))
-
-        if grouped_found:
-            continue
-
-        memory_type = entry.get("memory_type", "unknown")
-        flattened.append((str(memory_type), entry))
-
-    return flattened
 
 
 async def test_connectivity(client: httpx.AsyncClient):

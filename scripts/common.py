@@ -51,3 +51,34 @@ def utc_now_iso(*, offset_minutes: int = 0) -> str:
 
 def new_message_id() -> str:
     return f"msg_{uuid4().hex[:8]}"
+
+
+def flatten_search_memories(result: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Normalize search memories from flat or grouped response shapes."""
+    flattened: list[tuple[str, dict[str, Any]]] = []
+    memories = result.get("memories", []) if isinstance(result, dict) else []
+    if not isinstance(memories, list):
+        return flattened
+
+    valid_types = {"profile", "episodic_memory", "foresight", "event_log"}
+    for entry in memories:
+        if not isinstance(entry, dict):
+            continue
+
+        grouped_found = False
+        for memory_type in valid_types:
+            grouped_items = entry.get(memory_type)
+            if not isinstance(grouped_items, list):
+                continue
+            grouped_found = True
+            for item in grouped_items:
+                if isinstance(item, dict):
+                    flattened.append((memory_type, item))
+
+        if grouped_found:
+            continue
+
+        memory_type = entry.get("memory_type", "unknown")
+        flattened.append((str(memory_type), entry))
+
+    return flattened

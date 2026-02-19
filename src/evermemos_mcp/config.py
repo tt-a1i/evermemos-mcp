@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+_DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+if _DOTENV_PATH.exists():
+    load_dotenv(dotenv_path=_DOTENV_PATH, override=False)
 
 EVERMEMOS_BASE_URL = os.getenv("EVERMEMOS_BASE_URL", "https://api.evermind.ai")
 EVERMEMOS_API_KEY = os.getenv("EVERMEMOS_API_KEY", "")

@@ -75,8 +75,9 @@
 - `remember` 输出包含：`message_id`、`request_id`、`created_at`、`processing_hint`
 - `remember`: 还会返回 `memory_count_hint`，说明 Cloud 模式下计数是近似值
 - `remember`: 会显式透传 `flush`（`true/false`），避免依赖上游默认值
+- `remember`: 默认 `flush=false`，仅在明确会话边界时使用 `flush=true`
 - `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic|auto`
-- `recall`: 默认 `top_k=10`，可接受范围为 `1-50`
+- `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示返回全部，仍受上游上限约束）
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
