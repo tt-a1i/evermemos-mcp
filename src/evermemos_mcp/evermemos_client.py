@@ -15,6 +15,9 @@ import httpx
 
 from . import config
 
+_FETCH_MAX_GROUP_IDS = 50
+_SEARCH_MAX_GROUP_IDS = 10
+
 
 class EverMemosError(Exception):
     """Error from EverMemOS API interaction."""
@@ -397,7 +400,10 @@ class EverMemosClient:
         page = (safe_offset // page_size) + 1
 
         effective_group_ids = group_ids if group_ids is not None else group_id
-        normalized_group_ids = self._normalize_group_ids(effective_group_ids)
+        normalized_group_ids = self._normalize_group_ids(
+            effective_group_ids,
+            max_groups=_FETCH_MAX_GROUP_IDS,
+        )
 
         payload: dict = {
             "user_id": user_id or self._user_id,
@@ -437,7 +443,10 @@ class EverMemosClient:
         self._require_key()
 
         effective_group_ids = group_ids if group_ids is not None else group_id
-        normalized_group_ids = self._normalize_group_ids(effective_group_ids)
+        normalized_group_ids = self._normalize_group_ids(
+            effective_group_ids,
+            max_groups=_SEARCH_MAX_GROUP_IDS,
+        )
 
         payload: dict = {
             "query": query,
@@ -465,7 +474,7 @@ class EverMemosClient:
     async def get_request_status(self, request_id: str) -> dict:
         """Get async processing status for a queued add-memory request.
 
-        Tries primary path /status/request, fallbacks to /memories/status if needed.
+        Cloud v0 canonical path: /status/request.
         """
         self._require_key()
 
@@ -474,18 +483,7 @@ class EverMemosClient:
 
         request_id = request_id.strip()
         params = {"request_id": request_id}
-
-        try:
-            return await self._request("GET", "/status/request", params=params)
-        except EverMemosError as exc:
-            # Fallback for older/different API versions if path not found or invalid
-            if exc.status_code in {400, 404, 405, 422}:
-                try:
-                    return await self._request("GET", "/memories/status", params=params)
-                except EverMemosError:
-                    # If fallback also fails, propagate original error unless fallback gives better info
-                    raise exc
-            raise
+        return await self._request("GET", "/status/request", params=params)
 
     async def set_conversation_metadata(
         self,

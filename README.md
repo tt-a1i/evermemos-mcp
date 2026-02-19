@@ -71,7 +71,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 
 ## Tool Contract Notes
 - `list_spaces`: `memory_count` is approximate in Cloud mode due async extraction
-- `remember`: optional `include_status`; returns `message_id`, `request_id`, `created_at`, `processing_hint`
+- `remember`: optional `include_status`; returns `message_id` (submitted message ID), `request_id`, `created_at`, `processing_hint`
 - `remember`: also returns `memory_count_hint` to clarify Cloud-mode counts are approximate
 - `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
 - `remember`: default `flush=false`; use `flush=true` only at clear conversation boundaries
@@ -79,13 +79,14 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means all, capped by upstream)
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
-- `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`, and custom values are restricted to these two
+- `recall`: `memory_types` currently supports only `profile|episodic_memory` (Cloud search API limitation)
+- `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`
 - `recall`: `auto` runs `hybrid + keyword` in parallel, deduplicates by `memory_id`, and merges partial failures as hints
 - `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`)
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
-- `briefing` time filters apply to `episodic_memory` and `event_log` (not `profile` or `foresight`)
+- `briefing` time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
 - Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
-- Request status uses `/status/request` with `/memories/status` fallback for compatibility
+- Request status uses `/status/request` (Cloud v0 canonical path)
 
 ### `flush` Boundary Rule
 - `flush` is caller-controlled (MCP client/agent), not auto-inferred by this server

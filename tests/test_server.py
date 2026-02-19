@@ -114,7 +114,7 @@ async def test_dispatch_recall_with_extended_filters(svc):
             "radius": 0.6,
             "include_metadata": True,
             "retrieve_method": "vector",
-            "memory_types": ["event_log", "foresight"],
+            "memory_types": ["profile", "episodic_memory"],
         },
     )
     data = _parse(result)
@@ -122,7 +122,7 @@ async def test_dispatch_recall_with_extended_filters(svc):
 
     svc._client.search_memories.assert_called_once()
     _, kwargs = svc._client.search_memories.call_args
-    assert kwargs["memory_types"] == ["event_log", "foresight"]
+    assert kwargs["memory_types"] == ["profile", "episodic_memory"]
     assert kwargs["retrieve_method"] == "vector"
 
 
@@ -185,17 +185,12 @@ async def test_dispatch_briefing_with_time_filters(svc):
     for call in svc._client.fetch_memories.call_args_list:
         _, kwargs = call
         memory_type = kwargs.get("memory_type")
-        if memory_type in {"episodic_memory", "event_log"}:
+        if memory_type in {"episodic_memory", "event_log", "foresight"}:
             assert kwargs.get("start_time") == "2024-01-01T00:00:00+00:00"
             assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
         if memory_type == "profile":
             assert kwargs.get("start_time") is None
             assert kwargs.get("end_time") is None
-
-    svc._client.search_memories.assert_called_once()
-    _, kwargs = svc._client.search_memories.call_args
-    assert kwargs.get("memory_types") == ["foresight"]
-    assert kwargs.get("current_time")
 
 
 @pytest.mark.asyncio

@@ -189,7 +189,7 @@ TOOLS: list[types.Tool] = [
                 "current_time": {
                     "type": "string",
                     "description": (
-                        "ISO 8601 current time with timezone for foresight relevance filtering"
+                        "ISO 8601 current time with timezone for upstream relevance filtering"
                     ),
                 },
                 "radius": {
@@ -208,17 +208,14 @@ TOOLS: list[types.Tool] = [
                     "type": "array",
                     "description": (
                         "Optional memory type filter override. "
-                        "Allowed: profile, episodic_memory, foresight, event_log. "
-                        "For hybrid/rrf/agentic retrieval, only profile and "
-                        "episodic_memory are supported."
+                        "Cloud search currently supports: profile and "
+                        "episodic_memory."
                     ),
                     "items": {
                         "type": "string",
                         "enum": [
                             "profile",
                             "episodic_memory",
-                            "foresight",
-                            "event_log",
                         ],
                     },
                 },

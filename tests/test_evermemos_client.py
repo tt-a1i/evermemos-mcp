@@ -248,6 +248,29 @@ async def test_fetch_memories_passes_time_filters_when_provided():
 
 
 @pytest.mark.asyncio
+async def test_fetch_memories_supports_up_to_50_group_ids():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
+
+    group_ids = [f"space::team:{index}" for index in range(12)]
+    await c.fetch_memories(group_ids, memory_type="event_log")
+
+    _, kwargs = c._request.call_args
+    assert kwargs["json"]["group_ids"] == group_ids
+
+
+@pytest.mark.asyncio
+async def test_fetch_memories_rejects_more_than_50_group_ids():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    group_ids = [f"space::team:{index}" for index in range(51)]
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.fetch_memories(group_ids)
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_fetch_memories_adds_proxy_hint_for_missing_required_fields():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(
@@ -326,6 +349,17 @@ async def test_search_memories_supports_multiple_group_ids():
 
     _, kwargs = c._request.call_args
     assert kwargs["json"]["group_ids"] == ["space::coding:app", "space::coding:infra"]
+
+
+@pytest.mark.asyncio
+async def test_search_memories_rejects_more_than_10_group_ids():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    group_ids = [f"space::team:{index}" for index in range(11)]
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.search_memories("fastapi", group_ids)
+
+    assert exc_info.value.code == "INVALID_INPUT"
 
 
 @pytest.mark.asyncio
@@ -432,23 +466,30 @@ async def test_get_request_status_requires_request_id():
 
 
 @pytest.mark.asyncio
-async def test_get_request_status_falls_back_to_memories_status():
+async def test_get_request_status_uses_status_request_endpoint_only():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(
-        side_effect=[
-            EverMemosError("not found", status_code=404),
-            {"status": "ok", "result": {"request_id": "req-123"}},
-        ]
+        return_value={"status": "ok", "result": {"request_id": "req-123"}}
     )
 
     result = await c.get_request_status("req-123")
 
     assert result["status"] == "ok"
-    assert c._request.call_count == 2
+    assert c._request.call_count == 1
     first_call = c._request.call_args_list[0]
-    second_call = c._request.call_args_list[1]
     assert first_call.args[1] == "/status/request"
-    assert second_call.args[1] == "/memories/status"
+
+
+@pytest.mark.asyncio
+async def test_get_request_status_propagates_error_without_legacy_fallback():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(side_effect=EverMemosError("not found", status_code=404))
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.get_request_status("req-123")
+
+    assert exc_info.value.status_code == 404
+    assert c._request.call_count == 1
 
 
 @pytest.mark.asyncio

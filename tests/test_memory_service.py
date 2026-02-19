@@ -88,7 +88,9 @@ async def test_remember_returns_queued():
     result = await svc.remember("coding:app", "We use FastAPI")
     assert result["ok"] is True
     assert result["space_id"] == "coding:app"
-    assert result["message_id"] == "req-123"
+    assert isinstance(result["message_id"], str)
+    assert result["message_id"].startswith("msg_")
+    assert result["message_id"] != result["request_id"]
     assert result["created_at"]
     assert (
         "queued" in result["processing_hint"].lower()
@@ -100,6 +102,7 @@ async def test_remember_returns_queued():
     client.add_message.assert_called_once()
     call_kwargs = client.add_message.call_args
     assert call_kwargs.kwargs.get("flush") is False
+    assert call_kwargs.kwargs.get("message_id") == result["message_id"]
 
 
 @pytest.mark.asyncio
@@ -108,6 +111,20 @@ async def test_remember_with_description_registers_space():
     await svc.remember("study:ml", "Neural nets", description="ML course")
     result = await svc.list_spaces()
     assert result["spaces"][0]["description"] == "ML course"
+
+
+@pytest.mark.asyncio
+async def test_remember_prefers_upstream_message_id_when_present():
+    svc, _ = _make_svc(
+        add_msg_rv={
+            "status": "queued",
+            "request_id": "req-123",
+            "message_id": "msg-upstream-001",
+        }
+    )
+
+    result = await svc.remember("coding:app", "payload")
+    assert result["message_id"] == "msg-upstream-001"
 
 
 @pytest.mark.asyncio
@@ -155,6 +172,22 @@ async def test_memory_count_updates_on_remember_and_forget():
     await svc.forget(["mem-1"], "coding:app")
     listed = await svc.list_spaces()
     assert listed["spaces"][0]["memory_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_forget_adjusts_catalog_count_by_deleted_ids_not_upstream_count():
+    svc, _ = _make_svc(delete_rv={"result": {"count": 3}})
+
+    await svc.remember("coding:app", "entry-1")
+    await svc.remember("coding:app", "entry-2")
+    before = await svc.list_spaces()
+    assert before["spaces"][0]["memory_count"] == 2
+
+    result = await svc.forget(["mem-1"], "coding:app")
+    assert result["deleted_count"] == 3
+
+    after = await svc.list_spaces()
+    assert after["spaces"][0]["memory_count"] == 1
 
 
 # -- recall --
@@ -435,21 +468,20 @@ async def test_recall_auto_raises_when_all_branches_fail():
 
 
 @pytest.mark.asyncio
-async def test_recall_auto_event_log_filter_skips_hybrid_branch():
+async def test_recall_auto_rejects_unsupported_memory_types():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
-    await svc.recall(
-        "file name",
-        "coding:app",
-        retrieve_method="auto",
-        memory_types=["event_log"],
-    )
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall(
+            "file name",
+            "coding:app",
+            retrieve_method="auto",
+            memory_types=["event_log"],
+        )
 
-    assert client.search_memories.call_count == 1
-    _, kwargs = client.search_memories.call_args
-    assert kwargs["retrieve_method"] == "keyword"
-    assert kwargs["memory_types"] == ["event_log"]
+    assert exc_info.value.code == "INVALID_INPUT"
+    assert client.search_memories.call_count == 0
 
 
 @pytest.mark.asyncio
@@ -528,11 +560,11 @@ async def test_recall_explicit_memory_types_override_for_vector_search():
         "x",
         "coding:app",
         retrieve_method="vector",
-        memory_types=["event_log", "foresight", "event_log"],
+        memory_types=["profile", "episodic_memory", "profile"],
     )
 
     _, kwargs = client.search_memories.call_args
-    assert kwargs["memory_types"] == ["event_log", "foresight"]
+    assert kwargs["memory_types"] == ["profile", "episodic_memory"]
 
 
 @pytest.mark.asyncio
@@ -608,7 +640,6 @@ async def test_recall_agentic_rejects_non_profile_or_episodic_memory_types():
 @pytest.mark.asyncio
 async def test_briefing_assembles_four_types():
     call_count = 0
-    search_count = 0
 
     async def mock_fetch(group_id, *, memory_type="episodic_memory", limit=40, **kw):
         nonlocal call_count
@@ -648,35 +679,28 @@ async def test_briefing_assembles_four_types():
                     ]
                 }
             }
-        return {"result": {"memories": []}}
-
-    async def mock_search(query, group_ids=None, **kw):
-        nonlocal search_count
-        search_count += 1
-        assert kw.get("memory_types") == ["foresight"]
-        assert kw.get("current_time")
-        return {
-            "result": {
-                "memories": [
-                    {
-                        "id": "fo-1",
-                        "memory_type": "foresight",
-                        "summary": "Need to prepare migration plan next sprint",
-                        "target_time": "2026-03-01T09:00:00Z",
-                    }
-                ]
+        if memory_type == "foresight":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "fo-1",
+                            "memory_type": "foresight",
+                            "foresight": "Need to prepare migration plan next sprint",
+                            "start_time": "2026-03-01T09:00:00Z",
+                        }
+                    ]
+                }
             }
-        }
+        return {"result": {"memories": []}}
 
     svc, client = _make_svc()
     client.fetch_memories = AsyncMock(side_effect=mock_fetch)
-    client.search_memories = AsyncMock(side_effect=mock_search)
     svc._catalog.ensure_space("coding:app")
 
     result = await svc.briefing("coding:app")
     assert result["ok"] is True
-    assert call_count == 3  # profile + episodic + event_log
-    assert search_count == 1  # foresight via search
+    assert call_count == 4  # profile + episodic + event_log + foresight
     assert (
         "profile" in result["summary"].lower() or "episode" in result["summary"].lower()
     )
@@ -698,12 +722,9 @@ async def test_briefing_empty_space():
 
 @pytest.mark.asyncio
 async def test_briefing_all_fetches_fail_returns_error():
-    """When all 3 parallel fetches fail, briefing must raise (→ ok:false via server)."""
+    """When all 4 parallel fetches fail, briefing must raise (→ ok:false via server)."""
     svc, client = _make_svc()
     client.fetch_memories = AsyncMock(
-        side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
-    )
-    client.search_memories = AsyncMock(
         side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
     )
     svc._catalog.ensure_space("coding:app")
@@ -863,21 +884,16 @@ async def test_briefing_with_time_range_passes_to_client():
         end_time="2024-12-31T23:59:59+00:00",
     )
 
-    # briefing calls fetch_memories 3 times.
+    # briefing calls fetch_memories 4 times.
     for call in client.fetch_memories.call_args_list:
         _, kwargs = call
         mtype = kwargs.get("memory_type")
-        if mtype in ["episodic_memory", "event_log"]:
+        if mtype in ["episodic_memory", "event_log", "foresight"]:
             assert kwargs["start_time"] == "2024-01-01T00:00:00+00:00"
             assert kwargs["end_time"] == "2024-12-31T23:59:59+00:00"
         elif mtype == "profile":
             assert kwargs.get("start_time") is None
             assert kwargs.get("end_time") is None
-
-    client.search_memories.assert_called_once()
-    _, kwargs = client.search_memories.call_args
-    assert kwargs["memory_types"] == ["foresight"]
-    assert kwargs["current_time"]
 
 
 @pytest.mark.asyncio
@@ -967,12 +983,8 @@ async def test_briefing_accepts_naive_time_and_normalizes_to_utc():
 
     for call in client.fetch_memories.call_args_list:
         _, kwargs = call
-        if kwargs.get("memory_type") in {"episodic_memory", "event_log"}:
+        if kwargs.get("memory_type") in {"episodic_memory", "event_log", "foresight"}:
             assert kwargs.get("end_time") == "2024-12-31T23:59:59+00:00"
-
-    client.search_memories.assert_called_once()
-    _, kwargs = client.search_memories.call_args
-    assert kwargs["current_time"]
 
 
 @pytest.mark.asyncio

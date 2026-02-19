@@ -16,7 +16,6 @@ EVERMEMOS_BASE_URL = os.getenv("EVERMEMOS_BASE_URL", "https://api.evermind.ai")
 EVERMEMOS_API_KEY = os.getenv("EVERMEMOS_API_KEY", "")
 EVERMEMOS_API_VERSION = os.getenv("EVERMEMOS_API_VERSION", "v0")
 EVERMEMOS_USER_ID = os.getenv("EVERMEMOS_USER_ID", "mcp-user")
-EVERMEMOS_DEFAULT_SPACE = os.getenv("EVERMEMOS_SPACE_ID", "")
 
 # Conversation metadata integration (Cloud v0)
 EVERMEMOS_ENABLE_CONVERSATION_META = os.getenv(

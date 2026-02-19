@@ -37,7 +37,6 @@ EverMemOS API
 - 路由优先级：
   1. 用户或上层 agent 显式给出的 `space_id`
   2. `list_spaces` 结果 + 用户 query 的语义匹配
-  3. 环境变量 `EVERMEMOS_SPACE_ID`（兜底）
 - 低置信度场景返回候选列表，要求先确认再写入。
 
 ### 3.3 `space_catalog_service`（空间目录）
@@ -56,7 +55,7 @@ EverMemOS API
 ### 3.5 `evermemos_client`（HTTP 适配）
 - Cloud 优先：封装 `/api/v0/memories` 与 `/api/v0/memories/search`
 - 封装 `/api/v0/status/request`，用于查询异步写入状态
-- 为兼容不同部署，状态查询失败时会回退尝试 `/api/v0/memories/status`
+- 状态查询使用 `/api/v0/status/request`（Cloud v0 标准路径）
 - 本地兼容：可切换到 `/api/v1/*`（通过配置）
 - 处理鉴权、超时、重试和错误信息提炼
 - 注意：官方 `fetch/search` 契约是 `GET + JSON body`，在部分代理/WAF 环境可能被剥离请求体
@@ -105,7 +104,7 @@ EverMemOS API
 - 输出：
   - `ok`
   - `space_id`
-  - `message_id`
+  - `message_id`（写入请求使用的消息 ID）
   - `request_id`
   - `created_at`
   - `processing_hint`（如 "memory extraction may be async"）
@@ -119,10 +118,10 @@ EverMemOS API
   - `retrieve_method` (optional, default: `hybrid`)
     - 可选值：`keyword|hybrid|vector|rrf|agentic|auto`
   - `memory_types` (optional)
-    - 可选值：`profile|episodic_memory|foresight|event_log`
+    - 可选值：`profile|episodic_memory`
+    - Cloud search 当前仅支持这两类
     - 对 `hybrid|rrf|agentic`：不传时默认收敛到 `profile|episodic_memory`
-    - 对 `hybrid|rrf|agentic`：若自定义，也仅允许 `profile|episodic_memory`
-    - 对 `auto`：过滤条件作用于 keyword 分支；hybrid 分支只使用 `profile|episodic_memory` 子集
+    - 对 `auto`：过滤条件作用于 keyword 分支；hybrid 分支使用同一子集
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
     - 仅对 `episodic_memory` 生效
   - `current_time` (optional, ISO 8601 with timezone)
@@ -142,7 +141,7 @@ EverMemOS API
   - `max_items` (optional, default: 8)
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
 - 行为：分层抓取后生成上下文简报（profile + episodic + event_log + foresight）
-  - `start_time/end_time` 仅作用于 `episodic_memory` 与 `event_log`，不限制 `foresight`
+  - `start_time/end_time` 作用于 `episodic_memory`、`event_log` 与 `foresight`，不作用于 `profile`
 - 输出：
   - `ok`
   - `space_id`

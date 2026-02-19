@@ -72,7 +72,7 @@
 ## Tool 契约说明
 - `list_spaces`: Cloud 模式下 `memory_count` 为近似值（异步提取）
 - `remember`: 支持 `include_status`（可选），开启后会附带一次 `request_status`
-- `remember` 输出包含：`message_id`、`request_id`、`created_at`、`processing_hint`
+- `remember` 输出包含：`message_id`（提交的消息 ID）、`request_id`、`created_at`、`processing_hint`
 - `remember`: 还会返回 `memory_count_hint`，说明 Cloud 模式下计数是近似值
 - `remember`: 会显式透传 `flush`（`true/false`），避免依赖上游默认值
 - `remember`: 默认 `flush=false`，仅在明确会话边界时使用 `flush=true`
@@ -80,14 +80,14 @@
 - `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示返回全部，仍受上游上限约束）
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
-- `recall`: 支持可选 `memory_types` 覆盖默认过滤策略
-- `recall`: 对 `hybrid|rrf|agentic`，默认会收敛到 `profile+episodic_memory`，且自定义值也仅允许这两类
+- `recall`: 可选 `memory_types` 目前仅支持 `profile|episodic_memory`（受 Cloud search API 限制）
+- `recall`: 对 `hybrid|rrf|agentic`，默认会收敛到 `profile+episodic_memory`
 - `recall`: `auto` 会并行执行 `hybrid + keyword` 并按 `memory_id` 去重合并，分支失败会以提示形式返回
 - `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
-- `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，仅对 `episodic_memory/event_log` 生效，不作用于 `profile/foresight`）
+- `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，作用于 `episodic_memory/event_log/foresight`，不作用于 `profile`）
 - Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
-- 状态查询优先使用 `/status/request`，失败时回退到 `/memories/status`
+- 状态查询使用 `/status/request`（Cloud v0 标准路径）
 
 ### `flush` 边界规则
 - `flush` 由调用方（MCP 客户端/Agent）控制，本服务不做自动推断

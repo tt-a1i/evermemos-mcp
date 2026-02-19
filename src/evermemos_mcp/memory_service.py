@@ -10,6 +10,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from .evermemos_client import EverMemosClient, EverMemosError
 from .space_catalog_service import SpaceCatalogService, to_group_id
@@ -19,9 +20,10 @@ _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic", "aut
 _DEFAULT_RECALL_TOP_K = 10
 _MAX_RECALL_TOP_K = 100
 _MEMORY_TYPE_ORDER = ("episodic_memory", "profile", "foresight", "event_log")
-_VALID_MEMORY_TYPES = set(_MEMORY_TYPE_ORDER)
+_SEARCH_MEMORY_TYPES = ("profile", "episodic_memory")
+_VALID_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
-_HYBRID_ALLOWED_MEMORY_TYPES = {"profile", "episodic_memory"}
+_HYBRID_ALLOWED_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
 
@@ -163,7 +165,7 @@ class MemoryService:
             value = item.strip()
             if value not in _VALID_MEMORY_TYPES:
                 raise EverMemosError(
-                    "memory_types must be one of: profile, episodic_memory, foresight, event_log",
+                    "memory_types for recall/search only support: profile, episodic_memory",
                     code="INVALID_INPUT",
                 )
             if value in seen:
@@ -457,6 +459,7 @@ class MemoryService:
 
         group_id = to_group_id(space_id)
         created_at = datetime.now(timezone.utc).isoformat()
+        submitted_message_id = f"msg_{uuid4().hex[:12]}"
 
         result = await self._client.add_message(
             group_id=group_id,
@@ -464,6 +467,7 @@ class MemoryService:
             sender=sender_id,
             role=effective_role,
             flush=flush,
+            message_id=submitted_message_id,
             create_time=created_at,
             refer_list=refer_list,
         )
@@ -474,10 +478,10 @@ class MemoryService:
         if not isinstance(request_id, str):
             request_id = ""
         message_id = result.get("message_id", "")
-        if not isinstance(message_id, str):
-            message_id = ""
-        if not message_id:
-            message_id = request_id
+        if isinstance(message_id, str) and message_id.strip():
+            message_id = message_id.strip()
+        else:
+            message_id = submitted_message_id
 
         output: dict = {
             "ok": True,
@@ -788,7 +792,6 @@ class MemoryService:
 
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
-        current_time = datetime.now(timezone.utc).isoformat()
 
         profile_res, episodic_res, event_res, foresight_res = await asyncio.gather(
             self._client.fetch_memories(group_id, memory_type="profile", limit=1),
@@ -806,13 +809,12 @@ class MemoryService:
                 start_time=start_time,
                 end_time=end_time,
             ),
-            self._client.search_memories(
-                query="*",
-                group_ids=group_id,
-                retrieve_method="keyword",
-                memory_types=["foresight"],
-                top_k=max_items,
-                current_time=current_time,
+            self._client.fetch_memories(
+                group_id,
+                memory_type="foresight",
+                limit=max_items,
+                start_time=start_time,
+                end_time=end_time,
             ),
             return_exceptions=True,
         )
@@ -920,15 +922,17 @@ class MemoryService:
 
         # Foresight
         if isinstance(foresight_res, dict):
-            foresights = self._normalize_search_memory_items(
-                foresight_res.get("result", {}).get("memories", [])
+            raw_foresights = foresight_res.get("result", {}).get("memories", [])
+            foresights = (
+                [item for item in raw_foresights if isinstance(item, dict)]
+                if isinstance(raw_foresights, list)
+                else []
             )
-            for _, fo, _ in foresights:
-                if not isinstance(fo, dict):
-                    continue
 
+            for fo in foresights:
                 text = (
-                    fo.get("summary", "")
+                    fo.get("foresight", "")
+                    or fo.get("summary", "")
                     or fo.get("future_event", "")
                     or fo.get("content", "")
                 )
@@ -938,7 +942,9 @@ class MemoryService:
                             "type": "foresight",
                             "content": str(text)[:300],
                             "timestamp": (
-                                fo.get("timestamp", "")
+                                fo.get("start_time", "")
+                                or fo.get("end_time", "")
+                                or fo.get("timestamp", "")
                                 or fo.get("target_time", "")
                                 or fo.get("created_at", "")
                             ),
@@ -1008,7 +1014,9 @@ class MemoryService:
 
         semaphore = asyncio.Semaphore(_FORGET_DELETE_CONCURRENCY)
 
-        async def _delete_one(mid: str) -> tuple[str, int, EverMemosError | None]:
+        async def _delete_one(
+            mid: str,
+        ) -> tuple[str, int, int, EverMemosError | None]:
             async with semaphore:
                 try:
                     result = await self._client.delete_memories(
@@ -1018,12 +1026,15 @@ class MemoryService:
                     count = result.get("result", {}).get("count", 0)
                     if not isinstance(count, int):
                         count = 0
-                    return mid, max(0, count), None
+                    upstream_count = max(0, count)
+                    logical_deleted = 1 if upstream_count > 0 else 0
+                    return mid, upstream_count, logical_deleted, None
                 except EverMemosError as e:
-                    return mid, 0, e
+                    return mid, 0, 0, e
                 except Exception as e:  # pragma: no cover - defensive safeguard
                     return (
                         mid,
+                        0,
                         0,
                         EverMemosError(
                             f"unexpected delete error: {e}",
@@ -1034,13 +1045,15 @@ class MemoryService:
         delete_results = await asyncio.gather(*(_delete_one(mid) for mid in unique_ids))
 
         deleted = 0
-        for mid, count, err in delete_results:
+        logical_deleted = 0
+        for mid, count, logical_count, err in delete_results:
             deleted += count
+            logical_deleted += logical_count
             if err is not None:
                 errors.append(f"{mid}: {err}")
 
-        if deleted:
-            self._catalog.adjust_memory_count(space_id, -deleted)
+        if logical_deleted:
+            self._catalog.adjust_memory_count(space_id, -logical_deleted)
 
         normalized_reason = reason.strip() if isinstance(reason, str) else ""
         if normalized_reason:

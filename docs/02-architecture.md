@@ -37,7 +37,6 @@ EverMemOS API
 - Priority:
   1. Explicit `space_id` from user/agent
   2. Semantic match from `list_spaces` and descriptions
-  3. Fallback env `EVERMEMOS_SPACE_ID`
 
 ### 3.3 `space_catalog_service`
 - Provides `space_id`, `description`, `memory_count`, `last_used_at`
@@ -54,7 +53,7 @@ EverMemOS API
 
 ### 3.5 `evermemos_client`
 - Wraps `/api/v0/memories`, `/api/v0/memories/search`, `/api/v0/status/request`
-- Request status falls back to `/api/v0/memories/status` for compatibility
+- Request status uses `/api/v0/status/request` (Cloud v0 canonical path)
 - Adds auth, timeout, lightweight retries, and error normalization
 - Supports local `v1` endpoints via configuration
 - Note: upstream fetch/search contract is `GET + JSON body`; some proxies/WAFs may strip GET bodies
@@ -91,7 +90,7 @@ EverMemOS API
   - `include_status?=false`
 - Output:
   - `ok`, `space_id`
-  - `message_id` (if upstream does not return message id, falls back to request id)
+  - `message_id` (submitted message id used for write request)
   - `request_id`, `created_at`, `processing_hint`
   - `request_status` (when `include_status=true`)
 
@@ -101,10 +100,10 @@ EverMemOS API
   - `space_id` (required)
   - `top_k?=10` (range: -1 or 1-100; `-1` means all, capped by upstream)
   - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic|auto`)
-  - `memory_types?` (`profile|episodic_memory|foresight|event_log`)
+  - `memory_types?` (`profile|episodic_memory`)
+    - Cloud search currently supports only these two memory types
     - for `hybrid|rrf|agentic`: defaults to `profile + episodic_memory`
-    - for `hybrid|rrf|agentic`: custom values are restricted to `profile|episodic_memory`
-    - for `auto`: applies to keyword branch; hybrid branch uses profile/episodic subset
+    - for `auto`: filter applies to keyword branch; hybrid branch uses the same subset
   - `start_time?`, `end_time?` (ISO 8601; naive values default to UTC; applied to episodic memory)
   - `current_time?` (ISO 8601)
   - `radius?` (0-1)
@@ -118,7 +117,7 @@ EverMemOS API
 ### 5.4 `briefing`
 - Input: `space_id`, `max_items?=8`, `start_time?`, `end_time?`
 - Behavior: layered fetch and synthesis from `profile + episodic_memory + event_log + foresight`
-- Time filters apply to `episodic_memory` and `event_log` only
+- Time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
 - Output: `ok`, `space_id`, `summary`, `highlights[]`
 
 ### 5.5 `forget`
