@@ -171,6 +171,10 @@ TOOLS: list[types.Tool] = [
                     "enum": ["keyword", "hybrid", "vector", "rrf", "agentic", "auto"],
                     "default": "hybrid",
                 },
+                "user_id": {
+                    "type": "string",
+                    "description": "Optional user ID to filter memories. Defaults to the MCP client's identity.",
+                },
                 "start_time": {
                     "type": "string",
                     "description": (
@@ -241,6 +245,10 @@ TOOLS: list[types.Tool] = [
                     "type": "integer",
                     "description": "Max items per section",
                     "default": 8,
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "Optional user ID to filter memories. Defaults to the MCP client's identity.",
                 },
                 "start_time": {
                     "type": "string",
@@ -346,6 +354,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             radius=args.get("radius"),
             include_metadata=args.get("include_metadata", False),
             memory_types=args.get("memory_types"),
+            user_id=args.get("user_id"),
         )
 
     if name == "briefing":
@@ -354,6 +363,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             max_items=args.get("max_items", 8),
             start_time=args.get("start_time"),
             end_time=args.get("end_time"),
+            user_id=args.get("user_id"),
         )
 
     if name == "forget":

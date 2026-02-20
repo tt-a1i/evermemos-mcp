@@ -874,6 +874,29 @@ async def test_recall_with_time_range_passes_to_client():
 
 
 @pytest.mark.asyncio
+async def test_recall_with_user_id_passes_to_client():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.recall("query", "coding:app", user_id="custom-user-123")
+
+    client.search_memories.assert_called_once()
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["user_id"] == "custom-user-123"
+
+
+@pytest.mark.asyncio
+async def test_recall_rejects_blank_user_id():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("query", "coding:app", user_id="   ")
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_briefing_with_time_range_passes_to_client():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
@@ -894,6 +917,30 @@ async def test_briefing_with_time_range_passes_to_client():
         elif mtype == "profile":
             assert kwargs.get("start_time") is None
             assert kwargs.get("end_time") is None
+
+
+@pytest.mark.asyncio
+async def test_briefing_with_user_id_passes_to_client():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.briefing("coding:app", user_id="briefing-user")
+
+    # briefing calls fetch_memories 4 times.
+    for call in client.fetch_memories.call_args_list:
+        _, kwargs = call
+        assert kwargs["user_id"] == "briefing-user"
+
+
+@pytest.mark.asyncio
+async def test_briefing_rejects_blank_user_id():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.briefing("coding:app", user_id="   ")
+
+    assert exc_info.value.code == "INVALID_INPUT"
 
 
 @pytest.mark.asyncio

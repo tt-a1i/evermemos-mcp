@@ -533,11 +533,13 @@ class MemoryService:
         radius: float | None = None,
         include_metadata: bool = False,
         memory_types: list[str] | None = None,
+        user_id: str | None = None,
     ) -> dict:
         # Intentionally default to hybrid for better practical recall quality,
         # while upstream API defaults to keyword.
         query = self._validate_text(query, "query")
         space_id = self._validate_space_id(space_id)
+        user_id = self._validate_user_id(user_id)
         top_k = self._validate_top_k(top_k)
         start_time = self._validate_iso_datetime(start_time, "start_time")
         end_time = self._validate_iso_datetime(end_time, "end_time")
@@ -588,6 +590,7 @@ class MemoryService:
                 return await self._client.search_memories(
                     query,
                     group_id,
+                    user_id=user_id,
                     retrieve_method=method,
                     top_k=top_k,
                     memory_types=method_memory_types,
@@ -619,6 +622,7 @@ class MemoryService:
                 fallback = await self._client.search_memories(
                     query,
                     group_id,
+                    user_id=user_id,
                     retrieve_method=method,
                     top_k=top_k,
                     memory_types=fallback_memory_types,
@@ -783,8 +787,10 @@ class MemoryService:
         max_items: int = 8,
         start_time: str | None = None,
         end_time: str | None = None,
+        user_id: str | None = None,
     ) -> dict:
         space_id = self._validate_space_id(space_id)
+        user_id = self._validate_user_id(user_id)
         max_items = self._validate_positive_int(max_items, "max_items")
         start_time = self._validate_iso_datetime(start_time, "start_time")
         end_time = self._validate_iso_datetime(end_time, "end_time")
@@ -794,9 +800,12 @@ class MemoryService:
         self._catalog.touch_space(space_id)
 
         profile_res, episodic_res, event_res, foresight_res = await asyncio.gather(
-            self._client.fetch_memories(group_id, memory_type="profile", limit=1),
+            self._client.fetch_memories(
+                group_id, user_id=user_id, memory_type="profile", limit=1
+            ),
             self._client.fetch_memories(
                 group_id,
+                user_id=user_id,
                 memory_type="episodic_memory",
                 limit=max_items,
                 start_time=start_time,
@@ -804,6 +813,7 @@ class MemoryService:
             ),
             self._client.fetch_memories(
                 group_id,
+                user_id=user_id,
                 memory_type="event_log",
                 limit=max_items,
                 start_time=start_time,
@@ -811,6 +821,7 @@ class MemoryService:
             ),
             self._client.fetch_memories(
                 group_id,
+                user_id=user_id,
                 memory_type="foresight",
                 limit=max_items,
                 start_time=start_time,
