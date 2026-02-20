@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -28,8 +29,12 @@ EVERMEMOS_CONVERSATION_SCENE = (
     ).strip()
     or "assistant"
 )
+EVERMEMOS_DEFAULT_TIMEZONE = (
+    os.getenv("EVERMEMOS_DEFAULT_TIMEZONE", "UTC").strip() or "UTC"
+)
 
 _LLM_CUSTOM_SETTING_RAW = os.getenv("EVERMEMOS_LLM_CUSTOM_SETTING_JSON", "").strip()
+EVERMEMOS_LLM_CUSTOM_SETTING: dict[str, Any] | None
 if _LLM_CUSTOM_SETTING_RAW:
     try:
         parsed = json.loads(_LLM_CUSTOM_SETTING_RAW)
@@ -40,6 +45,7 @@ else:
     EVERMEMOS_LLM_CUSTOM_SETTING = None
 
 _USER_DETAILS_RAW = os.getenv("EVERMEMOS_USER_DETAILS_JSON", "").strip()
+EVERMEMOS_USER_DETAILS: dict[str, dict[str, Any]] | None
 if _USER_DETAILS_RAW:
     try:
         parsed_user_details = json.loads(_USER_DETAILS_RAW)

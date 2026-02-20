@@ -130,7 +130,8 @@ EverMemOS API
 ### 5.6 `fetch_history`
 - Input: `space_id`, `memory_type?=episodic_memory`, `limit?=50`, `offset?=0`, `user_id?`, `start_time?`, `end_time?`, `include_metadata?=false`
 - Behavior: paginated fetch by memory type for timeline-style review (including `event_log` and `foresight`)
-- Output: `ok`, `space_id`, `memory_type`, `items[]`, `count`, optional `total_count`, `has_more`, optional `next_offset`
+- Behavior: keeps exact 0-based offset semantics by stitching upstream `page/page_size` responses when needed
+- Output: `ok`, `space_id`, `memory_type`, `items[]` (`memory_id`, `timestamp`, `snippet` + `content`, optional `source_message_id`), `count`, optional `total_count`, `has_more`, optional `next_offset`
 
 ## 6) Citation Policy (V1)
 - `recall/briefing` results include traceable evidence fields:

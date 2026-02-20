@@ -11,6 +11,7 @@ Config snippet directory: `docs/mcp-config-snippets/`
 2. Executable command available (`evermemos-mcp` or `uv`)
 3. Cloud key configured: `EVERMEMOS_API_KEY`
 4. Optional custom extraction config: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
+5. Optional conversation metadata timezone: `EVERMEMOS_DEFAULT_TIMEZONE` (default `UTC`)
 
 > `EVERMEMOS_BASE_URL` and `EVERMEMOS_API_VERSION` already default to Cloud (`https://api.evermind.ai` + `v0`) in this project.
 

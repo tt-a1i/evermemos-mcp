@@ -245,11 +245,13 @@ async def test_recall_maps_search_results():
     assert r0["memory_id"] == "mem-001"
     assert r0["memory_type"] == "episodic_memory"
     assert "FastAPI" in r0["snippet"]
+    assert "FastAPI" in r0["content"]
     assert r0["score"] == 4.5
 
     r1 = result["results"][1]
     assert r1["memory_id"] == "mem-002"
     assert "FastAPI" in r1["snippet"]
+    assert "FastAPI" in r1["content"]
 
 
 @pytest.mark.asyncio
@@ -716,6 +718,7 @@ async def test_fetch_history_maps_rows_and_pagination_fields():
     assert result["has_more"] is True
     assert result["next_offset"] == 2
     assert result["items"][0]["source_message_id"] == "msg-001"
+    assert "FastAPI" in result["items"][0]["snippet"]
     assert "FastAPI" in result["items"][0]["content"]
 
     client.fetch_memories.assert_called_once()
@@ -724,6 +727,70 @@ async def test_fetch_history_maps_rows_and_pagination_fields():
     assert kwargs["limit"] == 1
     assert kwargs["offset"] == 1
     assert kwargs["user_id"] == "alice"
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_non_aligned_offset_returns_exact_slice():
+    async def mock_fetch(
+        group_id,
+        *,
+        memory_type="episodic_memory",
+        user_id=None,
+        limit=40,
+        offset=0,
+        **kw,
+    ):
+        assert group_id == "space::coding:app"
+        assert memory_type == "event_log"
+        assert user_id == "alice"
+        assert limit == 50
+
+        total_count = 130
+        start = offset
+        end = min(start + limit, total_count)
+        memories = [
+            {
+                "id": f"evt-{index:03d}",
+                "memory_type": "event_log",
+                "atomic_fact": f"fact-{index}",
+                "timestamp": "2026-02-10T10:00:00Z",
+            }
+            for index in range(start, end)
+        ]
+        return {
+            "result": {
+                "memories": memories,
+                "count": len(memories),
+                "total_count": total_count,
+            }
+        }
+
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(side_effect=mock_fetch)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.fetch_history(
+        "coding:app",
+        memory_type="event_log",
+        limit=50,
+        offset=55,
+        user_id="alice",
+    )
+
+    assert result["ok"] is True
+    assert result["offset"] == 55
+    assert result["count"] == 50
+    assert result["next_offset"] == 105
+    assert result["has_more"] is True
+    assert len(result["items"]) == 50
+    assert result["items"][0]["memory_id"] == "evt-055"
+    assert result["items"][-1]["memory_id"] == "evt-104"
+
+    assert client.fetch_memories.call_count == 2
+    first_call = client.fetch_memories.call_args_list[0].kwargs
+    second_call = client.fetch_memories.call_args_list[1].kwargs
+    assert first_call["offset"] == 50
+    assert second_call["offset"] == 100
 
 
 @pytest.mark.asyncio
@@ -829,6 +896,32 @@ async def test_briefing_assembles_four_types():
 
     types_found = {h["type"] for h in result["highlights"]}
     assert types_found == {"profile", "episodic_memory", "event_log", "foresight"}
+
+
+@pytest.mark.asyncio
+async def test_briefing_profile_highlight_uses_common_text_extractor():
+    async def mock_fetch(group_id, *, memory_type="episodic_memory", **kw):
+        if memory_type == "profile":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "summary": "Prefers concise status updates",
+                            "updated_at": "2026-02-10T10:00:00Z",
+                        }
+                    ]
+                }
+            }
+        return {"result": {"memories": []}}
+
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(side_effect=mock_fetch)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.briefing("coding:app")
+    assert result["ok"] is True
+    assert result["highlights"][0]["type"] == "profile"
+    assert "concise" in result["highlights"][0]["content"]
 
 
 @pytest.mark.asyncio

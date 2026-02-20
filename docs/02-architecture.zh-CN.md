@@ -172,7 +172,8 @@ EverMemOS API
   - `start_time` / `end_time` (optional)
   - `include_metadata` (optional, default: false)
 - 行为：按 memory type 分页读取历史，适合时间线浏览/批量复盘
-- 输出：`ok`、`space_id`、`memory_type`、`items[]`、`count`、可选 `total_count`、`has_more`、可选 `next_offset`
+- 行为：当上游只支持 `page/page_size` 时，服务层会做拼接，保证 0-based `offset` 语义精确
+- 输出：`ok`、`space_id`、`memory_type`、`items[]`（含 `memory_id`、`timestamp`、`snippet` + `content`、可选 `source_message_id`）、`count`、可选 `total_count`、`has_more`、可选 `next_offset`
 
 ## 6) 来源引用策略（V1 必做）
 - recall/briefing 输出必须带轻量引用：

@@ -37,6 +37,7 @@ Universal MCP memory layer powered by EverMemOS.
 - Optional: `EVERMEMOS_ENABLE_CONVERSATION_META=true` (enabled by default)
 - Optional: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` to pass `llm_custom_setting`
 - Optional: `EVERMEMOS_USER_DETAILS_JSON` to pass conversation `user_details`
+- Optional: `EVERMEMOS_DEFAULT_TIMEZONE` for conversation metadata timezone (default `UTC`)
 
 ## Installation
 - Clone repo: `git clone https://github.com/tt-a1i/evermemos-mcp.git`
@@ -89,8 +90,9 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
 - `briefing` time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
 - `briefing`: supports optional `user_id` filter
-- `fetch_history`: paginates by `memory_type` (`profile|episodic_memory|foresight|event_log`) with `limit/offset`
-- `fetch_history`: returns `has_more/next_offset` and trace fields (`memory_id`, `timestamp`, optional `source_message_id`)
+- `fetch_history`: paginates by `memory_type` (`profile|episodic_memory|foresight|event_log`) with exact 0-based `limit/offset`
+- `fetch_history`: internally stitches page-based upstream results to keep non-aligned offsets accurate
+- `fetch_history`: returns `has_more/next_offset` and trace fields (`memory_id`, `timestamp`, `snippet` + `content`, optional `source_message_id`)
 - Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
 - Request status uses `/status/request` (Cloud v0 canonical path)
 

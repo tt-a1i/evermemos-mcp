@@ -11,6 +11,7 @@
 2. 可执行命令可用（`evermemos-mcp` 或 `uv`）
 3. 已配置 Cloud API Key：`EVERMEMOS_API_KEY`
 4. （可选）若需要自定义提取模型，可设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
+5. （可选）可设置 conversation metadata 时区：`EVERMEMOS_DEFAULT_TIMEZONE`（默认 `UTC`）
 
 > 本项目默认内置 Cloud 地址和版本：`EVERMEMOS_BASE_URL=https://api.evermind.ai`、`EVERMEMOS_API_VERSION=v0`。
 

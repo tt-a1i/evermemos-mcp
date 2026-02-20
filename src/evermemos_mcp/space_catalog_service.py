@@ -18,6 +18,7 @@ from .config import (
     CATALOG_GROUP_ID,
     SPACE_GROUP_PREFIX,
     EVERMEMOS_CONVERSATION_SCENE,
+    EVERMEMOS_DEFAULT_TIMEZONE,
     EVERMEMOS_ENABLE_CONVERSATION_META,
     EVERMEMOS_LLM_CUSTOM_SETTING,
     EVERMEMOS_USER_DETAILS,
@@ -280,7 +281,7 @@ class SpaceCatalogService:
                 tags=tags,
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                 user_details=user_details,
-                default_timezone="UTC",
+                default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
             )
             return
         except EverMemosError as exc:
@@ -310,7 +311,7 @@ class SpaceCatalogService:
                 tags=tags,
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                 user_details=user_details,
-                default_timezone="UTC",
+                default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
             )
         except EverMemosError as exc:
             logger.warning(
@@ -325,8 +326,9 @@ class SpaceCatalogService:
     ) -> dict | None:
         merged: dict[str, dict] = {}
 
-        if isinstance(EVERMEMOS_USER_DETAILS, dict):
-            for raw_user_id, raw_profile in EVERMEMOS_USER_DETAILS.items():
+        user_details = EVERMEMOS_USER_DETAILS
+        if isinstance(user_details, dict):
+            for raw_user_id, raw_profile in user_details.items():
                 if not isinstance(raw_user_id, str) or not raw_user_id.strip():
                     continue
                 user_id = raw_user_id.strip()

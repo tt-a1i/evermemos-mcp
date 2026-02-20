@@ -209,6 +209,22 @@ async def test_ensure_conversation_meta_adds_dynamic_actor_to_user_details(monke
 
 
 @pytest.mark.asyncio
+async def test_ensure_conversation_meta_uses_configured_default_timezone(monkeypatch):
+    monkeypatch.setattr(catalog_module, "EVERMEMOS_DEFAULT_TIMEZONE", "Asia/Shanghai")
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta("coding:app")
+
+    _, kwargs = client.set_conversation_metadata.call_args
+    assert kwargs["default_timezone"] == "Asia/Shanghai"
+
+
+@pytest.mark.asyncio
 async def test_register_updates_description():
     client = AsyncMock(spec=EverMemosClient)
     client.add_message = AsyncMock(return_value={"status": "queued"})

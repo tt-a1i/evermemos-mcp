@@ -386,10 +386,12 @@ class MemoryService:
         memory_type: str,
         include_metadata: bool,
     ) -> dict:
+        snippet = MemoryService._extract_memory_text(item)[:800]
         row: dict = {
             "memory_id": item.get("id", ""),
             "memory_type": item.get("memory_type", "") or memory_type,
-            "content": MemoryService._extract_memory_text(item)[:800],
+            "snippet": snippet,
+            "content": snippet,
             "timestamp": (
                 item.get("timestamp", "")
                 or item.get("start_time", "")
@@ -445,10 +447,12 @@ class MemoryService:
             if score is None and source_index < len(scores):
                 score = scores[source_index]
 
+            snippet_text = snippet[:500]
             row = {
                 "memory_id": item.get("id", ""),
                 "memory_type": item.get("memory_type", ""),
-                "snippet": snippet[:500],
+                "snippet": snippet_text,
+                "content": snippet_text,
                 "timestamp": item.get("timestamp", "") or item.get("created_at", ""),
                 "score": score,
             }
@@ -465,10 +469,12 @@ class MemoryService:
             snippet = profile.get("description", "")
             if not snippet:
                 continue
+            snippet_text = snippet[:500]
             row = {
                 "memory_id": "",
                 "memory_type": "profile",
-                "snippet": snippet[:500],
+                "snippet": snippet_text,
+                "content": snippet_text,
                 "timestamp": "",
                 "score": profile.get("score"),
             }
@@ -1003,22 +1009,18 @@ class MemoryService:
             for pw in profiles_wrapper[:1]:
                 if not isinstance(pw, dict):
                     continue
-                data = pw.get("profile_data", {})
-                if isinstance(data, dict):
-                    text = (
-                        data.get("summary", "")
-                        or data.get("description", "")
-                        or data.get("content", "")
-                    )
-                    if not text:
+                text = self._extract_memory_text(pw)
+                if not text:
+                    data = pw.get("profile_data", {})
+                    if isinstance(data, dict):
                         kv_pairs = [
                             f"{k}: {v}"
                             for k, v in data.items()
                             if isinstance(v, (str, int, float, bool))
                         ]
                         text = "; ".join(kv_pairs)
-                else:
-                    text = str(data)
+                    elif data is not None:
+                        text = str(data)
 
                 if text:
                     highlights.append(
@@ -1164,23 +1166,60 @@ class MemoryService:
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
-        result = await self._client.fetch_memories(
-            group_id,
-            memory_type=memory_type,
-            user_id=user_id,
-            limit=limit,
-            offset=offset,
-            start_time=start_time,
-            end_time=end_time,
-        )
+        aligned_offset = (offset // limit) * limit
+        intra_page_offset = offset - aligned_offset
+        target_count = intra_page_offset + limit
 
-        res = result.get("result", {}) if isinstance(result, dict) else {}
-        if not isinstance(res, dict):
-            res = {}
+        raw_memories: list[dict] = []
+        total_count: int | None = None
+        reached_end = False
+        current_offset = aligned_offset
 
-        raw_memories = res.get("memories", [])
-        if not isinstance(raw_memories, list):
-            raw_memories = []
+        while len(raw_memories) < target_count and not reached_end:
+            page_result = await self._client.fetch_memories(
+                group_id,
+                memory_type=memory_type,
+                user_id=user_id,
+                limit=limit,
+                offset=current_offset,
+                start_time=start_time,
+                end_time=end_time,
+            )
+
+            res = page_result.get("result", {}) if isinstance(page_result, dict) else {}
+            if not isinstance(res, dict):
+                res = {}
+
+            page_memories_raw = res.get("memories", [])
+            if not isinstance(page_memories_raw, list):
+                page_memories_raw = []
+            page_memories = [
+                item for item in page_memories_raw if isinstance(item, dict)
+            ]
+            raw_memories.extend(page_memories)
+
+            page_count = res.get("count")
+            if not isinstance(page_count, int) or page_count < 0:
+                page_count = len(page_memories)
+
+            page_total_count = res.get("total_count")
+            if (
+                total_count is None
+                and isinstance(page_total_count, int)
+                and page_total_count >= 0
+            ):
+                total_count = page_total_count
+
+            if not page_memories or page_count <= 0:
+                reached_end = True
+            elif total_count is not None:
+                reached_end = current_offset + page_count >= total_count
+            else:
+                reached_end = page_count < limit
+
+            current_offset += limit
+
+        sliced_memories = raw_memories[intra_page_offset : intra_page_offset + limit]
 
         rows = [
             self._map_fetch_memory_item_to_row(
@@ -1188,22 +1227,17 @@ class MemoryService:
                 memory_type=memory_type,
                 include_metadata=include_metadata,
             )
-            for item in raw_memories
-            if isinstance(item, dict)
+            for item in sliced_memories
         ]
 
-        count = res.get("count")
-        if not isinstance(count, int) or count < 0:
-            count = len(raw_memories)
-
-        total_count = res.get("total_count")
-        if not isinstance(total_count, int) or total_count < 0:
-            total_count = None
+        count = len(rows)
 
         if total_count is not None:
             has_more = offset + count < total_count
         else:
-            has_more = count >= limit and count > 0
+            consumed_end = intra_page_offset + count
+            has_buffered_tail = len(raw_memories) > consumed_end
+            has_more = has_buffered_tail or (not reached_end and count > 0)
 
         output: dict = {
             "ok": True,

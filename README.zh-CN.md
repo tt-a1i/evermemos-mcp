@@ -37,6 +37,7 @@
 - 可选：`EVERMEMOS_ENABLE_CONVERSATION_META=true`（默认开启）
 - 可选：`EVERMEMOS_LLM_CUSTOM_SETTING_JSON` 用于透传 `llm_custom_setting`
 - 可选：`EVERMEMOS_USER_DETAILS_JSON` 用于透传 conversation `user_details`
+- 可选：`EVERMEMOS_DEFAULT_TIMEZONE` 用于 conversation metadata 时区（默认 `UTC`）
 
 ## 安装方式
 - 克隆仓库：`git clone https://github.com/tt-a1i/evermemos-mcp.git`
@@ -90,8 +91,9 @@
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
 - `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，作用于 `episodic_memory/event_log/foresight`，不作用于 `profile`）
 - `briefing`: 支持可选 `user_id` 过滤
-- `fetch_history`: 支持按 `memory_type`（`profile|episodic_memory|foresight|event_log`）分页读取历史 (`limit/offset`)
-- `fetch_history`: 返回 `has_more/next_offset`，并携带可追溯字段（`memory_id`、`timestamp`、可选 `source_message_id`）
+- `fetch_history`: 支持按 `memory_type`（`profile|episodic_memory|foresight|event_log`）用精确 0-based `limit/offset` 分页读取历史
+- `fetch_history`: 内部会对上游 `page/page_size` 结果做拼接，保证非整页 offset 也不会错位
+- `fetch_history`: 返回 `has_more/next_offset`，并携带可追溯字段（`memory_id`、`timestamp`、`snippet` + `content`、可选 `source_message_id`）
 - Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
 - 状态查询使用 `/status/request`（Cloud v0 标准路径）
 
