@@ -317,6 +317,47 @@ class MemoryService:
         return ""
 
     @staticmethod
+    def _pending_message_key(item: object, fallback_index: int) -> str:
+        if isinstance(item, dict):
+            for key in ("id", "request_id", "message_id", "source_message_id"):
+                value = MemoryService._pick_non_empty_string(item, key)
+                if value:
+                    return f"{key}:{value}"
+            content = item.get("content")
+            if isinstance(content, str) and content.strip():
+                return f"content:{content.strip()}"
+            return f"dict:{fallback_index}:{repr(item)}"
+        if isinstance(item, str) and item.strip():
+            return f"text:{item.strip()}"
+        return f"raw:{fallback_index}:{repr(item)}"
+
+    @staticmethod
+    def _extract_pending_message_keys(search_result: dict) -> set[str]:
+        result_payload = search_result.get("result", {})
+        if not isinstance(result_payload, dict):
+            return set()
+
+        pending_messages = result_payload.get("pending_messages", [])
+        if not isinstance(pending_messages, list):
+            return set()
+
+        keys: set[str] = set()
+        for index, pending_item in enumerate(pending_messages):
+            keys.add(MemoryService._pending_message_key(pending_item, index))
+        return keys
+
+    @staticmethod
+    def _is_user_scope_compat_error(error: EverMemosError) -> bool:
+        if error.status_code not in {400, 404, 422} and error.code not in {
+            "INVALID_PARAMETER",
+            "INVALID_INPUT",
+        }:
+            return False
+
+        message = str(error).lower()
+        return "user_id" in message or "unknown field" in message
+
+    @staticmethod
     def _normalize_search_memory_items(
         raw_memories: object,
     ) -> list[tuple[int, dict, float | None]]:
@@ -896,12 +937,13 @@ class MemoryService:
             )
             result = await _run_single(retrieve_method, normalized_types)
 
-            rows, partial_errors, warnings, status, message, pending_count = (
+            rows, partial_errors, warnings, status, message, _ = (
                 self._map_search_response_to_results(
                     result,
                     include_metadata=include_metadata,
                 )
             )
+            pending_count = len(self._extract_pending_message_keys(result))
 
             if top_k != -1:
                 rows = rows[:top_k]
@@ -971,17 +1013,15 @@ class MemoryService:
 
         merged_rows: list[dict] = []
         seen: set[str] = set()
-        pending_count = 0
+        pending_keys: set[str] = set()
         warnings: list = []
 
         for _, success in successes:
-            rows, _, branch_warnings, _, _, branch_pending = (
-                self._map_search_response_to_results(
-                    success,
-                    include_metadata=include_metadata,
-                )
+            rows, _, branch_warnings, _, _, _ = self._map_search_response_to_results(
+                success,
+                include_metadata=include_metadata,
             )
-            pending_count += branch_pending
+            pending_keys.update(self._extract_pending_message_keys(success))
             warnings.extend(branch_warnings)
             for row in rows:
                 memory_id = row.get("memory_id")
@@ -1000,6 +1040,8 @@ class MemoryService:
 
         if top_k != -1:
             merged_rows = merged_rows[:top_k]
+
+        pending_count = len(pending_keys)
 
         output = {
             "ok": True,
@@ -1123,10 +1165,12 @@ class MemoryService:
                         text = str(data)
 
                 if text:
+                    snippet_text = text[:300]
                     highlights.append(
                         {
                             "type": "profile",
-                            "content": text[:300],
+                            "snippet": snippet_text,
+                            "content": snippet_text,
                             "timestamp": (
                                 pw.get("updated_at", "")
                                 or pw.get("created_at", "")
@@ -1145,9 +1189,11 @@ class MemoryService:
                     continue
                 summary = ep.get("summary", "")
                 if summary:
+                    snippet_text = summary[:300]
                     highlight = {
                         "type": "episodic_memory",
-                        "content": summary[:300],
+                        "snippet": snippet_text,
+                        "content": snippet_text,
                         "timestamp": ep.get("timestamp", ""),
                     }
                     source_message_id = self._extract_source_message_id(ep)
@@ -1167,9 +1213,11 @@ class MemoryService:
                 if isinstance(fact, list):
                     fact = "; ".join(str(v) for v in fact if v)
                 if fact:
+                    snippet_text = fact[:300]
                     highlight = {
                         "type": "event_log",
-                        "content": fact[:300],
+                        "snippet": snippet_text,
+                        "content": snippet_text,
                         "timestamp": ev.get("timestamp", ""),
                     }
                     source_message_id = self._extract_source_message_id(ev)
@@ -1196,9 +1244,11 @@ class MemoryService:
                     or fo.get("content", "")
                 )
                 if text:
+                    snippet_text = str(text)[:300]
                     highlight = {
                         "type": "foresight",
-                        "content": str(text)[:300],
+                        "snippet": snippet_text,
+                        "content": snippet_text,
                         "timestamp": (
                             fo.get("start_time", "")
                             or fo.get("end_time", "")
@@ -1396,37 +1446,46 @@ class MemoryService:
             unique_ids.append(mid)
 
         group_id = to_group_id(space_id)
+        user_scope_explicit = user_id is not None
         effective_user_id = user_id
         if effective_user_id is None:
             default_user_id = getattr(self._client, "user_id", None)
             if isinstance(default_user_id, str) and default_user_id.strip():
                 effective_user_id = default_user_id.strip()
-        if effective_user_id is None:
-            delete_scope_desc = "memory_id + group_id"
-        else:
-            delete_scope_desc = f"memory_id + group_id + user_id({effective_user_id})"
         errors: list[str] = []
+        unmatched_ids: list[str] = []
+        warnings: list[str] = []
 
         semaphore = asyncio.Semaphore(_FORGET_DELETE_CONCURRENCY)
 
+        async def _delete_with_scope(mid: str, scoped_user_id: str | None) -> dict:
+            return await self._client.delete_memories(
+                memory_id=mid,
+                group_id=group_id,
+                user_id=scoped_user_id,
+            )
+
         async def _delete_one(
             mid: str,
-        ) -> tuple[str, int, int, EverMemosError | None]:
+        ) -> tuple[str, int, int, EverMemosError | None, bool]:
             async with semaphore:
+                retried_without_scope = False
                 try:
-                    result = await self._client.delete_memories(
-                        memory_id=mid,
-                        group_id=group_id,
-                        user_id=effective_user_id,
-                    )
-                    count = result.get("result", {}).get("count", 0)
-                    if not isinstance(count, int):
-                        count = 0
-                    upstream_count = max(0, count)
-                    logical_deleted = 1 if upstream_count > 0 else 0
-                    return mid, upstream_count, logical_deleted, None
+                    result = await _delete_with_scope(mid, effective_user_id)
                 except EverMemosError as e:
-                    return mid, 0, 0, e
+                    should_retry_without_scope = (
+                        effective_user_id is not None
+                        and not user_scope_explicit
+                        and self._is_user_scope_compat_error(e)
+                    )
+                    if not should_retry_without_scope:
+                        return mid, 0, 0, e, retried_without_scope
+
+                    retried_without_scope = True
+                    try:
+                        result = await _delete_with_scope(mid, None)
+                    except EverMemosError as fallback_error:
+                        return mid, 0, 0, fallback_error, retried_without_scope
                 except Exception as e:  # pragma: no cover - defensive safeguard
                     return (
                         mid,
@@ -1436,24 +1495,42 @@ class MemoryService:
                             f"unexpected delete error: {e}",
                             code="UPSTREAM_ERROR",
                         ),
+                        retried_without_scope,
                     )
+
+                count = result.get("result", {}).get("count", 0)
+                if not isinstance(count, int):
+                    count = 0
+                upstream_count = max(0, count)
+                logical_deleted = 1 if upstream_count > 0 else 0
+                return mid, upstream_count, logical_deleted, None, retried_without_scope
 
         delete_results = await asyncio.gather(*(_delete_one(mid) for mid in unique_ids))
 
         deleted = 0
         logical_deleted = 0
-        for mid, count, logical_count, err in delete_results:
+        used_scope_fallback = False
+        for mid, count, logical_count, err, retried_without_scope in delete_results:
             deleted += count
             logical_deleted += logical_count
+            used_scope_fallback = used_scope_fallback or retried_without_scope
             if err is not None:
                 errors.append(f"{mid}: {err}")
             elif logical_count == 0:
-                errors.append(
-                    f"{mid}: no memory matched delete scope ({delete_scope_desc})"
-                )
+                unmatched_ids.append(mid)
 
         if logical_deleted:
             self._catalog.adjust_memory_count(space_id, -logical_deleted)
+
+        if used_scope_fallback:
+            warnings.append(
+                "Delete retried without user_id scope for compatibility with upstream."
+            )
+
+        if unmatched_ids:
+            warnings.append(
+                "Some memory IDs were not matched (already deleted or outside current scope)."
+            )
 
         normalized_reason = reason.strip() if isinstance(reason, str) else ""
         if normalized_reason:
@@ -1468,10 +1545,15 @@ class MemoryService:
             "space_id": space_id,
             "deleted_count": deleted,
         }
-        if effective_user_id is not None:
+        if effective_user_id is not None and not used_scope_fallback:
             output["delete_scope_user_id"] = effective_user_id
+        if unmatched_ids:
+            output["unmatched_ids"] = unmatched_ids
+            output["unmatched_count"] = len(unmatched_ids)
         if normalized_reason:
             output["reason_logged"] = True
         if errors:
             output["errors"] = errors
+        if warnings:
+            output["warnings"] = warnings
         return output

@@ -167,7 +167,7 @@ EverMemOS API
   - `deleted_count`
   - 可选 `delete_scope_user_id`
   - 可选 `errors[]`
-  - 若在当前删除范围下未匹配到任何记录，则返回 `ok=false`
+  - 删除保持幂等：未命中 ID 通过可选 `unmatched_ids/unmatched_count` 与 `warnings[]` 返回
 
 ### 5.6 `fetch_history`
 - 输入：

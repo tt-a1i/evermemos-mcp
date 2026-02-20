@@ -93,7 +93,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `briefing` time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
 - `briefing`: supports optional `user_id` filter
 - `forget`: supports optional `user_id` scope; defaults to the MCP client identity for safer multi-user deletes
-- `forget`: returns `ok=false` with `errors[]` when requested IDs match no rows under the active delete scope
+- `forget`: keeps idempotent delete semantics; unmatched IDs are returned as `unmatched_ids/unmatched_count` with warnings
 - `fetch_history`: paginates by `memory_type` (`profile|episodic_memory|foresight|event_log`) with exact 0-based `limit/offset`
 - `fetch_history`: internally stitches page-based upstream results to keep non-aligned offsets accurate
 - `fetch_history`: returns `has_more/next_offset` and trace fields (`memory_id`, `timestamp`, `snippet` + `content`, optional `source_message_id`)

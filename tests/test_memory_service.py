@@ -45,6 +45,44 @@ def _make_svc(
     return MemoryService(client, catalog), client
 
 
+def test_extract_memory_id_fallback_order():
+    assert (
+        MemoryService._extract_memory_id(
+            {
+                "id": "id-direct",
+                "memory_id": "id-legacy",
+                "metadata": {"id": "id-meta", "memory_id": "id-meta-legacy"},
+            }
+        )
+        == "id-direct"
+    )
+    assert (
+        MemoryService._extract_memory_id(
+            {
+                "memory_id": "id-legacy",
+                "metadata": {"id": "id-meta", "memory_id": "id-meta-legacy"},
+            }
+        )
+        == "id-legacy"
+    )
+    assert (
+        MemoryService._extract_memory_id(
+            {
+                "metadata": {"id": "id-meta", "memory_id": "id-meta-legacy"},
+            }
+        )
+        == "id-meta"
+    )
+    assert (
+        MemoryService._extract_memory_id(
+            {
+                "metadata": {"memory_id": "id-meta-legacy"},
+            }
+        )
+        == "id-meta-legacy"
+    )
+
+
 # -- list_spaces --
 
 
@@ -458,6 +496,42 @@ async def test_recall_auto_runs_hybrid_and_keyword_and_sets_actual_method():
         call.kwargs["retrieve_method"] for call in client.search_memories.call_args_list
     ]
     assert set(methods) == {"hybrid", "keyword"}
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_pending_count_deduplicates_across_branches():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    client.search_memories = AsyncMock(
+        side_effect=[
+            {
+                "result": {
+                    "memories": [],
+                    "pending_messages": [
+                        {"id": "p1", "content": "msg1"},
+                        {"id": "p2", "content": "msg2"},
+                        {"id": "p3", "content": "msg3"},
+                    ],
+                }
+            },
+            {
+                "result": {
+                    "memories": [],
+                    "pending_messages": [
+                        {"id": "p2", "content": "msg2"},
+                        {"id": "p3", "content": "msg3"},
+                        {"id": "p4", "content": "msg4"},
+                    ],
+                }
+            },
+        ]
+    )
+
+    result = await svc.recall("plan", "coding:app", retrieve_method="auto")
+
+    assert result["ok"] is True
+    assert result["pending_count"] == 4
+    assert "4 message" in result["pending_hint"]
 
 
 @pytest.mark.asyncio
@@ -928,6 +1002,8 @@ async def test_briefing_assembles_four_types():
         if item.get("type") == "episodic_memory"
     )
     assert len(result["highlights"]) == 4
+    assert all("snippet" in item for item in result["highlights"])
+    assert all(item["snippet"] == item["content"] for item in result["highlights"])
 
     types_found = {h["type"] for h in result["highlights"]}
     assert types_found == {"profile", "episodic_memory", "event_log", "foresight"}
@@ -957,6 +1033,7 @@ async def test_briefing_profile_highlight_uses_common_text_extractor():
     assert result["ok"] is True
     assert result["highlights"][0]["type"] == "profile"
     assert "concise" in result["highlights"][0]["content"]
+    assert result["highlights"][0]["snippet"] == result["highlights"][0]["content"]
 
 
 @pytest.mark.asyncio
@@ -1118,17 +1195,69 @@ async def test_forget_uses_explicit_user_id_when_provided():
 
 
 @pytest.mark.asyncio
-async def test_forget_returns_error_when_no_memory_matches_scope():
+async def test_forget_reports_unmatched_ids_when_no_memory_matches_scope():
     svc, client = _make_svc(delete_rv={"result": {"count": 0}})
     svc._catalog.ensure_space("coding:app")
 
     result = await svc.forget(["m1"], "coding:app", user_id="alice")
 
-    assert result["ok"] is False
+    assert result["ok"] is True
     assert result["deleted_count"] == 0
     assert result["delete_scope_user_id"] == "alice"
+    assert result["unmatched_count"] == 1
+    assert result["unmatched_ids"] == ["m1"]
+    assert "warnings" in result
+
+
+@pytest.mark.asyncio
+async def test_forget_retries_without_user_scope_for_compatibility():
+    async def mock_delete(*, memory_id=None, group_id=None, user_id=None, **kw):
+        if user_id == "mcp-user":
+            raise EverMemosError(
+                "unknown field user_id",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        return {"result": {"count": 1}}
+
+    svc, client = _make_svc()
+    client.delete_memories = AsyncMock(side_effect=mock_delete)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["m1"], "coding:app")
+
+    assert result["ok"] is True
+    assert result["deleted_count"] == 1
+    assert "delete_scope_user_id" not in result
+    assert any(
+        "retried without user_id scope" in warning for warning in result["warnings"]
+    )
+
+    assert client.delete_memories.call_count == 2
+    first_call_kwargs = client.delete_memories.call_args_list[0].kwargs
+    second_call_kwargs = client.delete_memories.call_args_list[1].kwargs
+    assert first_call_kwargs["user_id"] == "mcp-user"
+    assert second_call_kwargs["user_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_forget_does_not_retry_without_scope_when_user_id_is_explicit():
+    async def mock_delete(*, memory_id=None, group_id=None, user_id=None, **kw):
+        raise EverMemosError(
+            "unknown field user_id",
+            code="INVALID_PARAMETER",
+            status_code=400,
+        )
+
+    svc, client = _make_svc()
+    client.delete_memories = AsyncMock(side_effect=mock_delete)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["m1"], "coding:app", user_id="alice")
+
+    assert result["ok"] is False
     assert len(result["errors"]) == 1
-    assert "no memory matched delete scope" in result["errors"][0]
+    assert client.delete_memories.call_count == 1
 
 
 @pytest.mark.asyncio

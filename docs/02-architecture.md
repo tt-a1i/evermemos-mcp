@@ -129,7 +129,7 @@ EverMemOS API
 - Behavior: explicit-id deletion only; concurrent deletes with partial-failure reporting
 - Behavior: delete defaults to MCP client identity scope when `user_id` is omitted
 - Output: `ok`, `space_id`, `deleted_count`, optional `delete_scope_user_id`, optional `errors[]`
-- Output: `ok=false` when IDs do not match any rows under the active delete scope
+- Output: idempotent delete; unmatched IDs are reported via optional `unmatched_ids/unmatched_count` and `warnings[]`
 
 ### 5.6 `fetch_history`
 - Input: `space_id`, `memory_type?=episodic_memory`, `limit?=50`, `offset?=0`, `user_id?`, `start_time?`, `end_time?`, `include_metadata?=false`
