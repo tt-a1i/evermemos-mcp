@@ -32,6 +32,7 @@ _META_ENRICH_MAX_SPACES = 60
 _CATALOG_PAGE_SIZE = 100
 _CATALOG_MAX_FETCH_PAGES = 500
 _ENTRY_JSON_PREFIX = "SPACE_CATALOG_ENTRY:"
+_VALID_META_ROLES = {"user", "assistant"}
 
 
 # -- helpers --
@@ -82,7 +83,14 @@ class SpaceCatalogService:
 
     # -- public API --
 
-    async def register_space(self, space_id: str, description: str = "") -> SpaceInfo:
+    async def register_space(
+        self,
+        space_id: str,
+        description: str = "",
+        *,
+        actor_user_id: str | None = None,
+        actor_role: str = "user",
+    ) -> SpaceInfo:
         """Register or update a space. Persists to EverMemOS (best-effort)."""
         now = datetime.now(timezone.utc).isoformat()
 
@@ -103,7 +111,11 @@ class SpaceCatalogService:
         # Best-effort persist to catalog space
         await self._persist_entry(space_id, description, created_at=info.created_at)
         await self._persist_conversation_meta(
-            space_id, description, created_at=info.created_at
+            space_id,
+            description,
+            created_at=info.created_at,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
         )
         return info
 
@@ -147,6 +159,9 @@ class SpaceCatalogService:
         self,
         space_id: str,
         description: str | None = None,
+        *,
+        actor_user_id: str | None = None,
+        actor_role: str = "user",
     ) -> None:
         """Best-effort metadata upsert for a space.
 
@@ -163,6 +178,8 @@ class SpaceCatalogService:
             space_id,
             info.description,
             created_at=created_at,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
         )
 
     async def list_spaces(
@@ -225,6 +242,8 @@ class SpaceCatalogService:
         description: str,
         *,
         created_at: str,
+        actor_user_id: str | None = None,
+        actor_role: str = "user",
     ) -> None:
         if not EVERMEMOS_ENABLE_CONVERSATION_META:
             return
@@ -246,6 +265,10 @@ class SpaceCatalogService:
             "source": "evermemos-mcp",
         }
         tags = ["mcp", "memory-space", f"domain:{domain}", f"space:{space_id}"]
+        user_details = self._merge_user_details(
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+        )
 
         try:
             await self._client.set_conversation_metadata(
@@ -256,7 +279,7 @@ class SpaceCatalogService:
                 scene_desc=scene_desc,
                 tags=tags,
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
-                user_details=EVERMEMOS_USER_DETAILS,
+                user_details=user_details,
                 default_timezone="UTC",
             )
             return
@@ -286,13 +309,50 @@ class SpaceCatalogService:
                 scene_desc=scene_desc,
                 tags=tags,
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
-                user_details=EVERMEMOS_USER_DETAILS,
+                user_details=user_details,
                 default_timezone="UTC",
             )
         except EverMemosError as exc:
             logger.warning(
                 "Failed to persist conversation metadata for %s: %s", space_id, exc
             )
+
+    @staticmethod
+    def _merge_user_details(
+        *,
+        actor_user_id: str | None,
+        actor_role: str,
+    ) -> dict | None:
+        merged: dict[str, dict] = {}
+
+        if isinstance(EVERMEMOS_USER_DETAILS, dict):
+            for raw_user_id, raw_profile in EVERMEMOS_USER_DETAILS.items():
+                if not isinstance(raw_user_id, str) or not raw_user_id.strip():
+                    continue
+                user_id = raw_user_id.strip()
+                profile = dict(raw_profile) if isinstance(raw_profile, dict) else {}
+                merged[user_id] = profile
+
+        if isinstance(actor_user_id, str) and actor_user_id.strip():
+            normalized_actor_user_id = actor_user_id.strip()
+            normalized_role = actor_role if actor_role in _VALID_META_ROLES else "user"
+            actor_profile = merged.get(normalized_actor_user_id)
+            if actor_profile is None:
+                merged[normalized_actor_user_id] = {
+                    "full_name": normalized_actor_user_id,
+                    "role": normalized_role,
+                }
+            else:
+                if not isinstance(
+                    actor_profile.get("role"), str
+                ) or not actor_profile.get("role"):
+                    actor_profile["role"] = normalized_role
+                if not isinstance(
+                    actor_profile.get("full_name"), str
+                ) or not actor_profile.get("full_name"):
+                    actor_profile["full_name"] = normalized_actor_user_id
+
+        return merged or None
 
     def _should_try_recover(self) -> bool:
         """Check if recovery should be attempted."""

@@ -1,6 +1,6 @@
 """MCP Server entry point for evermemos-mcp.
 
-Registers 5 tools and runs over stdio transport.
+Registers 6 tools and runs over stdio transport.
 """
 
 from __future__ import annotations
@@ -294,6 +294,69 @@ TOOLS: list[types.Tool] = [
             "required": ["memory_ids", "space_id"],
         },
     ),
+    types.Tool(
+        name="fetch_history",
+        description=(
+            "Page through historical memories in a space by memory_type. "
+            "Useful for timeline-style review when recall ranking is not enough."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "space_id": {
+                    "type": "string",
+                    "description": "Memory space to fetch",
+                },
+                "memory_type": {
+                    "type": "string",
+                    "description": "Memory type to page through",
+                    "enum": [
+                        "profile",
+                        "episodic_memory",
+                        "foresight",
+                        "event_log",
+                    ],
+                    "default": "episodic_memory",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Page size (1-100)",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 50,
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Pagination offset (0-based)",
+                    "minimum": 0,
+                    "default": 0,
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "Optional user ID to filter memories. Defaults to the MCP client's identity.",
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": (
+                        "ISO 8601 start time with timezone "
+                        "(naive values default to UTC)"
+                    ),
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": (
+                        "ISO 8601 end time with timezone (naive values default to UTC)"
+                    ),
+                },
+                "include_metadata": {
+                    "type": "boolean",
+                    "description": "Whether to include metadata in each item",
+                    "default": False,
+                },
+            },
+            "required": ["space_id"],
+        },
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -371,6 +434,18 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             memory_ids=args["memory_ids"],
             space_id=args["space_id"],
             reason=args.get("reason"),
+        )
+
+    if name == "fetch_history":
+        return await svc.fetch_history(
+            space_id=args["space_id"],
+            memory_type=args.get("memory_type", "episodic_memory"),
+            limit=args.get("limit", 50),
+            offset=args.get("offset", 0),
+            user_id=args.get("user_id"),
+            start_time=args.get("start_time"),
+            end_time=args.get("end_time"),
+            include_metadata=args.get("include_metadata", False),
         )
 
     return {"ok": False, "error": "UNKNOWN_TOOL", "message": f"No tool named '{name}'"}

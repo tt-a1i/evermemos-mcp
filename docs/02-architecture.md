@@ -29,7 +29,7 @@ EverMemOS API
 ## 3) Core Modules
 
 ### 3.1 `server` (MCP entry)
-- Registers 5 tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`
+- Registers 6 tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`, `fetch_history`
 - Handles input validation, error mapping, and uniform response shape
 
 ### 3.2 `space_router`
@@ -54,7 +54,7 @@ EverMemOS API
 ### 3.5 `evermemos_client`
 - Wraps `/api/v0/memories`, `/api/v0/memories/search`, `/api/v0/status/request`
 - Request status uses `/api/v0/status/request` (Cloud v0 canonical path)
-- Adds auth, timeout, lightweight retries, and error normalization
+- Adds auth, timeout, retries (including 429 backoff), and error normalization
 - Supports local `v1` endpoints via configuration
 - Note: upstream fetch/search contract is `GET + JSON body`; some proxies/WAFs may strip GET bodies
 
@@ -86,6 +86,7 @@ EverMemOS API
   - `space_id` (required)
   - `description?`
   - `sender?=user`
+  - `user_id?` / `role?`
   - `flush?=false`
   - `include_status?=false`
 - Output:
@@ -108,6 +109,7 @@ EverMemOS API
   - `current_time?` (ISO 8601)
   - `radius?` (0-1)
   - `include_metadata?=false`
+  - `user_id?` (optional identity scope in shared spaces)
 - Output:
   - `ok`, `space_id`, `results[]`
   - `retrieve_method_actual=auto(hybrid+keyword)` when auto strategy is used
@@ -115,7 +117,7 @@ EverMemOS API
   - `partial_hint/partial_errors` when upstream returns partial results
 
 ### 5.4 `briefing`
-- Input: `space_id`, `max_items?=8`, `start_time?`, `end_time?`
+- Input: `space_id`, `max_items?=8`, `start_time?`, `end_time?`, `user_id?`
 - Behavior: layered fetch and synthesis from `profile + episodic_memory + event_log + foresight`
 - Time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
 - Output: `ok`, `space_id`, `summary`, `highlights[]`
@@ -125,12 +127,18 @@ EverMemOS API
 - Behavior: explicit-id deletion only; concurrent deletes with partial-failure reporting
 - Output: `ok`, `space_id`, `deleted_count`, optional `errors[]`
 
+### 5.6 `fetch_history`
+- Input: `space_id`, `memory_type?=episodic_memory`, `limit?=50`, `offset?=0`, `user_id?`, `start_time?`, `end_time?`, `include_metadata?=false`
+- Behavior: paginated fetch by memory type for timeline-style review (including `event_log` and `foresight`)
+- Output: `ok`, `space_id`, `memory_type`, `items[]`, `count`, optional `total_count`, `has_more`, optional `next_offset`
+
 ## 6) Citation Policy (V1)
 - `recall/briefing` results include traceable evidence fields:
   - `timestamp`
   - `snippet`
   - `memory_type`
   - `score` (if available)
+  - `source_message_id` (if upstream includes a resolvable message reference)
 
 ## 7) Error Semantics
 - `CONFIG_ERROR`: missing/invalid config
@@ -139,7 +147,7 @@ EverMemOS API
 - `NOT_FOUND`: empty query result or missing target
 
 ## 8) Test Matrix (V1)
-- Contract tests for all 5 tools
+- Contract tests for all 6 tools
 - Isolation tests across different `space_id`
 - Citation field tests for `recall/briefing`
 - Safety tests for explicit-id deletion

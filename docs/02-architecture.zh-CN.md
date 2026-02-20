@@ -29,7 +29,7 @@ EverMemOS API
 ## 3) 核心模块
 
 ### 3.1 `server`（MCP 入口）
-- 注册 5 个 tools：`list_spaces` / `remember` / `recall` / `briefing` / `forget`
+- 注册 6 个 tools：`list_spaces` / `remember` / `recall` / `briefing` / `forget` / `fetch_history`
 - 做输入校验、错误映射、统一响应格式
 
 ### 3.2 `space_router`（空间路由）
@@ -57,7 +57,7 @@ EverMemOS API
 - 封装 `/api/v0/status/request`，用于查询异步写入状态
 - 状态查询使用 `/api/v0/status/request`（Cloud v0 标准路径）
 - 本地兼容：可切换到 `/api/v1/*`（通过配置）
-- 处理鉴权、超时、重试和错误信息提炼
+- 处理鉴权、超时、重试（含 429 退避）和错误信息提炼
 - 注意：官方 `fetch/search` 契约是 `GET + JSON body`，在部分代理/WAF 环境可能被剥离请求体
 
 ## 4) 数据与隔离模型
@@ -98,6 +98,7 @@ EverMemOS API
   - `space_id` (required)
   - `description` (optional, 创建新 space 时建议提供)
   - `sender` (optional, default: `user`)
+  - `user_id` / `role` (optional)
   - `flush` (optional, default: false)
   - `include_status` (optional, default: false)
 - 行为：写入一条消息并触发 EverMemOS 记忆提取
@@ -127,6 +128,7 @@ EverMemOS API
   - `current_time` (optional, ISO 8601 with timezone)
   - `radius` (optional, 0-1, 主要用于 `vector/hybrid`)
   - `include_metadata` (optional, default: false)
+  - `user_id` (optional，多用户共享空间时可按身份过滤)
 - 行为：检索相关记忆并返回可引用结果
 - 输出：
   - `ok`
@@ -139,6 +141,7 @@ EverMemOS API
 - 输入：
   - `space_id` (required)
   - `max_items` (optional, default: 8)
+  - `user_id` (optional)
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
 - 行为：分层抓取后生成上下文简报（profile + episodic + event_log + foresight）
   - `start_time/end_time` 作用于 `episodic_memory`、`event_log` 与 `foresight`，不作用于 `profile`
@@ -159,12 +162,25 @@ EverMemOS API
   - `space_id`
   - `deleted_count`
 
+### 5.6 `fetch_history`
+- 输入：
+  - `space_id` (required)
+  - `memory_type` (optional, default: `episodic_memory`，可选 `profile|episodic_memory|foresight|event_log`)
+  - `limit` (optional, default: 50, 范围 1-100)
+  - `offset` (optional, default: 0)
+  - `user_id` (optional)
+  - `start_time` / `end_time` (optional)
+  - `include_metadata` (optional, default: false)
+- 行为：按 memory type 分页读取历史，适合时间线浏览/批量复盘
+- 输出：`ok`、`space_id`、`memory_type`、`items[]`、`count`、可选 `total_count`、`has_more`、可选 `next_offset`
+
 ## 6) 来源引用策略（V1 必做）
 - recall/briefing 输出必须带轻量引用：
   - `timestamp`
   - `snippet`（截断后的上下文片段）
   - `memory_type`
   - `score`（若检索结果提供）
+  - `source_message_id`（若上游可解析到原始消息引用）
 - 目标：让结果可追溯、可验证、可解释
 
 ## 7) 错误语义
@@ -174,7 +190,7 @@ EverMemOS API
 - `NOT_FOUND`：查询为空或待删除对象不存在
 
 ## 8) 最小测试矩阵（V1）
-- 合同测试：5 个 tools 的输入输出结构
+- 合同测试：6 个 tools 的输入输出结构
 - 隔离测试：不同 `space_id` 互不召回
 - 引用测试：recall/briefing 必须返回时间+片段
 - 安全测试：forget 仅允许显式 id 删除

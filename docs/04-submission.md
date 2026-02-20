@@ -22,7 +22,7 @@
 1. Problem
 2. Solution
 3. Why MCP + EverMemOS
-4. Live capabilities (5 tools)
+4. Live capabilities (6 tools)
 5. Demo highlights
 6. Future roadmap
 

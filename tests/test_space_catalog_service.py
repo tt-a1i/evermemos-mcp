@@ -177,6 +177,38 @@ async def test_register_passes_user_details(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ensure_conversation_meta_adds_dynamic_actor_to_user_details(monkeypatch):
+    monkeypatch.setattr(
+        catalog_module,
+        "EVERMEMOS_USER_DETAILS",
+        {
+            "mcp-user": {
+                "full_name": "Default User",
+                "role": "user",
+            }
+        },
+    )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta(
+        "coding:app",
+        actor_user_id="alice",
+        actor_role="assistant",
+    )
+
+    _, kwargs = client.set_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["mcp-user"]["full_name"] == "Default User"
+    assert user_details["alice"]["role"] == "assistant"
+    assert user_details["alice"]["full_name"] == "alice"
+
+
+@pytest.mark.asyncio
 async def test_register_updates_description():
     client = AsyncMock(spec=EverMemosClient)
     client.add_message = AsyncMock(return_value={"status": "queued"})

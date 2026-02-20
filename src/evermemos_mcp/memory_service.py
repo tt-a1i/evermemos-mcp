@@ -20,12 +20,14 @@ _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic", "aut
 _DEFAULT_RECALL_TOP_K = 10
 _MAX_RECALL_TOP_K = 100
 _MEMORY_TYPE_ORDER = ("episodic_memory", "profile", "foresight", "event_log")
+_FETCH_MEMORY_TYPES = set(_MEMORY_TYPE_ORDER)
 _SEARCH_MEMORY_TYPES = ("profile", "episodic_memory")
 _VALID_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
 _HYBRID_ALLOWED_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
+_MAX_FETCH_HISTORY_LIMIT = 100
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,25 @@ class MemoryService:
                 code="INVALID_INPUT",
             )
         return value
+
+    @staticmethod
+    def _validate_non_negative_int(value: int, field_name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise EverMemosError(
+                f"{field_name} must be a non-negative integer",
+                code="INVALID_INPUT",
+            )
+        return value
+
+    @staticmethod
+    def _validate_fetch_limit(value: int) -> int:
+        limit = MemoryService._validate_positive_int(value, "limit")
+        if limit > _MAX_FETCH_HISTORY_LIMIT:
+            raise EverMemosError(
+                f"limit must be between 1 and {_MAX_FETCH_HISTORY_LIMIT}",
+                code="INVALID_INPUT",
+            )
+        return limit
 
     @staticmethod
     def _validate_top_k(value: int) -> int:
@@ -175,6 +196,22 @@ class MemoryService:
         return normalized
 
     @staticmethod
+    def _validate_fetch_memory_type(memory_type: str) -> str:
+        if not isinstance(memory_type, str) or not memory_type.strip():
+            raise EverMemosError(
+                "memory_type is required",
+                code="INVALID_INPUT",
+            )
+
+        value = memory_type.strip()
+        if value not in _FETCH_MEMORY_TYPES:
+            raise EverMemosError(
+                "memory_type must be one of: profile, episodic_memory, foresight, event_log",
+                code="INVALID_INPUT",
+            )
+        return value
+
+    @staticmethod
     def _validate_radius(radius: float | None) -> float | None:
         if radius is None:
             return None
@@ -277,6 +314,99 @@ class MemoryService:
         return normalized
 
     @staticmethod
+    def _extract_source_message_id(item: dict) -> str | None:
+        def _pick_string(mapping: object, key: str) -> str | None:
+            if not isinstance(mapping, dict):
+                return None
+            value = mapping.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            return None
+
+        direct = _pick_string(item, "source_message_id") or _pick_string(
+            item, "message_id"
+        )
+        if direct:
+            return direct
+
+        metadata = item.get("metadata")
+        metadata_direct = _pick_string(metadata, "source_message_id") or _pick_string(
+            metadata, "message_id"
+        )
+        if metadata_direct:
+            return metadata_direct
+
+        parent_type = item.get("parent_type")
+        parent_id = _pick_string(item, "parent_id")
+        if isinstance(parent_type, str) and parent_id:
+            if parent_type.strip().lower() in {"message", "chat_message", "msg"}:
+                return parent_id
+
+        meta_parent_type = (
+            metadata.get("parent_type") if isinstance(metadata, dict) else None
+        )
+        meta_parent_id = _pick_string(metadata, "parent_id")
+        if isinstance(meta_parent_type, str) and meta_parent_id:
+            if meta_parent_type.strip().lower() in {"message", "chat_message", "msg"}:
+                return meta_parent_id
+
+        return None
+
+    @staticmethod
+    def _extract_memory_text(item: dict) -> str:
+        profile_data = item.get("profile_data")
+        if isinstance(profile_data, dict):
+            profile_text = (
+                profile_data.get("summary", "")
+                or profile_data.get("description", "")
+                or profile_data.get("content", "")
+            )
+            if isinstance(profile_text, str) and profile_text.strip():
+                return profile_text
+
+        atomic_fact = item.get("atomic_fact", "")
+        if isinstance(atomic_fact, list):
+            atomic_fact = "; ".join(str(v) for v in atomic_fact if v)
+
+        text = (
+            item.get("summary", "")
+            or item.get("episode", "")
+            or item.get("foresight", "")
+            or atomic_fact
+            or item.get("description", "")
+            or item.get("content", "")
+            or ""
+        )
+        return text if isinstance(text, str) else str(text)
+
+    @staticmethod
+    def _map_fetch_memory_item_to_row(
+        item: dict,
+        *,
+        memory_type: str,
+        include_metadata: bool,
+    ) -> dict:
+        row: dict = {
+            "memory_id": item.get("id", ""),
+            "memory_type": item.get("memory_type", "") or memory_type,
+            "content": MemoryService._extract_memory_text(item)[:800],
+            "timestamp": (
+                item.get("timestamp", "")
+                or item.get("start_time", "")
+                or item.get("created_at", "")
+            ),
+        }
+
+        source_message_id = MemoryService._extract_source_message_id(item)
+        if source_message_id:
+            row["source_message_id"] = source_message_id
+
+        if include_metadata and "metadata" in item:
+            row["metadata"] = item.get("metadata")
+
+        return row
+
+    @staticmethod
     def _map_search_response_to_results(
         result: dict,
         *,
@@ -322,6 +452,9 @@ class MemoryService:
                 "timestamp": item.get("timestamp", "") or item.get("created_at", ""),
                 "score": score,
             }
+            source_message_id = MemoryService._extract_source_message_id(item)
+            if source_message_id:
+                row["source_message_id"] = source_message_id
             if include_metadata and "metadata" in item:
                 row["metadata"] = item.get("metadata")
             results.append(row)
@@ -452,10 +585,19 @@ class MemoryService:
             )
 
         if description:
-            await self._catalog.register_space(space_id, description.strip())
+            await self._catalog.register_space(
+                space_id,
+                description.strip(),
+                actor_user_id=sender_id,
+                actor_role=effective_role,
+            )
         else:
             self._catalog.ensure_space(space_id)
-            await self._catalog.ensure_conversation_meta(space_id)
+            await self._catalog.ensure_conversation_meta(
+                space_id,
+                actor_user_id=sender_id,
+                actor_role=effective_role,
+            )
 
         group_id = to_group_id(space_id)
         created_at = datetime.now(timezone.utc).isoformat()
@@ -901,13 +1043,15 @@ class MemoryService:
                     continue
                 summary = ep.get("summary", "")
                 if summary:
-                    highlights.append(
-                        {
-                            "type": "episodic_memory",
-                            "content": summary[:300],
-                            "timestamp": ep.get("timestamp", ""),
-                        }
-                    )
+                    highlight = {
+                        "type": "episodic_memory",
+                        "content": summary[:300],
+                        "timestamp": ep.get("timestamp", ""),
+                    }
+                    source_message_id = self._extract_source_message_id(ep)
+                    if source_message_id:
+                        highlight["source_message_id"] = source_message_id
+                    highlights.append(highlight)
             if episodes:
                 summary_parts.append(f"{len(episodes)} recent episode(s)")
 
@@ -921,13 +1065,15 @@ class MemoryService:
                 if isinstance(fact, list):
                     fact = "; ".join(str(v) for v in fact if v)
                 if fact:
-                    highlights.append(
-                        {
-                            "type": "event_log",
-                            "content": fact[:300],
-                            "timestamp": ev.get("timestamp", ""),
-                        }
-                    )
+                    highlight = {
+                        "type": "event_log",
+                        "content": fact[:300],
+                        "timestamp": ev.get("timestamp", ""),
+                    }
+                    source_message_id = self._extract_source_message_id(ev)
+                    if source_message_id:
+                        highlight["source_message_id"] = source_message_id
+                    highlights.append(highlight)
             if events:
                 summary_parts.append(f"{len(events)} key fact(s)")
 
@@ -948,19 +1094,21 @@ class MemoryService:
                     or fo.get("content", "")
                 )
                 if text:
-                    highlights.append(
-                        {
-                            "type": "foresight",
-                            "content": str(text)[:300],
-                            "timestamp": (
-                                fo.get("start_time", "")
-                                or fo.get("end_time", "")
-                                or fo.get("timestamp", "")
-                                or fo.get("target_time", "")
-                                or fo.get("created_at", "")
-                            ),
-                        }
-                    )
+                    highlight = {
+                        "type": "foresight",
+                        "content": str(text)[:300],
+                        "timestamp": (
+                            fo.get("start_time", "")
+                            or fo.get("end_time", "")
+                            or fo.get("timestamp", "")
+                            or fo.get("target_time", "")
+                            or fo.get("created_at", "")
+                        ),
+                    }
+                    source_message_id = self._extract_source_message_id(fo)
+                    if source_message_id:
+                        highlight["source_message_id"] = source_message_id
+                    highlights.append(highlight)
             if foresights:
                 summary_parts.append(f"{len(foresights)} foresight item(s)")
 
@@ -982,6 +1130,95 @@ class MemoryService:
                 {"memory_type": memory_type, "message": str(error)}
                 for memory_type, error in failures
             ]
+
+        return output
+
+    # -- fetch_history --
+
+    async def fetch_history(
+        self,
+        space_id: str,
+        *,
+        memory_type: str = "episodic_memory",
+        limit: int = 50,
+        offset: int = 0,
+        user_id: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        include_metadata: bool = False,
+    ) -> dict:
+        space_id = self._validate_space_id(space_id)
+        memory_type = self._validate_fetch_memory_type(memory_type)
+        limit = self._validate_fetch_limit(limit)
+        offset = self._validate_non_negative_int(offset, "offset")
+        user_id = self._validate_user_id(user_id)
+        start_time = self._validate_iso_datetime(start_time, "start_time")
+        end_time = self._validate_iso_datetime(end_time, "end_time")
+        start_time, end_time = self._validate_time_window(start_time, end_time)
+        if not isinstance(include_metadata, bool):
+            raise EverMemosError(
+                "include_metadata must be a boolean",
+                code="INVALID_INPUT",
+            )
+
+        group_id = to_group_id(space_id)
+        self._catalog.touch_space(space_id)
+
+        result = await self._client.fetch_memories(
+            group_id,
+            memory_type=memory_type,
+            user_id=user_id,
+            limit=limit,
+            offset=offset,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        res = result.get("result", {}) if isinstance(result, dict) else {}
+        if not isinstance(res, dict):
+            res = {}
+
+        raw_memories = res.get("memories", [])
+        if not isinstance(raw_memories, list):
+            raw_memories = []
+
+        rows = [
+            self._map_fetch_memory_item_to_row(
+                item,
+                memory_type=memory_type,
+                include_metadata=include_metadata,
+            )
+            for item in raw_memories
+            if isinstance(item, dict)
+        ]
+
+        count = res.get("count")
+        if not isinstance(count, int) or count < 0:
+            count = len(raw_memories)
+
+        total_count = res.get("total_count")
+        if not isinstance(total_count, int) or total_count < 0:
+            total_count = None
+
+        if total_count is not None:
+            has_more = offset + count < total_count
+        else:
+            has_more = count >= limit and count > 0
+
+        output: dict = {
+            "ok": True,
+            "space_id": space_id,
+            "memory_type": memory_type,
+            "limit": limit,
+            "offset": offset,
+            "count": count,
+            "items": rows,
+            "has_more": has_more,
+        }
+        if total_count is not None:
+            output["total_count"] = total_count
+        if has_more:
+            output["next_offset"] = offset + count
 
         return output
 

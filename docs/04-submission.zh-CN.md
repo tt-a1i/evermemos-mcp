@@ -25,7 +25,7 @@
 1. 问题定义
 2. 方案说明
 3. 为什么选择 MCP + EverMemOS
-4. 线上能力展示（5 个 tools）
+4. 线上能力展示（6 个 tools）
 5. 演示亮点（Demo highlights）
 6. 后续路线图
 

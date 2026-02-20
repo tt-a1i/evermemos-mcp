@@ -28,7 +28,7 @@ Session resets break user experience:
 
 ## 5) Scope
 ### In Scope (V1)
-- MCP tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`
+- MCP tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`, `fetch_history`
 - Memory scope isolation by `space_id` (required); `project_id` is only one mapping for coding scenarios
 - EverMemOS API integration for store/search/delete
 - Cloud-only data strategy (no local persistence)
@@ -50,6 +50,7 @@ Session resets break user experience:
 ## 7) V1 Acceptance Criteria
 - `list_spaces` returns routable metadata: `space_id`, `description`, `memory_count`
 - After `remember`, `recall` can retrieve related memories under the same `space_id`
+- `fetch_history` supports paginated timeline retrieval by `memory_type`
 - Cross-space retrieval does not leak memory across `space_id`
 - `briefing` returns explainable output for both empty and non-empty spaces
 - `forget` hides target memory from subsequent retrieval
@@ -67,7 +68,7 @@ Session resets break user experience:
 
 ## 10) Version Plan
 ### V1 (Hackathon Submission)
-- Five MCP tools + `space_id` isolation + reproducible demo
+- Six MCP tools + `space_id` isolation + reproducible demo
 
 ### V1.1 (Enhancements)
 - Automatic session-summary ingestion

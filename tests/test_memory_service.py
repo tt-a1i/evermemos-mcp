@@ -128,6 +128,24 @@ async def test_remember_prefers_upstream_message_id_when_present():
 
 
 @pytest.mark.asyncio
+async def test_remember_updates_conversation_meta_with_dynamic_user_identity():
+    svc, client = _make_svc()
+
+    await svc.remember(
+        "coding:app",
+        "payload",
+        sender="assistant",
+        user_id="alice",
+        role="assistant",
+    )
+
+    client.set_conversation_metadata.assert_called_once()
+    _, kwargs = client.set_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["alice"]["role"] == "assistant"
+
+
+@pytest.mark.asyncio
 async def test_remember_include_status_fetches_request_status():
     svc, client = _make_svc()
     result = await svc.remember("study:ml", "Neural nets", include_status=True)
@@ -232,6 +250,31 @@ async def test_recall_maps_search_results():
     r1 = result["results"][1]
     assert r1["memory_id"] == "mem-002"
     assert "FastAPI" in r1["snippet"]
+
+
+@pytest.mark.asyncio
+async def test_recall_includes_source_message_id_when_available():
+    search_response = {
+        "result": {
+            "memories": [
+                {
+                    "id": "mem-001",
+                    "memory_type": "episodic_memory",
+                    "summary": "User discussed FastAPI with SQLAlchemy",
+                    "timestamp": "2026-02-10T10:00:00Z",
+                    "parent_type": "message",
+                    "parent_id": "msg-001",
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.recall("FastAPI", "coding:app")
+    assert result["ok"] is True
+    assert result["results"][0]["source_message_id"] == "msg-001"
 
 
 @pytest.mark.asyncio
@@ -634,6 +677,77 @@ async def test_recall_agentic_rejects_non_profile_or_episodic_memory_types():
     assert exc_info.value.code == "INVALID_INPUT"
 
 
+# -- fetch_history --
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_maps_rows_and_pagination_fields():
+    fetch_response = {
+        "result": {
+            "memories": [
+                {
+                    "id": "evt-001",
+                    "memory_type": "event_log",
+                    "atomic_fact": "Project uses FastAPI",
+                    "timestamp": "2026-02-10T10:00:00Z",
+                    "parent_type": "message",
+                    "parent_id": "msg-001",
+                }
+            ],
+            "count": 1,
+            "total_count": 3,
+        }
+    }
+    svc, client = _make_svc(fetch_rv=fetch_response)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.fetch_history(
+        "coding:app",
+        memory_type="event_log",
+        limit=1,
+        offset=1,
+        user_id="alice",
+    )
+
+    assert result["ok"] is True
+    assert result["memory_type"] == "event_log"
+    assert result["count"] == 1
+    assert result["total_count"] == 3
+    assert result["has_more"] is True
+    assert result["next_offset"] == 2
+    assert result["items"][0]["source_message_id"] == "msg-001"
+    assert "FastAPI" in result["items"][0]["content"]
+
+    client.fetch_memories.assert_called_once()
+    _, kwargs = client.fetch_memories.call_args
+    assert kwargs["memory_type"] == "event_log"
+    assert kwargs["limit"] == 1
+    assert kwargs["offset"] == 1
+    assert kwargs["user_id"] == "alice"
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_rejects_invalid_memory_type():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.fetch_history("coding:app", memory_type="unknown")
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_rejects_negative_offset():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.fetch_history("coding:app", offset=-1)
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
 # -- briefing --
 
 
@@ -664,6 +778,8 @@ async def test_briefing_assembles_four_types():
                         {
                             "summary": "Discussed React architecture decisions",
                             "timestamp": "2026-02-10T11:00:00Z",
+                            "parent_type": "message",
+                            "parent_id": "msg-ep-001",
                         }
                     ]
                 }
@@ -703,6 +819,11 @@ async def test_briefing_assembles_four_types():
     assert call_count == 4  # profile + episodic + event_log + foresight
     assert (
         "profile" in result["summary"].lower() or "episode" in result["summary"].lower()
+    )
+    assert any(
+        item.get("source_message_id") == "msg-ep-001"
+        for item in result["highlights"]
+        if item.get("type") == "episodic_memory"
     )
     assert len(result["highlights"]) == 4
 

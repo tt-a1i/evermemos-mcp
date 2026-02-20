@@ -184,6 +184,61 @@ async def test_request_retries_get_on_503_response():
 
 
 @pytest.mark.asyncio
+async def test_request_retries_on_429_with_retry_after_header():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v0",
+        rate_limit_retry_count=1,
+    )
+    req = httpx.Request("POST", "http://test")
+    response_429 = httpx.Response(
+        429,
+        json={"code": "RATE_LIMIT", "message": "Too many requests"},
+        headers={"Retry-After": "0"},
+        request=req,
+    )
+    response_queued = httpx.Response(
+        202,
+        json={"status": "queued", "request_id": "req-1"},
+        request=req,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(side_effect=[response_429, response_queued])
+    c._get_client = AsyncMock(return_value=mock_client)
+
+    result = await c._request("POST", "/memories", json={"x": 1})
+    assert result["status"] == "queued"
+    assert mock_client.request.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_request_returns_429_error_after_rate_limit_retries_exhausted():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v0",
+        rate_limit_retry_count=1,
+        rate_limit_backoff_seconds=0,
+    )
+    req = httpx.Request("GET", "http://test")
+    response_429 = httpx.Response(
+        429,
+        json={"code": "RATE_LIMIT", "message": "Too many requests"},
+        request=req,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(side_effect=[response_429, response_429])
+    c._get_client = AsyncMock(return_value=mock_client)
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c._request("GET", "/memories")
+
+    assert exc_info.value.status_code == 429
+    assert mock_client.request.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_client_supports_async_context_manager_close():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._get_client = AsyncMock(return_value=AsyncMock())

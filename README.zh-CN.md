@@ -15,12 +15,14 @@
 - `recall`
 - `briefing`
 - `forget`
+- `fetch_history`
 
 ## 核心行为（Cloud v0）
 - 写入是异步队列：`remember` 成功后返回 `request_id`，并不代表立刻可召回
 - 检索可见待处理提示：`recall` 会返回 `pending_count/pending_hint`
 - `space_id` 是唯一隔离键（格式 `<domain>:<slug>`）
 - 默认路由依赖 `list_spaces` + 描述，不做 cwd/git 自动猜测
+- `remember` 传入动态 `user_id` 时，会 best-effort 同步参与者身份到 conversation metadata
 
 ## 为什么需要 `space::catalog`
 - EverMemOS 的 metadata 接口都要求传具体 `group_id`（`get/set/update`），没有全局会话列表接口
@@ -78,14 +80,18 @@
 - `remember`: 默认 `flush=false`，仅在明确会话边界时使用 `flush=true`
 - `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic|auto`
 - `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示返回全部，仍受上游上限约束）
+- `recall`: 支持可选 `user_id` 过滤（适用于多用户共享空间）
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 可选 `memory_types` 目前仅支持 `profile|episodic_memory`（受 Cloud search API 限制）
 - `recall`: 对 `hybrid|rrf|agentic`，默认会收敛到 `profile+episodic_memory`
 - `recall`: `auto` 会并行执行 `hybrid + keyword` 并按 `memory_id` 去重合并，分支失败会以提示形式返回
-- `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`
+- `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`（可选 `source_message_id`）
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
 - `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，作用于 `episodic_memory/event_log/foresight`，不作用于 `profile`）
+- `briefing`: 支持可选 `user_id` 过滤
+- `fetch_history`: 支持按 `memory_type`（`profile|episodic_memory|foresight|event_log`）分页读取历史 (`limit/offset`)
+- `fetch_history`: 返回 `has_more/next_offset`，并携带可追溯字段（`memory_id`、`timestamp`、可选 `source_message_id`）
 - Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
 - 状态查询使用 `/status/request`（Cloud v0 标准路径）
 

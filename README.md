@@ -15,12 +15,14 @@ Universal MCP memory layer powered by EverMemOS.
 - `recall`
 - `briefing`
 - `forget`
+- `fetch_history`
 
 ## Core Behavior (Cloud v0)
 - Writes are async queued: `remember` returns a `request_id` and does not guarantee immediate recall
 - `recall` can include `pending_count` and `pending_hint` while extraction is still running
 - `space_id` is the only isolation key (`<domain>:<slug>`)
 - Routing is expected to use `list_spaces` and descriptions, not cwd/git auto-detection
+- `remember` with a dynamic `user_id` best-effort syncs participant identity into conversation metadata
 
 ## Why `space::catalog` Exists
 - EverMemOS metadata APIs are scoped by `group_id` (`get/set/update`) and do not provide a global list endpoint
@@ -77,14 +79,18 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `remember`: default `flush=false`; use `flush=true` only at clear conversation boundaries
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic|auto`
 - `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means all, capped by upstream)
+- `recall`: supports optional `user_id` filter for multi-user spaces
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall`: `memory_types` currently supports only `profile|episodic_memory` (Cloud search API limitation)
 - `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`
 - `recall`: `auto` runs `hybrid + keyword` in parallel, deduplicates by `memory_id`, and merges partial failures as hints
-- `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`)
+- `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`, optional `source_message_id`)
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
 - `briefing` time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
+- `briefing`: supports optional `user_id` filter
+- `fetch_history`: paginates by `memory_type` (`profile|episodic_memory|foresight|event_log`) with `limit/offset`
+- `fetch_history`: returns `has_more/next_offset` and trace fields (`memory_id`, `timestamp`, optional `source_message_id`)
 - Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
 - Request status uses `/status/request` (Cloud v0 canonical path)
 

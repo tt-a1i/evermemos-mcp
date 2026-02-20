@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Iterable
 from uuid import uuid4
 
@@ -49,6 +50,8 @@ class EverMemosClient:
         timeout: float = 30.0,
         get_retry_count: int = 2,
         get_retry_backoff_seconds: float = 0.25,
+        rate_limit_retry_count: int = 2,
+        rate_limit_backoff_seconds: float = 0.5,
     ):
         self._base_url = config.EVERMEMOS_BASE_URL if base_url is None else base_url
         self._api_key = config.EVERMEMOS_API_KEY if api_key is None else api_key
@@ -60,6 +63,8 @@ class EverMemosClient:
         self._timeout = timeout
         self._get_retry_count = max(0, int(get_retry_count))
         self._get_retry_backoff_seconds = max(0.0, float(get_retry_backoff_seconds))
+        self._rate_limit_retry_count = max(0, int(rate_limit_retry_count))
+        self._rate_limit_backoff_seconds = max(0.0, float(rate_limit_backoff_seconds))
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "EverMemosClient":
@@ -154,10 +159,11 @@ class EverMemosClient:
         """
         client = await self._get_client()
         method_upper = method.upper()
-        retries = self._get_retry_count if method_upper == "GET" else 0
-        attempts = retries + 1
+        get_retries = self._get_retry_count if method_upper == "GET" else 0
+        get_retry_attempt = 0
+        rate_limit_retry_attempt = 0
 
-        for attempt in range(attempts):
+        while True:
             try:
                 r = await client.request(
                     method_upper,
@@ -166,31 +172,54 @@ class EverMemosClient:
                     **kwargs,
                 )
             except httpx.TimeoutException as exc:
-                if attempt < retries:
-                    await asyncio.sleep(self._get_retry_backoff_seconds * (2**attempt))
+                if get_retry_attempt < get_retries:
+                    await asyncio.sleep(
+                        self._get_retry_backoff_seconds * (2**get_retry_attempt)
+                    )
+                    get_retry_attempt += 1
                     continue
                 raise EverMemosError(
                     f"Request timed out: {exc}",
                     code="UPSTREAM_UNAVAILABLE",
                 ) from exc
             except httpx.RequestError as exc:
-                if attempt < retries:
-                    await asyncio.sleep(self._get_retry_backoff_seconds * (2**attempt))
+                if get_retry_attempt < get_retries:
+                    await asyncio.sleep(
+                        self._get_retry_backoff_seconds * (2**get_retry_attempt)
+                    )
+                    get_retry_attempt += 1
                     continue
                 raise EverMemosError(
                     f"Network error: {exc}",
                     code="UPSTREAM_UNAVAILABLE",
                 ) from exc
 
-            if r.status_code in {500, 502, 503, 504} and attempt < retries:
-                await asyncio.sleep(self._get_retry_backoff_seconds * (2**attempt))
+            if r.status_code == 429 and (
+                rate_limit_retry_attempt < self._rate_limit_retry_count
+            ):
+                retry_after = self._parse_retry_after_seconds(
+                    r.headers.get("Retry-After")
+                )
+                sleep_seconds = (
+                    retry_after
+                    if retry_after is not None
+                    else self._rate_limit_backoff_seconds
+                    * (2**rate_limit_retry_attempt)
+                )
+                rate_limit_retry_attempt += 1
+                await asyncio.sleep(sleep_seconds)
+                continue
+
+            if (
+                r.status_code in {500, 502, 503, 504}
+                and get_retry_attempt < get_retries
+            ):
+                await asyncio.sleep(
+                    self._get_retry_backoff_seconds * (2**get_retry_attempt)
+                )
+                get_retry_attempt += 1
                 continue
             return await self._handle(r)
-
-        raise EverMemosError(
-            "Request failed after retries",
-            code="UPSTREAM_UNAVAILABLE",
-        )
 
     @staticmethod
     def _maybe_hint_get_body_stripping(
@@ -230,6 +259,28 @@ class EverMemosClient:
         if "event_id" in msg:
             return True
         return "memory_id" in msg and "unknown" in msg
+
+    @staticmethod
+    def _parse_retry_after_seconds(value: str | None) -> float | None:
+        if not isinstance(value, str):
+            return None
+
+        raw = value.strip()
+        if not raw:
+            return None
+
+        try:
+            seconds = float(raw)
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(raw)
+            except (TypeError, ValueError, OverflowError):
+                return None
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            seconds = (retry_at - datetime.now(timezone.utc)).total_seconds()
+
+        return max(0.0, seconds)
 
     @staticmethod
     def _normalize_group_ids(

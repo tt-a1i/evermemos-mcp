@@ -50,10 +50,17 @@ def _parse(text_contents) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_returns_five():
+async def test_list_tools_returns_six():
     tools = await server_mod.handle_list_tools()  # type: ignore[call-arg]
     names = {t.name for t in tools}
-    assert names == {"list_spaces", "remember", "recall", "briefing", "forget"}
+    assert names == {
+        "list_spaces",
+        "remember",
+        "recall",
+        "briefing",
+        "forget",
+        "fetch_history",
+    }
 
 
 # -- dispatch --
@@ -206,6 +213,49 @@ async def test_dispatch_forget(svc):
         memory_id="m1",
         group_id="space::coding:app",
     )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_fetch_history(svc):
+    svc._catalog.ensure_space("coding:app")
+    svc._client.fetch_memories = AsyncMock(
+        return_value={
+            "result": {
+                "memories": [
+                    {
+                        "id": "evt-001",
+                        "memory_type": "event_log",
+                        "atomic_fact": "Project uses FastAPI",
+                        "timestamp": "2026-02-10T10:00:00Z",
+                    }
+                ],
+                "count": 1,
+                "total_count": 1,
+            }
+        }
+    )
+
+    result = await server_mod.handle_call_tool(
+        "fetch_history",
+        {
+            "space_id": "coding:app",
+            "memory_type": "event_log",
+            "limit": 20,
+            "offset": 0,
+            "user_id": "alice",
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert data["memory_type"] == "event_log"
+    assert data["items"][0]["memory_id"] == "evt-001"
+
+    svc._client.fetch_memories.assert_called_once()
+    _, kwargs = svc._client.fetch_memories.call_args
+    assert kwargs["memory_type"] == "event_log"
+    assert kwargs["limit"] == 20
+    assert kwargs["offset"] == 0
+    assert kwargs["user_id"] == "alice"
 
 
 @pytest.mark.asyncio

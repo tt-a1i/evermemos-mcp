@@ -28,7 +28,7 @@
 
 ## 5) 产品边界
 ### In Scope（V1 必做）
-- MCP 工具集：`list_spaces` / `remember` / `recall` / `briefing` / `forget`
+- MCP 工具集：`list_spaces` / `remember` / `recall` / `briefing` / `forget` / `fetch_history`
 - 记忆隔离：以 `space_id` 为主（必须）；`project_id` 只是 coding 场景的一种映射
 - EverMemOS API：完成写入、检索、删除闭环
 - 数据策略：Cloud-only（不做本地持久化）
@@ -50,6 +50,7 @@
 ## 7) 验收标准（V1）
 - `list_spaces` 返回可路由信息：`space_id`、`description`、`memory_count`
 - `remember` 后可在同 `space_id` 通过 `recall` 找回相关记忆
+- `fetch_history` 支持按 `memory_type` 分页翻阅历史
 - 跨 `space_id` 检索不应返回其他空间记忆
 - `briefing` 在空空间和非空空间都返回可解释结果
 - `forget` 生效后，目标记忆在后续检索中不可见
@@ -67,7 +68,7 @@
 
 ## 10) 版本规划
 ### V1（比赛提交版）
-- 五个 MCP tools（含 `list_spaces`）+ `space_id` 隔离 + 可复现实验 Demo
+- 六个 MCP tools（含 `list_spaces`）+ `space_id` 隔离 + 可复现实验 Demo
 
 ### V1.1（加分项）
 - 自动会话摘要入库

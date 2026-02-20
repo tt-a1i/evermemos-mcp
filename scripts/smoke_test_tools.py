@@ -1,4 +1,4 @@
-"""End-to-end smoke test: exercise all 5 tools against Cloud v0."""
+"""End-to-end smoke test: exercise all 6 tools against Cloud v0."""
 
 # ruff: noqa: E402
 
@@ -52,7 +52,14 @@ async def main():
         pp("briefing", r, max_len=800)
         assert r["ok"]
 
-        # 6. forget (use a fake ID — expect error or 0 deleted)
+        # 6. fetch_history (timeline-style pagination)
+        r = await svc.fetch_history(
+            sid, memory_type="episodic_memory", limit=5, offset=0
+        )
+        pp("fetch_history", r, max_len=800)
+        assert r["ok"]
+
+        # 7. forget (use a fake ID — expect error or 0 deleted)
         r = await svc.forget(["nonexistent-id"], sid)
         pp("forget (fake ID)", r, max_len=800)
 
