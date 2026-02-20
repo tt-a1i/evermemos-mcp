@@ -94,6 +94,7 @@
 - `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，作用于 `episodic_memory/event_log/foresight`，不作用于 `profile`）
 - `briefing`: 支持可选 `user_id` 过滤
 - `forget`: 支持可选 `user_id` 删除范围；默认会使用 MCP 客户端身份，降低多用户误删风险
+- `forget`: 当请求的 ID 在当前删除范围内未命中时，会返回 `ok=false` 并在 `errors[]` 给出说明
 - `fetch_history`: 支持按 `memory_type`（`profile|episodic_memory|foresight|event_log`）用精确 0-based `limit/offset` 分页读取历史
 - `fetch_history`: 内部会对上游 `page/page_size` 结果做拼接，保证非整页 offset 也不会错位
 - `fetch_history`: 返回 `has_more/next_offset`，并携带可追溯字段（`memory_id`、`timestamp`、`snippet` + `content`、可选 `source_message_id`）

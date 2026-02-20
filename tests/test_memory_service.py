@@ -381,6 +381,41 @@ async def test_recall_includes_profile_results():
 
 
 @pytest.mark.asyncio
+async def test_recall_profile_results_include_memory_id_and_source_refs():
+    search_response = {
+        "result": {
+            "memories": [],
+            "profiles": [
+                {
+                    "id": "pf-001",
+                    "description": "Prefers concise technical answers",
+                    "score": 0.92,
+                    "group_id": "space::coding:infra",
+                    "source_message_id": "msg-001",
+                    "updated_at": "2026-02-10T10:02:00Z",
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall("style", space_ids=["coding:app", "coding:infra"])
+    assert result["ok"] is True
+    assert result["space_ids"] == ["coding:app", "coding:infra"]
+    assert "space_id" not in result
+
+    row = result["results"][0]
+    assert row["memory_type"] == "profile"
+    assert row["memory_id"] == "pf-001"
+    assert row["source_message_id"] == "msg-001"
+    assert row["space_id"] == "coding:infra"
+    assert row["timestamp"] == "2026-02-10T10:02:00Z"
+
+
+@pytest.mark.asyncio
 async def test_recall_no_pending_key_when_empty():
     svc, _ = _make_svc()
     svc._catalog.ensure_space("coding:app")
@@ -994,6 +1029,7 @@ async def test_forget_deletes_by_id():
     result = await svc.forget(["mem-001", "mem-002"], "coding:app")
     assert result["ok"] is True
     assert result["deleted_count"] == 2
+    assert result["delete_scope_user_id"] == "mcp-user"
     assert client.delete_memories.call_count == 2
 
     for call in client.delete_memories.call_args_list:
@@ -1082,6 +1118,20 @@ async def test_forget_uses_explicit_user_id_when_provided():
 
 
 @pytest.mark.asyncio
+async def test_forget_returns_error_when_no_memory_matches_scope():
+    svc, client = _make_svc(delete_rv={"result": {"count": 0}})
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["m1"], "coding:app", user_id="alice")
+
+    assert result["ok"] is False
+    assert result["deleted_count"] == 0
+    assert result["delete_scope_user_id"] == "alice"
+    assert len(result["errors"]) == 1
+    assert "no memory matched delete scope" in result["errors"][0]
+
+
+@pytest.mark.asyncio
 async def test_forget_rejects_blank_user_id():
     svc, _ = _make_svc()
     svc._catalog.ensure_space("coding:app")
@@ -1121,7 +1171,9 @@ async def test_recall_with_user_id_passes_to_client():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
-    await svc.recall("query", "coding:app", user_id="custom-user-123")
+    result = await svc.recall("query", "coding:app", user_id="custom-user-123")
+    assert result["space_id"] == "coding:app"
+    assert result["space_ids"] == ["coding:app"]
 
     client.search_memories.assert_called_once()
     _, kwargs = client.search_memories.call_args
@@ -1134,10 +1186,12 @@ async def test_recall_with_space_ids_passes_group_ids_to_client():
     svc._catalog.ensure_space("coding:app")
     svc._catalog.ensure_space("coding:infra")
 
-    await svc.recall(
+    result = await svc.recall(
         "query",
         space_ids=["coding:app", "coding:infra", "coding:app"],
     )
+    assert result["space_ids"] == ["coding:app", "coding:infra"]
+    assert "space_id" not in result
 
     client.search_memories.assert_called_once()
     call_args = client.search_memories.call_args.args

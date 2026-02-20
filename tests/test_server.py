@@ -101,6 +101,8 @@ async def test_dispatch_recall(svc):
     data = _parse(result)
     assert data["ok"] is True
     assert "results" in data
+    assert data["space_id"] == "coding:app"
+    assert data["space_ids"] == ["coding:app"]
 
     svc._client.search_memories.assert_called_once()
     _, kwargs = svc._client.search_memories.call_args
@@ -146,6 +148,8 @@ async def test_dispatch_recall_with_space_ids(svc):
     )
     data = _parse(result)
     assert data["ok"] is True
+    assert data["space_ids"] == ["coding:app", "coding:infra"]
+    assert "space_id" not in data
 
     svc._client.search_memories.assert_called_once()
     args = svc._client.search_memories.call_args.args

@@ -165,6 +165,9 @@ EverMemOS API
   - `ok`
   - `space_id`
   - `deleted_count`
+  - 可选 `delete_scope_user_id`
+  - 可选 `errors[]`
+  - 若在当前删除范围下未匹配到任何记录，则返回 `ok=false`
 
 ### 5.6 `fetch_history`
 - 输入：

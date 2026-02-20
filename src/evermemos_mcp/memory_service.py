@@ -287,6 +287,36 @@ class MemoryService:
         return any(marker in message for marker in unsupported_markers)
 
     @staticmethod
+    def _pick_non_empty_string(mapping: object, key: str) -> str | None:
+        if not isinstance(mapping, dict):
+            return None
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    @staticmethod
+    def _extract_memory_id(item: dict) -> str:
+        direct = MemoryService._pick_non_empty_string(item, "id")
+        if direct:
+            return direct
+
+        legacy = MemoryService._pick_non_empty_string(item, "memory_id")
+        if legacy:
+            return legacy
+
+        metadata = item.get("metadata")
+        metadata_direct = MemoryService._pick_non_empty_string(metadata, "id")
+        if metadata_direct:
+            return metadata_direct
+
+        metadata_legacy = MemoryService._pick_non_empty_string(metadata, "memory_id")
+        if metadata_legacy:
+            return metadata_legacy
+
+        return ""
+
+    @staticmethod
     def _normalize_search_memory_items(
         raw_memories: object,
     ) -> list[tuple[int, dict, float | None]]:
@@ -335,29 +365,21 @@ class MemoryService:
 
     @staticmethod
     def _extract_source_message_id(item: dict) -> str | None:
-        def _pick_string(mapping: object, key: str) -> str | None:
-            if not isinstance(mapping, dict):
-                return None
-            value = mapping.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-            return None
-
-        direct = _pick_string(item, "source_message_id") or _pick_string(
-            item, "message_id"
-        )
+        direct = MemoryService._pick_non_empty_string(
+            item, "source_message_id"
+        ) or MemoryService._pick_non_empty_string(item, "message_id")
         if direct:
             return direct
 
         metadata = item.get("metadata")
-        metadata_direct = _pick_string(metadata, "source_message_id") or _pick_string(
-            metadata, "message_id"
-        )
+        metadata_direct = MemoryService._pick_non_empty_string(
+            metadata, "source_message_id"
+        ) or MemoryService._pick_non_empty_string(metadata, "message_id")
         if metadata_direct:
             return metadata_direct
 
         parent_type = item.get("parent_type")
-        parent_id = _pick_string(item, "parent_id")
+        parent_id = MemoryService._pick_non_empty_string(item, "parent_id")
         if isinstance(parent_type, str) and parent_id:
             if parent_type.strip().lower() in {"message", "chat_message", "msg"}:
                 return parent_id
@@ -365,7 +387,7 @@ class MemoryService:
         meta_parent_type = (
             metadata.get("parent_type") if isinstance(metadata, dict) else None
         )
-        meta_parent_id = _pick_string(metadata, "parent_id")
+        meta_parent_id = MemoryService._pick_non_empty_string(metadata, "parent_id")
         if isinstance(meta_parent_type, str) and meta_parent_id:
             if meta_parent_type.strip().lower() in {"message", "chat_message", "msg"}:
                 return meta_parent_id
@@ -408,7 +430,7 @@ class MemoryService:
     ) -> dict:
         snippet = MemoryService._extract_memory_text(item)[:800]
         row: dict = {
-            "memory_id": item.get("id", ""),
+            "memory_id": MemoryService._extract_memory_id(item),
             "memory_type": item.get("memory_type", "") or memory_type,
             "snippet": snippet,
             "content": snippet,
@@ -469,7 +491,7 @@ class MemoryService:
 
             snippet_text = snippet[:500]
             row = {
-                "memory_id": item.get("id", ""),
+                "memory_id": MemoryService._extract_memory_id(item),
                 "memory_type": item.get("memory_type", ""),
                 "snippet": snippet_text,
                 "content": snippet_text,
@@ -491,16 +513,20 @@ class MemoryService:
         for profile in res.get("profiles", []):
             if not isinstance(profile, dict):
                 continue
-            snippet = profile.get("description", "")
+            snippet = MemoryService._extract_memory_text(profile)
             if not snippet:
                 continue
             snippet_text = snippet[:500]
             row = {
-                "memory_id": "",
+                "memory_id": MemoryService._extract_memory_id(profile),
                 "memory_type": "profile",
                 "snippet": snippet_text,
                 "content": snippet_text,
-                "timestamp": "",
+                "timestamp": (
+                    profile.get("timestamp", "")
+                    or profile.get("updated_at", "")
+                    or profile.get("created_at", "")
+                ),
                 "score": profile.get("score"),
             }
             source_group_id = profile.get("group_id")
@@ -508,6 +534,9 @@ class MemoryService:
                 source_space_id = from_group_id(source_group_id.strip())
                 if source_space_id:
                     row["space_id"] = source_space_id
+            source_message_id = MemoryService._extract_source_message_id(profile)
+            if source_message_id:
+                row["source_message_id"] = source_message_id
             if include_metadata and "metadata" in profile:
                 row["metadata"] = profile.get("metadata")
             results.append(row)
@@ -1372,6 +1401,10 @@ class MemoryService:
             default_user_id = getattr(self._client, "user_id", None)
             if isinstance(default_user_id, str) and default_user_id.strip():
                 effective_user_id = default_user_id.strip()
+        if effective_user_id is None:
+            delete_scope_desc = "memory_id + group_id"
+        else:
+            delete_scope_desc = f"memory_id + group_id + user_id({effective_user_id})"
         errors: list[str] = []
 
         semaphore = asyncio.Semaphore(_FORGET_DELETE_CONCURRENCY)
@@ -1414,6 +1447,10 @@ class MemoryService:
             logical_deleted += logical_count
             if err is not None:
                 errors.append(f"{mid}: {err}")
+            elif logical_count == 0:
+                errors.append(
+                    f"{mid}: no memory matched delete scope ({delete_scope_desc})"
+                )
 
         if logical_deleted:
             self._catalog.adjust_memory_count(space_id, -logical_deleted)
@@ -1431,6 +1468,8 @@ class MemoryService:
             "space_id": space_id,
             "deleted_count": deleted,
         }
+        if effective_user_id is not None:
+            output["delete_scope_user_id"] = effective_user_id
         if normalized_reason:
             output["reason_logged"] = True
         if errors:
