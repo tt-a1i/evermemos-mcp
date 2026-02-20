@@ -81,6 +81,8 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic|auto`
 - `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means all, capped by upstream)
 - `recall`: supports optional `user_id` filter for multi-user spaces
+- `recall`: accepts `space_id` (single space) or `space_ids` (multi-space, up to 10 unique)
+- `recall`: response includes `space_ids`; when upstream provides `group_id`, each row may include `space_id`
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall`: `memory_types` currently supports only `profile|episodic_memory` (Cloud search API limitation)
@@ -90,6 +92,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
 - `briefing` time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
 - `briefing`: supports optional `user_id` filter
+- `forget`: supports optional `user_id` scope; defaults to the MCP client identity for safer multi-user deletes
 - `fetch_history`: paginates by `memory_type` (`profile|episodic_memory|foresight|event_log`) with exact 0-based `limit/offset`
 - `fetch_history`: internally stitches page-based upstream results to keep non-aligned offsets accurate
 - `fetch_history`: returns `has_more/next_offset` and trace fields (`memory_id`, `timestamp`, `snippet` + `content`, optional `source_message_id`)

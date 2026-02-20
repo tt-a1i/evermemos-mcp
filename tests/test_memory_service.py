@@ -996,6 +996,11 @@ async def test_forget_deletes_by_id():
     assert result["deleted_count"] == 2
     assert client.delete_memories.call_count == 2
 
+    for call in client.delete_memories.call_args_list:
+        _, kwargs = call
+        assert kwargs["group_id"] == "space::coding:app"
+        assert kwargs["user_id"] == "mcp-user"
+
 
 @pytest.mark.asyncio
 async def test_forget_partial_failure():
@@ -1064,6 +1069,30 @@ async def test_forget_deduplicates_ids_before_delete_calls():
 
 
 @pytest.mark.asyncio
+async def test_forget_uses_explicit_user_id_when_provided():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    await svc.forget(["m1"], "coding:app", user_id="alice")
+
+    _, kwargs = client.delete_memories.call_args
+    assert kwargs["memory_id"] == "m1"
+    assert kwargs["group_id"] == "space::coding:app"
+    assert kwargs["user_id"] == "alice"
+
+
+@pytest.mark.asyncio
+async def test_forget_rejects_blank_user_id():
+    svc, _ = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.forget(["m1"], "coding:app", user_id="   ")
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
 async def test_recall_with_time_range_passes_to_client():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
@@ -1097,6 +1126,68 @@ async def test_recall_with_user_id_passes_to_client():
     client.search_memories.assert_called_once()
     _, kwargs = client.search_memories.call_args
     assert kwargs["user_id"] == "custom-user-123"
+
+
+@pytest.mark.asyncio
+async def test_recall_with_space_ids_passes_group_ids_to_client():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    await svc.recall(
+        "query",
+        space_ids=["coding:app", "coding:infra", "coding:app"],
+    )
+
+    client.search_memories.assert_called_once()
+    call_args = client.search_memories.call_args.args
+    assert call_args[1] == ["space::coding:app", "space::coding:infra"]
+
+
+@pytest.mark.asyncio
+async def test_recall_rejects_when_no_space_scope_is_provided():
+    svc, _ = _make_svc()
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("query")
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_rejects_more_than_10_unique_space_ids():
+    svc, _ = _make_svc()
+    too_many = [f"coding:s{index}" for index in range(11)]
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.recall("query", space_ids=too_many)
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_recall_maps_space_id_from_group_id_when_available():
+    search_response = {
+        "result": {
+            "memories": [
+                {
+                    "id": "mem-001",
+                    "memory_type": "episodic_memory",
+                    "summary": "Discussed FastAPI architecture",
+                    "timestamp": "2026-02-10T10:00:00Z",
+                    "group_id": "space::coding:infra",
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+
+    result = await svc.recall("FastAPI", space_ids=["coding:app", "coding:infra"])
+
+    assert result["ok"] is True
+    assert result["space_ids"] == ["coding:app", "coding:infra"]
+    assert result["results"][0]["space_id"] == "coding:infra"
 
 
 @pytest.mark.asyncio

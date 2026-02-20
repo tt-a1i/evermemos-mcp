@@ -82,6 +82,8 @@
 - `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic|auto`
 - `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示返回全部，仍受上游上限约束）
 - `recall`: 支持可选 `user_id` 过滤（适用于多用户共享空间）
+- `recall`: 支持 `space_id`（单空间）或 `space_ids`（多空间，最多 10 个去重后值）
+- `recall`: 响应包含 `space_ids`；若上游返回 `group_id`，单条结果会带 `space_id`
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 可选 `memory_types` 目前仅支持 `profile|episodic_memory`（受 Cloud search API 限制）
@@ -91,6 +93,7 @@
 - `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
 - `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，作用于 `episodic_memory/event_log/foresight`，不作用于 `profile`）
 - `briefing`: 支持可选 `user_id` 过滤
+- `forget`: 支持可选 `user_id` 删除范围；默认会使用 MCP 客户端身份，降低多用户误删风险
 - `fetch_history`: 支持按 `memory_type`（`profile|episodic_memory|foresight|event_log`）用精确 0-based `limit/offset` 分页读取历史
 - `fetch_history`: 内部会对上游 `page/page_size` 结果做拼接，保证非整页 offset 也不会错位
 - `fetch_history`: 返回 `has_more/next_offset`，并携带可追溯字段（`memory_id`、`timestamp`、`snippet` + `content`、可选 `source_message_id`）

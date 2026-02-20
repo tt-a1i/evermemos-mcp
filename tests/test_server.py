@@ -134,6 +134,25 @@ async def test_dispatch_recall_with_extended_filters(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_recall_with_space_ids(svc):
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+    result = await server_mod.handle_call_tool(
+        "recall",
+        {
+            "query": "FastAPI",
+            "space_ids": ["coding:app", "coding:infra", "coding:app"],
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+
+    svc._client.search_memories.assert_called_once()
+    args = svc._client.search_memories.call_args.args
+    assert args[1] == ["space::coding:app", "space::coding:infra"]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_recall_invalid_memory_types_returns_invalid_input(svc):
     svc._catalog.ensure_space("coding:app")
     result = await server_mod.handle_call_tool(
@@ -159,6 +178,19 @@ async def test_dispatch_recall_hybrid_rejects_event_log_memory_types(svc):
             "space_id": "coding:app",
             "retrieve_method": "hybrid",
             "memory_types": ["event_log"],
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_recall_requires_space_scope(svc):
+    result = await server_mod.handle_call_tool(
+        "recall",
+        {
+            "query": "FastAPI",
         },
     )
     data = _parse(result)
@@ -212,6 +244,28 @@ async def test_dispatch_forget(svc):
     svc._client.delete_memories.assert_called_with(
         memory_id="m1",
         group_id="space::coding:app",
+        user_id="mcp-user",
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_forget_with_user_id_scope(svc):
+    svc._catalog.ensure_space("coding:app")
+    result = await server_mod.handle_call_tool(
+        "forget",
+        {
+            "memory_ids": ["m1"],
+            "space_id": "coding:app",
+            "user_id": "alice",
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+
+    svc._client.delete_memories.assert_called_with(
+        memory_id="m1",
+        group_id="space::coding:app",
+        user_id="alice",
     )
 
 

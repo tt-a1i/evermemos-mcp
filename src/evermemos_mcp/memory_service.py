@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from .evermemos_client import EverMemosClient, EverMemosError
-from .space_catalog_service import SpaceCatalogService, to_group_id
+from .space_catalog_service import SpaceCatalogService, from_group_id, to_group_id
 
 _VALID_ROLES = {"user", "assistant"}
 _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic", "auto"}
@@ -57,6 +57,26 @@ class MemoryService:
                 code="INVALID_INPUT",
             )
         return value.strip()
+
+    @staticmethod
+    def _validate_space_ids(space_ids: list[str] | None) -> list[str] | None:
+        if space_ids is None:
+            return None
+        if not isinstance(space_ids, list) or not space_ids:
+            raise EverMemosError(
+                "space_ids must be a non-empty array when provided",
+                code="INVALID_INPUT",
+            )
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw_space_id in space_ids:
+            sid = MemoryService._validate_space_id(raw_space_id)
+            if sid in seen:
+                continue
+            seen.add(sid)
+            normalized.append(sid)
+        return normalized
 
     @staticmethod
     def _validate_positive_int(value: int, field_name: str) -> int:
@@ -456,6 +476,11 @@ class MemoryService:
                 "timestamp": item.get("timestamp", "") or item.get("created_at", ""),
                 "score": score,
             }
+            source_group_id = item.get("group_id")
+            if isinstance(source_group_id, str):
+                source_space_id = from_group_id(source_group_id.strip())
+                if source_space_id:
+                    row["space_id"] = source_space_id
             source_message_id = MemoryService._extract_source_message_id(item)
             if source_message_id:
                 row["source_message_id"] = source_message_id
@@ -478,6 +503,11 @@ class MemoryService:
                 "timestamp": "",
                 "score": profile.get("score"),
             }
+            source_group_id = profile.get("group_id")
+            if isinstance(source_group_id, str):
+                source_space_id = from_group_id(source_group_id.strip())
+                if source_space_id:
+                    row["space_id"] = source_space_id
             if include_metadata and "metadata" in profile:
                 row["metadata"] = profile.get("metadata")
             results.append(row)
@@ -671,8 +701,9 @@ class MemoryService:
     async def recall(
         self,
         query: str,
-        space_id: str,
+        space_id: str | None = None,
         *,
+        space_ids: list[str] | None = None,
         top_k: int = _DEFAULT_RECALL_TOP_K,
         retrieve_method: str = "hybrid",
         start_time: str | None = None,
@@ -686,7 +717,34 @@ class MemoryService:
         # Intentionally default to hybrid for better practical recall quality,
         # while upstream API defaults to keyword.
         query = self._validate_text(query, "query")
-        space_id = self._validate_space_id(space_id)
+        normalized_space_id = (
+            self._validate_space_id(space_id) if space_id is not None else None
+        )
+        normalized_space_ids = self._validate_space_ids(space_ids)
+
+        resolved_space_ids: list[str] = []
+        seen_space_ids: set[str] = set()
+        if normalized_space_id is not None:
+            resolved_space_ids.append(normalized_space_id)
+            seen_space_ids.add(normalized_space_id)
+        if normalized_space_ids:
+            for sid in normalized_space_ids:
+                if sid in seen_space_ids:
+                    continue
+                seen_space_ids.add(sid)
+                resolved_space_ids.append(sid)
+
+        if not resolved_space_ids:
+            raise EverMemosError(
+                "Either space_id or space_ids is required",
+                code="INVALID_INPUT",
+            )
+        if len(resolved_space_ids) > 10:
+            raise EverMemosError(
+                "At most 10 unique spaces are allowed in recall",
+                code="INVALID_INPUT",
+            )
+
         user_id = self._validate_user_id(user_id)
         top_k = self._validate_top_k(top_k)
         start_time = self._validate_iso_datetime(start_time, "start_time")
@@ -707,8 +765,12 @@ class MemoryService:
                 code="INVALID_INPUT",
             )
 
-        group_id = to_group_id(space_id)
-        self._catalog.touch_space(space_id)
+        search_group_ids = [to_group_id(sid) for sid in resolved_space_ids]
+        search_scope: str | list[str] = (
+            search_group_ids[0] if len(search_group_ids) == 1 else search_group_ids
+        )
+        for sid in resolved_space_ids:
+            self._catalog.touch_space(sid)
 
         def _normalize_types_for_method(
             method: str,
@@ -737,7 +799,7 @@ class MemoryService:
             try:
                 return await self._client.search_memories(
                     query,
-                    group_id,
+                    search_scope,
                     user_id=user_id,
                     retrieve_method=method,
                     top_k=top_k,
@@ -769,7 +831,7 @@ class MemoryService:
                 ]
                 fallback = await self._client.search_memories(
                     query,
-                    group_id,
+                    search_scope,
                     user_id=user_id,
                     retrieve_method=method,
                     top_k=top_k,
@@ -817,10 +879,12 @@ class MemoryService:
 
             output: dict = {
                 "ok": True,
-                "space_id": space_id,
+                "space_ids": resolved_space_ids,
                 "retrieve_method_actual": retrieve_method,
                 "results": rows,
             }
+            if len(resolved_space_ids) == 1:
+                output["space_id"] = resolved_space_ids[0]
             if pending_count > 0:
                 output["pending_count"] = pending_count
                 output["pending_hint"] = (
@@ -891,10 +955,15 @@ class MemoryService:
             pending_count += branch_pending
             warnings.extend(branch_warnings)
             for row in rows:
-                dedupe_key = (
-                    row.get("memory_id")
-                    or f"{row.get('memory_type')}::{row.get('snippet')}"
-                )
+                memory_id = row.get("memory_id")
+                source_space_id = row.get("space_id")
+                if isinstance(memory_id, str) and memory_id:
+                    if isinstance(source_space_id, str) and source_space_id:
+                        dedupe_key = f"{source_space_id}::{memory_id}"
+                    else:
+                        dedupe_key = memory_id
+                else:
+                    dedupe_key = f"{row.get('space_id')}::{row.get('memory_type')}::{row.get('snippet')}"
                 if dedupe_key in seen:
                     continue
                 seen.add(dedupe_key)
@@ -905,12 +974,14 @@ class MemoryService:
 
         output = {
             "ok": True,
-            "space_id": space_id,
+            "space_ids": resolved_space_ids,
             "retrieve_method_actual": "auto(hybrid+keyword)"
             if can_run_hybrid_branch
             else "auto(keyword)",
             "results": merged_rows,
         }
+        if len(resolved_space_ids) == 1:
+            output["space_id"] = resolved_space_ids[0]
         if pending_count > 0:
             output["pending_count"] = pending_count
             output["pending_hint"] = (
@@ -1217,6 +1288,8 @@ class MemoryService:
             else:
                 reached_end = page_count < limit
 
+            # Keep the same step size as page_size (client maps page_size from limit)
+            # so offset->page conversion remains stable across stitched fetches.
             current_offset += limit
 
         sliced_memories = raw_memories[intra_page_offset : intra_page_offset + limit]
@@ -1264,8 +1337,10 @@ class MemoryService:
         space_id: str,
         *,
         reason: str | None = None,
+        user_id: str | None = None,
     ) -> dict:
         space_id = self._validate_space_id(space_id)
+        user_id = self._validate_user_id(user_id)
         if not isinstance(memory_ids, list) or not memory_ids:
             raise EverMemosError(
                 "memory_ids must be a non-empty array",
@@ -1292,6 +1367,11 @@ class MemoryService:
             unique_ids.append(mid)
 
         group_id = to_group_id(space_id)
+        effective_user_id = user_id
+        if effective_user_id is None:
+            default_user_id = getattr(self._client, "user_id", None)
+            if isinstance(default_user_id, str) and default_user_id.strip():
+                effective_user_id = default_user_id.strip()
         errors: list[str] = []
 
         semaphore = asyncio.Semaphore(_FORGET_DELETE_CONCURRENCY)
@@ -1304,6 +1384,7 @@ class MemoryService:
                     result = await self._client.delete_memories(
                         memory_id=mid,
                         group_id=group_id,
+                        user_id=effective_user_id,
                     )
                     count = result.get("result", {}).get("count", 0)
                     if not isinstance(count, int):

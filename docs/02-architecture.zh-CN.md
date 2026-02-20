@@ -114,7 +114,8 @@ EverMemOS API
 ### 5.3 `recall`
 - 输入：
   - `query` (required)
-  - `space_id` (required)
+  - `space_id` (optional，单空间检索)
+  - `space_ids` (optional，多空间检索，去重后最多 10 个；可与 `space_id` 同时传)
   - `top_k` (optional, default: 10, 范围为 -1 或 1-100；`-1` 表示返回全部，仍受上游上限约束)
   - `retrieve_method` (optional, default: `hybrid`)
     - 可选值：`keyword|hybrid|vector|rrf|agentic|auto`
@@ -132,7 +133,8 @@ EverMemOS API
 - 行为：检索相关记忆并返回可引用结果
 - 输出：
   - `ok`
-  - `space_id`
+  - `space_ids`
+  - 单空间时也会返回 `space_id`
   - `results[]`（每项包含 `memory_id`, `memory_type`, `snippet`, `timestamp`, `score`）
   - 使用 `auto` 时会返回 `retrieve_method_actual=auto(hybrid+keyword)`
   - `pending_count/pending_hint`（存在待提取消息时）
@@ -156,7 +158,9 @@ EverMemOS API
   - `memory_ids` (required, array)
   - `space_id` (required)
   - `reason` (optional)
+  - `user_id` (optional)
 - 行为：删除指定记忆（V1 只支持显式 id，避免误删）
+- 行为：未传 `user_id` 时默认使用 MCP 客户端身份做删除范围约束
 - 输出：
   - `ok`
   - `space_id`

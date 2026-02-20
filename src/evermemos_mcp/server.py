@@ -138,7 +138,7 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="recall",
         description=(
-            "Search for relevant memories in a specific space. "
+            "Search for relevant memories in one or more spaces. "
             "Returns matching memories with source citations "
             "(type, snippet, timestamp, relevance score). "
             "Also reports how many messages are still being processed."
@@ -152,7 +152,15 @@ TOOLS: list[types.Tool] = [
                 },
                 "space_id": {
                     "type": "string",
-                    "description": "Memory space to search",
+                    "description": "Single memory space to search",
+                },
+                "space_ids": {
+                    "type": "array",
+                    "description": (
+                        "Optional multi-space search scope (max 10 unique). "
+                        "Can be used alone or together with space_id."
+                    ),
+                    "items": {"type": "string"},
                 },
                 "top_k": {
                     "type": "integer",
@@ -224,7 +232,7 @@ TOOLS: list[types.Tool] = [
                     },
                 },
             },
-            "required": ["query", "space_id"],
+            "required": ["query"],
         },
     ),
     types.Tool(
@@ -289,6 +297,13 @@ TOOLS: list[types.Tool] = [
                 "reason": {
                     "type": "string",
                     "description": "Optional reason for deletion",
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional user ID scope for delete. "
+                        "Defaults to the MCP client's identity."
+                    ),
                 },
             },
             "required": ["memory_ids", "space_id"],
@@ -408,7 +423,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
     if name == "recall":
         return await svc.recall(
             query=args["query"],
-            space_id=args["space_id"],
+            space_id=args.get("space_id"),
+            space_ids=args.get("space_ids"),
             top_k=args.get("top_k", 10),
             retrieve_method=args.get("retrieve_method", "hybrid"),
             start_time=args.get("start_time"),
@@ -434,6 +450,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             memory_ids=args["memory_ids"],
             space_id=args["space_id"],
             reason=args.get("reason"),
+            user_id=args.get("user_id"),
         )
 
     if name == "fetch_history":

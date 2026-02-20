@@ -285,6 +285,23 @@ async def test_fetch_memories_uses_get_json_body_contract():
 
 
 @pytest.mark.asyncio
+async def test_fetch_memories_maps_non_zero_offset_to_page_number():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
+
+    await c.fetch_memories(
+        "space::coding:app",
+        memory_type="episodic_memory",
+        limit=20,
+        offset=25,
+    )
+
+    _, kwargs = c._request.call_args
+    assert kwargs["json"]["page"] == 2
+    assert kwargs["json"]["page_size"] == 20
+
+
+@pytest.mark.asyncio
 async def test_fetch_memories_passes_time_filters_when_provided():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(return_value={"status": "ok", "result": {"memories": []}})
@@ -340,6 +357,32 @@ async def test_fetch_memories_adds_proxy_hint_for_missing_required_fields():
         await c.fetch_memories("space::coding:app")
 
     assert "GET request JSON body may be stripped" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_fetch_memories_fallbacks_to_post_after_get_body_strip_hint():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(
+        side_effect=[
+            EverMemosError(
+                "Missing required field group_ids",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            ),
+            {"status": "ok", "result": {"memories": []}},
+        ]
+    )
+
+    result = await c.fetch_memories("space::coding:app")
+
+    assert result["status"] == "ok"
+    assert c._request.call_count == 2
+    first_call = c._request.call_args_list[0]
+    second_call = c._request.call_args_list[1]
+    assert first_call.args[0] == "GET"
+    assert second_call.args[0] == "POST"
+    assert first_call.args[1] == "/memories"
+    assert second_call.args[1] == "/memories"
 
 
 @pytest.mark.asyncio

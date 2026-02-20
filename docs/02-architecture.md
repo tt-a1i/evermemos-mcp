@@ -98,7 +98,8 @@ EverMemOS API
 ### 5.3 `recall`
 - Input:
   - `query` (required)
-  - `space_id` (required)
+  - `space_id?` (single-space scope)
+  - `space_ids?` (multi-space scope, max 10 unique; can be combined with `space_id`)
   - `top_k?=10` (range: -1 or 1-100; `-1` means all, capped by upstream)
   - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic|auto`)
   - `memory_types?` (`profile|episodic_memory`)
@@ -111,7 +112,8 @@ EverMemOS API
   - `include_metadata?=false`
   - `user_id?` (optional identity scope in shared spaces)
 - Output:
-  - `ok`, `space_id`, `results[]`
+  - `ok`, `space_ids`, `results[]`
+  - `space_id` is also returned when only one space is used
   - `retrieve_method_actual=auto(hybrid+keyword)` when auto strategy is used
   - `pending_count/pending_hint` when extraction is pending
   - `partial_hint/partial_errors` when upstream returns partial results
@@ -123,8 +125,9 @@ EverMemOS API
 - Output: `ok`, `space_id`, `summary`, `highlights[]`
 
 ### 5.5 `forget`
-- Input: `memory_ids[]`, `space_id`, `reason?`
+- Input: `memory_ids[]`, `space_id`, `reason?`, `user_id?`
 - Behavior: explicit-id deletion only; concurrent deletes with partial-failure reporting
+- Behavior: delete defaults to MCP client identity scope when `user_id` is omitted
 - Output: `ok`, `space_id`, `deleted_count`, optional `errors[]`
 
 ### 5.6 `fetch_history`
