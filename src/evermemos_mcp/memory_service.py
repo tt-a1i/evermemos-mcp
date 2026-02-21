@@ -496,7 +496,7 @@ class MemoryService:
         result: dict,
         *,
         include_metadata: bool,
-    ) -> tuple[list[dict], list, list, str | None, str | None, int]:
+    ) -> tuple[list[dict], list, list, str | None, str | None]:
         """Map upstream search response to tool-friendly result rows."""
         res = result.get("result", {})
         if not isinstance(res, dict):
@@ -582,8 +582,6 @@ class MemoryService:
                 row["metadata"] = profile.get("metadata")
             results.append(row)
 
-        pending = res.get("pending_messages", [])
-        pending_count = len(pending) if isinstance(pending, list) else 0
         partial_errors = res.get("partial_errors")
         warnings = res.get("warnings")
         status = result.get("status")
@@ -595,7 +593,6 @@ class MemoryService:
             warnings if isinstance(warnings, list) else [],
             status if isinstance(status, str) else None,
             message if isinstance(message, str) else None,
-            pending_count,
         )
 
     # -- list_spaces --
@@ -817,6 +814,7 @@ class MemoryService:
 
         user_id = self._validate_user_id(user_id)
         top_k = self._validate_top_k(top_k)
+        request_top_k = _MAX_RECALL_TOP_K if top_k == -1 else top_k
         start_time = self._validate_iso_datetime(start_time, "start_time")
         end_time = self._validate_iso_datetime(end_time, "end_time")
         start_time, end_time = self._validate_time_window(start_time, end_time)
@@ -897,7 +895,7 @@ class MemoryService:
                     effective_scope,
                     user_id=user_id,
                     retrieve_method=method,
-                    top_k=top_k,
+                    top_k=request_top_k,
                     memory_types=method_memory_types,
                     start_time=start_time,
                     end_time=end_time,
@@ -929,7 +927,7 @@ class MemoryService:
                     effective_scope,
                     user_id=user_id,
                     retrieve_method=method,
-                    top_k=top_k,
+                    top_k=request_top_k,
                     memory_types=fallback_memory_types,
                     start_time=start_time,
                     end_time=end_time,
@@ -995,7 +993,7 @@ class MemoryService:
                     probe_errors.append({"space_id": sid, "message": str(exc)})
                     continue
 
-                scoped_rows, _, _, _, _, _ = self._map_search_response_to_results(
+                scoped_rows, _, _, _, _ = self._map_search_response_to_results(
                     scoped_result,
                     include_metadata=include_metadata,
                 )
@@ -1056,7 +1054,7 @@ class MemoryService:
             )
             result = await _run_single(retrieve_method, normalized_types)
 
-            rows, partial_errors, warnings, status, message, _ = (
+            rows, partial_errors, warnings, status, message = (
                 self._map_search_response_to_results(
                     result,
                     include_metadata=include_metadata,
@@ -1146,7 +1144,7 @@ class MemoryService:
         warnings: list = []
 
         for method, branch_memory_types, success in successes:
-            rows, _, branch_warnings, _, _, _ = self._map_search_response_to_results(
+            rows, _, branch_warnings, _, _ = self._map_search_response_to_results(
                 success,
                 include_metadata=include_metadata,
             )

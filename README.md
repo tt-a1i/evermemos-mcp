@@ -79,7 +79,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
 - `remember`: default `flush=false`; use `flush=true` only at clear conversation boundaries
 - `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic|auto`
-- `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means all, capped by upstream)
+- `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means no service-side truncation; upstream request uses `top_k=100`)
 - `recall`: supports optional `user_id` filter for multi-user spaces
 - `recall`: accepts `space_id` (single space) or `space_ids` (multi-space, up to 10 unique)
 - `recall`: response includes `space_ids`; when upstream provides `group_id`, each row may include `space_id`

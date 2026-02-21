@@ -100,7 +100,7 @@ EverMemOS API
   - `query` (required)
   - `space_id?` (single-space scope)
   - `space_ids?` (multi-space scope, max 10 unique; can be combined with `space_id`)
-  - `top_k?=10` (range: -1 or 1-100; `-1` means all, capped by upstream)
+  - `top_k?=10` (range: -1 or 1-100; `-1` disables service-side truncation and uses upstream `top_k=100`)
   - `retrieve_method?=hybrid` (`keyword|hybrid|vector|rrf|agentic|auto`)
   - `memory_types?` (`profile|episodic_memory`)
     - Cloud search currently supports only these two memory types

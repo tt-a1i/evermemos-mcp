@@ -116,7 +116,7 @@ EverMemOS API
   - `query` (required)
   - `space_id` (optional，单空间检索)
   - `space_ids` (optional，多空间检索，去重后最多 10 个；可与 `space_id` 同时传)
-  - `top_k` (optional, default: 10, 范围为 -1 或 1-100；`-1` 表示返回全部，仍受上游上限约束)
+  - `top_k` (optional, default: 10, 范围为 -1 或 1-100；`-1` 表示服务层不截断，并以 `top_k=100` 请求上游)
   - `retrieve_method` (optional, default: `hybrid`)
     - 可选值：`keyword|hybrid|vector|rrf|agentic|auto`
   - `memory_types` (optional)

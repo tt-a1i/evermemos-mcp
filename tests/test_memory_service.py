@@ -1622,7 +1622,7 @@ async def test_recall_accepts_top_k_minus_one_for_all_results():
     await svc.recall("query", "coding:app", top_k=-1)
 
     _, kwargs = client.search_memories.call_args
-    assert kwargs["top_k"] == -1
+    assert kwargs["top_k"] == 100
 
 
 @pytest.mark.asyncio

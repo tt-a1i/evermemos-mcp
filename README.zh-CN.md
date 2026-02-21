@@ -80,7 +80,7 @@
 - `remember`: 会显式透传 `flush`（`true/false`），避免依赖上游默认值
 - `remember`: 默认 `flush=false`，仅在明确会话边界时使用 `flush=true`
 - `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic|auto`
-- `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示返回全部，仍受上游上限约束）
+- `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示服务层不做截断；对上游请求会使用 `top_k=100`）
 - `recall`: 支持可选 `user_id` 过滤（适用于多用户共享空间）
 - `recall`: 支持 `space_id`（单空间）或 `space_ids`（多空间，最多 10 个去重后值）
 - `recall`: 响应包含 `space_ids`；若上游返回 `group_id`，单条结果会带 `space_id`
