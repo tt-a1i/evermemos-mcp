@@ -1068,7 +1068,8 @@ class MemoryService:
                         probe_errors.append({"space_id": sid, "message": error_message})
                         continue
 
-                    assert scoped_rows is not None
+                    if scoped_rows is None:
+                        continue
                     for scoped_row in scoped_rows:
                         scoped_space_id = scoped_row.get("space_id")
                         if not isinstance(scoped_space_id, str) or not scoped_space_id:

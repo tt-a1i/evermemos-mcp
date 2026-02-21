@@ -1574,6 +1574,9 @@ async def test_recall_source_recovery_probe_uses_max_top_k_when_request_is_small
 async def test_recall_source_recovery_probes_spaces_concurrently():
     in_flight = 0
     max_in_flight = 0
+    started_probes = 0
+    two_started = asyncio.Event()
+    release_probes = asyncio.Event()
 
     async def mock_search(
         query,
@@ -1585,7 +1588,7 @@ async def test_recall_source_recovery_probes_spaces_concurrently():
         memory_types=None,
         **kw,
     ):
-        nonlocal in_flight, max_in_flight
+        nonlocal in_flight, max_in_flight, started_probes
 
         if isinstance(group_ids, list):
             return {
@@ -1603,8 +1606,11 @@ async def test_recall_source_recovery_probes_spaces_concurrently():
             }
 
         in_flight += 1
+        started_probes += 1
         max_in_flight = max(max_in_flight, in_flight)
-        await asyncio.sleep(0.01)
+        if started_probes >= 2:
+            two_started.set()
+        await release_probes.wait()
         in_flight -= 1
 
         if group_ids == "space::coding:s3":
@@ -1629,11 +1635,23 @@ async def test_recall_source_recovery_probes_spaces_concurrently():
     for sid in ["coding:s1", "coding:s2", "coding:s3", "coding:s4"]:
         svc._catalog.ensure_space(sid)
 
-    result = await svc.recall(
-        "deploy",
-        space_ids=["coding:s1", "coding:s2", "coding:s3", "coding:s4"],
-        retrieve_method="keyword",
+    recall_task = asyncio.create_task(
+        svc.recall(
+            "deploy",
+            space_ids=["coding:s1", "coding:s2", "coding:s3", "coding:s4"],
+            retrieve_method="keyword",
+        )
     )
+
+    try:
+        await asyncio.wait_for(two_started.wait(), timeout=1.0)
+    except Exception:
+        release_probes.set()
+        await recall_task
+        raise
+
+    release_probes.set()
+    result = await recall_task
 
     assert result["ok"] is True
     assert result["results"][0]["space_id"] == "coding:s3"
