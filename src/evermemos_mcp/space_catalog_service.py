@@ -32,6 +32,8 @@ _META_ENRICH_CONCURRENCY = 8
 _META_ENRICH_MAX_SPACES = 60
 _CATALOG_PAGE_SIZE = 100
 _CATALOG_MAX_FETCH_PAGES = 500
+_CATALOG_SEARCH_TOP_K_PREFERRED = -1
+_CATALOG_SEARCH_TOP_K_FALLBACK = 200
 _ENTRY_JSON_PREFIX = "SPACE_CATALOG_ENTRY:"
 _VALID_META_ROLES = {"user", "assistant"}
 
@@ -82,6 +84,9 @@ class SpaceCatalogService:
         self._recovered = False
         self._recover_failed_at: float = 0.0
         self._conversation_meta_locks: dict[str, asyncio.Lock] = {}
+        self._known_conversation_meta_spaces: set[str] = set()
+        self._conversation_meta_created_at: dict[str, str] = {}
+        self._conversation_meta_user_details: dict[str, dict[str, dict]] = {}
 
     # -- public API --
 
@@ -239,6 +244,8 @@ class SpaceCatalogService:
             logger.warning("Failed to persist catalog entry for %s", space_id)
 
     def _get_conversation_meta_lock(self, space_id: str) -> asyncio.Lock:
+        # Intentionally sync-only: keep get/create atomic in one event-loop turn.
+        # Do not add await points in this helper.
         lock = self._conversation_meta_locks.get(space_id)
         if lock is None:
             lock = asyncio.Lock()
@@ -263,6 +270,80 @@ class SpaceCatalogService:
                 actor_user_id=actor_user_id,
                 actor_role=actor_role,
             )
+
+        waiters = getattr(lock, "_waiters", None)
+        has_waiters = bool(waiters)
+        if (
+            self._conversation_meta_locks.get(space_id) is lock
+            and not lock.locked()
+            and not has_waiters
+        ):
+            self._conversation_meta_locks.pop(space_id, None)
+
+    @staticmethod
+    def _extract_meta_created_at(meta: dict) -> str | None:
+        created = meta.get("conversation_created_at") or meta.get("created_at")
+        if isinstance(created, str) and created.strip():
+            return created.strip()
+        return None
+
+    def _cache_conversation_meta_snapshot(
+        self,
+        space_id: str,
+        *,
+        created_at: str | None,
+        user_details: object,
+    ) -> None:
+        self._known_conversation_meta_spaces.add(space_id)
+
+        if isinstance(created_at, str) and created_at.strip():
+            normalized_created_at = created_at.strip()
+            self._conversation_meta_created_at[space_id] = normalized_created_at
+
+            info = self._cache.get(space_id)
+            if info is not None:
+                info.created_at = normalized_created_at
+
+        normalized_user_details = self._normalize_user_details(user_details)
+        if normalized_user_details:
+            self._conversation_meta_user_details[space_id] = normalized_user_details
+
+    def _get_cached_conversation_meta_snapshot(self, space_id: str) -> dict | None:
+        if space_id not in self._known_conversation_meta_spaces:
+            return None
+
+        snapshot: dict = {}
+        created_at = self._conversation_meta_created_at.get(space_id)
+        if isinstance(created_at, str) and created_at:
+            snapshot["created_at"] = created_at
+
+        user_details = self._conversation_meta_user_details.get(space_id)
+        if isinstance(user_details, dict) and user_details:
+            snapshot["user_details"] = dict(user_details)
+
+        return snapshot
+
+    async def _fetch_conversation_meta_snapshot(self, group_id: str) -> dict | None:
+        try:
+            existing_response = await self._client.get_conversation_metadata(group_id)
+        except EverMemosError:
+            return None
+
+        if not isinstance(existing_response, dict):
+            return None
+
+        result = existing_response.get("result")
+        if not isinstance(result, dict):
+            return None
+
+        snapshot: dict = {}
+        created_at = self._extract_meta_created_at(result)
+        if created_at:
+            snapshot["created_at"] = created_at
+        user_details = result.get("user_details")
+        if isinstance(user_details, dict) and user_details:
+            snapshot["user_details"] = user_details
+        return snapshot
 
     async def _persist_conversation_meta(
         self,
@@ -298,35 +379,33 @@ class SpaceCatalogService:
             actor_role=actor_role,
         )
 
-        existing_meta: dict | None = None
-        try:
-            existing_response = await self._client.get_conversation_metadata(group_id)
-        except EverMemosError:
-            existing_response = None
-        if isinstance(existing_response, dict):
-            result = existing_response.get("result")
-            if isinstance(result, dict):
-                existing_meta = result
+        known_exists = space_id in self._known_conversation_meta_spaces
+        existing_snapshot = self._get_cached_conversation_meta_snapshot(space_id)
+        if existing_snapshot is None:
+            fetched_snapshot = await self._fetch_conversation_meta_snapshot(group_id)
+            if isinstance(fetched_snapshot, dict):
+                existing_snapshot = fetched_snapshot
+                known_exists = True
+                self._cache_conversation_meta_snapshot(
+                    space_id,
+                    created_at=fetched_snapshot.get("created_at"),
+                    user_details=fetched_snapshot.get("user_details"),
+                )
 
         effective_created_at = created_at
-        if isinstance(existing_meta, dict):
-            existing_created_at = existing_meta.get(
-                "conversation_created_at"
-            ) or existing_meta.get("created_at")
+        if isinstance(existing_snapshot, dict):
+            existing_created_at = existing_snapshot.get("created_at")
             if isinstance(existing_created_at, str) and existing_created_at.strip():
                 effective_created_at = existing_created_at.strip()
-                info = self._cache.get(space_id)
-                if info is not None:
-                    info.created_at = effective_created_at
 
         user_details = self._merge_with_existing_user_details(
             base_user_details,
-            existing_meta.get("user_details")
-            if isinstance(existing_meta, dict)
+            existing_snapshot.get("user_details")
+            if isinstance(existing_snapshot, dict)
             else None,
         )
 
-        if isinstance(existing_meta, dict):
+        if known_exists:
             try:
                 await self._client.update_conversation_metadata(
                     group_id=group_id,
@@ -341,6 +420,12 @@ class SpaceCatalogService:
                 logger.warning(
                     "Failed to persist conversation metadata for %s: %s", space_id, exc
                 )
+            else:
+                self._cache_conversation_meta_snapshot(
+                    space_id,
+                    created_at=effective_created_at,
+                    user_details=user_details,
+                )
             return
 
         try:
@@ -354,6 +439,11 @@ class SpaceCatalogService:
                 llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                 user_details=user_details,
                 default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
+            )
+            self._cache_conversation_meta_snapshot(
+                space_id,
+                created_at=effective_created_at,
+                user_details=user_details,
             )
             return
         except EverMemosError as exc:
@@ -375,6 +465,21 @@ class SpaceCatalogService:
                 return
             # Existing metadata or schema variance — fallback to patch.
 
+        retry_snapshot = await self._fetch_conversation_meta_snapshot(group_id)
+        if isinstance(retry_snapshot, dict):
+            retry_created_at = retry_snapshot.get("created_at")
+            if isinstance(retry_created_at, str) and retry_created_at.strip():
+                effective_created_at = retry_created_at.strip()
+            user_details = self._merge_with_existing_user_details(
+                base_user_details,
+                retry_snapshot.get("user_details"),
+            )
+            self._cache_conversation_meta_snapshot(
+                space_id,
+                created_at=retry_snapshot.get("created_at"),
+                user_details=retry_snapshot.get("user_details"),
+            )
+
         try:
             await self._client.update_conversation_metadata(
                 group_id=group_id,
@@ -388,6 +493,12 @@ class SpaceCatalogService:
         except EverMemosError as exc:
             logger.warning(
                 "Failed to persist conversation metadata for %s: %s", space_id, exc
+            )
+        else:
+            self._cache_conversation_meta_snapshot(
+                space_id,
+                created_at=effective_created_at,
+                user_details=user_details,
             )
 
     @staticmethod
@@ -585,12 +696,7 @@ class SpaceCatalogService:
         - include_extracted=True: parse extracted memories + pending messages.
         - include_extracted=False: parse only pending messages.
         """
-        result = await self._client.search_memories(
-            query="Registered memory space",
-            group_id=CATALOG_GROUP_ID,
-            retrieve_method="keyword",
-            top_k=200,
-        )
+        result = await self._search_catalog_records("Registered memory space")
         if not isinstance(result, dict):
             return
         res = result.get("result", {})
@@ -609,6 +715,30 @@ class SpaceCatalogService:
                 msg.get("content", ""),
                 timestamp=msg.get("created_at", ""),
             )
+
+    async def _search_catalog_records(self, query: str) -> dict:
+        try:
+            return await self._client.search_memories(
+                query=query,
+                group_id=CATALOG_GROUP_ID,
+                retrieve_method="keyword",
+                top_k=_CATALOG_SEARCH_TOP_K_PREFERRED,
+            )
+        except EverMemosError as exc:
+            recoverable_codes = {"INVALID_INPUT", "INVALID_PARAMETER"}
+            recoverable_statuses = {400, 422}
+            if (
+                exc.code not in recoverable_codes
+                and exc.status_code not in recoverable_statuses
+            ):
+                raise
+
+        return await self._client.search_memories(
+            query=query,
+            group_id=CATALOG_GROUP_ID,
+            retrieve_method="keyword",
+            top_k=_CATALOG_SEARCH_TOP_K_FALLBACK,
+        )
 
     async def _enrich_with_conversation_meta(self, space_ids: list[str]) -> None:
         if not space_ids:
@@ -647,6 +777,12 @@ class SpaceCatalogService:
                 updated = result.get("updated_at") or result.get("created_at")
                 if isinstance(updated, str) and updated:
                     info.last_used_at = max(info.last_used_at or "", updated)
+
+                self._cache_conversation_meta_snapshot(
+                    space_id,
+                    created_at=created,
+                    user_details=result.get("user_details"),
+                )
 
         await asyncio.gather(*(_fetch_for_space(space_id) for space_id in space_ids))
 

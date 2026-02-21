@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock
 
@@ -279,6 +280,137 @@ async def test_ensure_conversation_meta_merges_existing_user_details(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_ensure_conversation_meta_reuses_cached_snapshot_after_first_get():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2024-01-01T00:00:00Z",
+                "user_details": {
+                    "alice": {
+                        "full_name": "Alice",
+                        "role": "user",
+                    }
+                },
+            },
+        }
+    )
+    client.update_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta("coding:app", actor_user_id="bob")
+    await catalog.ensure_conversation_meta("coding:app", actor_user_id="carol")
+
+    assert client.get_conversation_metadata.call_count == 1
+    assert client.update_conversation_metadata.call_count == 2
+
+    _, kwargs = client.update_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["alice"]["full_name"] == "Alice"
+    assert user_details["bob"]["full_name"] == "bob"
+    assert user_details["carol"]["full_name"] == "carol"
+
+
+@pytest.mark.asyncio
+async def test_ensure_conversation_meta_refetches_before_patch_after_set_conflict():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        side_effect=[
+            EverMemosError("not found", code="NOT_FOUND", status_code=404),
+            {
+                "status": "ok",
+                "result": {
+                    "conversation_created_at": "2024-01-01T00:00:00Z",
+                    "user_details": {
+                        "alice": {
+                            "full_name": "Alice",
+                            "role": "user",
+                        }
+                    },
+                },
+            },
+        ]
+    )
+    client.set_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError(
+            "exists",
+            code="INVALID_PARAMETER",
+            status_code=409,
+        )
+    )
+    client.update_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta(
+        "coding:app",
+        actor_user_id="bob",
+        actor_role="assistant",
+    )
+
+    assert client.get_conversation_metadata.call_count == 2
+    client.set_conversation_metadata.assert_called_once()
+    client.update_conversation_metadata.assert_called_once()
+
+    _, kwargs = client.update_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["alice"]["full_name"] == "Alice"
+    assert user_details["bob"]["role"] == "assistant"
+
+    info = catalog.get_space("coding:app")
+    assert info is not None
+    assert info.created_at == "2024-01-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_ensure_conversation_meta_serializes_same_space_updates():
+    in_flight = 0
+    max_in_flight = 0
+
+    async def update_side_effect(**kwargs):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+        return {"status": "ok", "result": {"id": "meta-1"}}
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2024-01-01T00:00:00Z",
+                "user_details": {},
+            },
+        }
+    )
+    client.update_conversation_metadata = AsyncMock(side_effect=update_side_effect)
+    catalog = SpaceCatalogService(client)
+
+    await asyncio.gather(
+        *(
+            catalog.ensure_conversation_meta(
+                "coding:app",
+                actor_user_id=f"user-{index}",
+            )
+            for index in range(8)
+        )
+    )
+
+    assert max_in_flight == 1
+    assert client.get_conversation_metadata.call_count == 1
+    assert client.update_conversation_metadata.call_count == 8
+
+
+@pytest.mark.asyncio
 async def test_register_updates_description():
     client = AsyncMock(spec=EverMemosClient)
     client.add_message = AsyncMock(return_value={"status": "queued"})
@@ -477,6 +609,73 @@ async def test_recover_handles_api_failure():
 
     spaces = await catalog.list_spaces()
     assert spaces == []
+
+
+@pytest.mark.asyncio
+async def test_recover_from_search_prefers_unbounded_top_k_when_supported():
+    client = AsyncMock(spec=EverMemosClient)
+    client.search_memories = AsyncMock(
+        return_value={
+            "result": {
+                "memories": [
+                    {
+                        "memory_type": "event_log",
+                        "atomic_fact": "Registered memory space: coding:app — My app",
+                        "timestamp": "2026-02-10T10:00:00Z",
+                    }
+                ],
+                "pending_messages": [],
+            }
+        }
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog._recover_from_search(include_extracted=True)
+
+    client.search_memories.assert_called_once()
+    _, kwargs = client.search_memories.call_args
+    assert kwargs["top_k"] == -1
+
+    info = catalog.get_space("coding:app")
+    assert info is not None
+
+
+@pytest.mark.asyncio
+async def test_recover_from_search_fallbacks_to_bounded_top_k_when_unbounded_rejected():
+    client = AsyncMock(spec=EverMemosClient)
+    client.search_memories = AsyncMock(
+        side_effect=[
+            EverMemosError(
+                "invalid top_k",
+                code="INVALID_INPUT",
+                status_code=400,
+            ),
+            {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "event_log",
+                            "atomic_fact": "Registered memory space: coding:app — My app",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            },
+        ]
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog._recover_from_search(include_extracted=True)
+
+    assert client.search_memories.call_count == 2
+    first_kwargs = client.search_memories.call_args_list[0].kwargs
+    second_kwargs = client.search_memories.call_args_list[1].kwargs
+    assert first_kwargs["top_k"] == -1
+    assert second_kwargs["top_k"] == 200
+
+    info = catalog.get_space("coding:app")
+    assert info is not None
 
 
 @pytest.mark.asyncio
