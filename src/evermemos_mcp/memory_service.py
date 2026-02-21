@@ -863,13 +863,38 @@ class MemoryService:
                 )
             return types_filter
 
+        def _row_lookup_key(row: dict) -> str | None:
+            memory_id = row.get("memory_id")
+            if isinstance(memory_id, str) and memory_id:
+                return f"id:{memory_id}"
+
+            memory_type = row.get("memory_type")
+            snippet = row.get("snippet")
+            if isinstance(snippet, str) and snippet:
+                return f"{memory_type}::{snippet}"
+            return None
+
+        def _row_merge_key(row: dict) -> str:
+            base_key = _row_lookup_key(row)
+            if base_key is None:
+                return repr(row)
+
+            source_space_id = row.get("space_id")
+            if isinstance(source_space_id, str) and source_space_id:
+                return f"{source_space_id}::{base_key}"
+            return base_key
+
         async def _run_single(
-            method: str, method_memory_types: list[str] | None
+            method: str,
+            method_memory_types: list[str] | None,
+            *,
+            scope: str | list[str] | None = None,
         ) -> dict:
+            effective_scope = search_scope if scope is None else scope
             try:
                 return await self._client.search_memories(
                     query,
-                    search_scope,
+                    effective_scope,
                     user_id=user_id,
                     retrieve_method=method,
                     top_k=top_k,
@@ -901,7 +926,7 @@ class MemoryService:
                 ]
                 fallback = await self._client.search_memories(
                     query,
-                    search_scope,
+                    effective_scope,
                     user_id=user_id,
                     retrieve_method=method,
                     top_k=top_k,
@@ -931,6 +956,100 @@ class MemoryService:
 
                 return fallback
 
+        async def _recover_missing_space_ids(
+            rows: list[dict],
+            *,
+            method: str,
+            method_memory_types: list[str] | None,
+        ) -> list[dict]:
+            if not rows:
+                return []
+
+            if len(resolved_space_ids) == 1:
+                default_space_id = resolved_space_ids[0]
+                for row in rows:
+                    source_space_id = row.get("space_id")
+                    if not isinstance(source_space_id, str) or not source_space_id:
+                        row["space_id"] = default_space_id
+                return []
+
+            missing_rows = [
+                row
+                for row in rows
+                if not isinstance(row.get("space_id"), str) or not row.get("space_id")
+            ]
+            if not missing_rows:
+                return []
+
+            candidate_spaces_by_key: dict[str, set[str]] = {}
+            probe_errors: list[dict] = []
+
+            for sid in resolved_space_ids:
+                try:
+                    scoped_result = await _run_single(
+                        method,
+                        method_memory_types,
+                        scope=to_group_id(sid),
+                    )
+                except EverMemosError as exc:
+                    probe_errors.append({"space_id": sid, "message": str(exc)})
+                    continue
+
+                scoped_rows, _, _, _, _, _ = self._map_search_response_to_results(
+                    scoped_result,
+                    include_metadata=include_metadata,
+                )
+
+                for scoped_row in scoped_rows:
+                    scoped_space_id = scoped_row.get("space_id")
+                    if not isinstance(scoped_space_id, str) or not scoped_space_id:
+                        scoped_row["space_id"] = sid
+
+                    row_key = _row_lookup_key(scoped_row)
+                    if row_key is None:
+                        continue
+
+                    source_space_id = scoped_row.get("space_id")
+                    if isinstance(source_space_id, str) and source_space_id:
+                        candidate_spaces_by_key.setdefault(row_key, set()).add(
+                            source_space_id
+                        )
+
+            unresolved_count = 0
+            for row in missing_rows:
+                row_key = _row_lookup_key(row)
+                if row_key is None:
+                    unresolved_count += 1
+                    continue
+
+                candidate_spaces = candidate_spaces_by_key.get(row_key, set())
+                if len(candidate_spaces) == 1:
+                    row["space_id"] = next(iter(candidate_spaces))
+                else:
+                    unresolved_count += 1
+
+            recovery_warnings: list[dict] = []
+            if unresolved_count > 0:
+                recovery_warnings.append(
+                    {
+                        "code": "SOURCE_SPACE_UNRESOLVED",
+                        "message": (
+                            f"{unresolved_count} result(s) have no source space because "
+                            "upstream search response omitted group_id."
+                        ),
+                    }
+                )
+            if probe_errors:
+                recovery_warnings.append(
+                    {
+                        "code": "SOURCE_SPACE_RECOVERY_PARTIAL",
+                        "message": "Failed to probe some spaces while recovering source labels.",
+                        "details": probe_errors,
+                    }
+                )
+
+            return recovery_warnings
+
         if retrieve_method != "auto":
             normalized_types = _normalize_types_for_method(
                 retrieve_method, memory_types
@@ -944,6 +1063,14 @@ class MemoryService:
                 )
             )
             pending_count = len(self._extract_pending_message_keys(result))
+            warnings = list(warnings)
+            warnings.extend(
+                await _recover_missing_space_ids(
+                    rows,
+                    method=retrieve_method,
+                    method_memory_types=normalized_types,
+                )
+            )
 
             if top_k != -1:
                 rows = rows[:top_k]
@@ -994,13 +1121,15 @@ class MemoryService:
             return_exceptions=True,
         )
 
-        successes: list[tuple[str, dict]] = []
+        successes: list[tuple[str, list[str] | None, dict]] = []
         failures: list[tuple[str, BaseException]] = []
-        for (method, _), branch_result in zip(branches, branch_results, strict=True):
+        for (method, branch_memory_types), branch_result in zip(
+            branches, branch_results, strict=True
+        ):
             if isinstance(branch_result, BaseException):
                 failures.append((method, branch_result))
                 continue
-            successes.append((method, branch_result))
+            successes.append((method, branch_memory_types, branch_result))
 
         if not successes:
             first_error = failures[0][1]
@@ -1016,23 +1145,22 @@ class MemoryService:
         pending_keys: set[str] = set()
         warnings: list = []
 
-        for _, success in successes:
+        for method, branch_memory_types, success in successes:
             rows, _, branch_warnings, _, _, _ = self._map_search_response_to_results(
                 success,
                 include_metadata=include_metadata,
             )
             pending_keys.update(self._extract_pending_message_keys(success))
             warnings.extend(branch_warnings)
+            warnings.extend(
+                await _recover_missing_space_ids(
+                    rows,
+                    method=method,
+                    method_memory_types=branch_memory_types,
+                )
+            )
             for row in rows:
-                memory_id = row.get("memory_id")
-                source_space_id = row.get("space_id")
-                if isinstance(memory_id, str) and memory_id:
-                    if isinstance(source_space_id, str) and source_space_id:
-                        dedupe_key = f"{source_space_id}::{memory_id}"
-                    else:
-                        dedupe_key = memory_id
-                else:
-                    dedupe_key = f"{row.get('space_id')}::{row.get('memory_type')}::{row.get('snippet')}"
+                dedupe_key = _row_merge_key(row)
                 if dedupe_key in seen:
                     continue
                 seen.add(dedupe_key)
@@ -1187,9 +1315,9 @@ class MemoryService:
             for ep in episodes:
                 if not isinstance(ep, dict):
                     continue
-                summary = ep.get("summary", "")
-                if summary:
-                    snippet_text = summary[:300]
+                text = self._extract_memory_text(ep)
+                if text:
+                    snippet_text = text[:300]
                     highlight = {
                         "type": "episodic_memory",
                         "snippet": snippet_text,

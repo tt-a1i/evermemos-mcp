@@ -158,6 +158,11 @@ When calling remember:
 3. `recall`（同一个 `space_id`）
    - 刚写完可能为空（Cloud 异步提取）
    - 可观察 `pending_count/pending_hint`
+4. `briefing`（同一个 `space_id`）
+   - 应返回 `summary` 与 `highlights[]`（覆盖 `profile + episodic_memory + event_log + foresight`）
+5. `fetch_history`（时间线分页）
+   - 示例：`memory_type=event_log`、`limit=20`、`offset=0`
+   - 通过 `has_more/next_offset` 继续翻页
 
 ## 10) 常见问题
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`

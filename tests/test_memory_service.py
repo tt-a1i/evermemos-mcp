@@ -1037,6 +1037,33 @@ async def test_briefing_profile_highlight_uses_common_text_extractor():
 
 
 @pytest.mark.asyncio
+async def test_briefing_episodic_highlight_uses_episode_when_summary_missing():
+    async def mock_fetch(group_id, *, memory_type="episodic_memory", **kw):
+        if memory_type == "episodic_memory":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "episode": "Investigated flaky deploy pipeline",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ]
+                }
+            }
+        return {"result": {"memories": []}}
+
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(side_effect=mock_fetch)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.briefing("coding:app")
+    assert result["ok"] is True
+    assert len(result["highlights"]) == 1
+    assert result["highlights"][0]["type"] == "episodic_memory"
+    assert "flaky deploy" in result["highlights"][0]["content"]
+
+
+@pytest.mark.asyncio
 async def test_briefing_empty_space():
     svc, _ = _make_svc()
     svc._catalog.ensure_space("empty:space")
@@ -1371,6 +1398,127 @@ async def test_recall_maps_space_id_from_group_id_when_available():
     assert result["ok"] is True
     assert result["space_ids"] == ["coding:app", "coding:infra"]
     assert result["results"][0]["space_id"] == "coding:infra"
+
+
+@pytest.mark.asyncio
+async def test_recall_recovers_space_id_when_multi_space_result_missing_group_id():
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        if isinstance(group_ids, list):
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+        if group_ids == "space::coding:app":
+            return {"result": {"memories": [], "pending_messages": []}}
+        if group_ids == "space::coding:infra":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:app", "coding:infra"],
+        retrieve_method="keyword",
+    )
+
+    assert result["ok"] is True
+    assert result["results"][0]["memory_id"] == "mem-001"
+    assert result["results"][0]["space_id"] == "coding:infra"
+    assert "warnings" not in result
+    assert client.search_memories.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_recall_warns_when_source_space_cannot_be_resolved():
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        if isinstance(group_ids, list):
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+        if group_ids in {"space::coding:app", "space::coding:infra"}:
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:app", "coding:infra"],
+        retrieve_method="keyword",
+    )
+
+    assert result["ok"] is True
+    assert "space_id" not in result["results"][0]
+    assert any(w.get("code") == "SOURCE_SPACE_UNRESOLVED" for w in result["warnings"])
+    assert client.search_memories.call_count == 3
 
 
 @pytest.mark.asyncio

@@ -116,6 +116,7 @@ EverMemOS API
   - `space_id` is also returned when only one space is used
   - `retrieve_method_actual=auto(hybrid+keyword)` when auto strategy is used
   - `pending_count/pending_hint` when extraction is pending
+  - optional `warnings[]` includes source-space recovery hints when upstream omits `group_id`
   - `partial_hint/partial_errors` when upstream returns partial results
 
 ### 5.4 `briefing`

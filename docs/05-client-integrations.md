@@ -157,6 +157,11 @@ In your MCP client:
 3. `recall` in the same space
    - immediate recall can be empty due to async extraction
    - look for `pending_count` and `pending_hint`
+4. `briefing` in the same space
+   - expect `summary` and `highlights[]` (`profile + episodic_memory + event_log + foresight`)
+5. `fetch_history` with timeline pagination
+   - example: `memory_type=event_log`, `limit=20`, `offset=0`
+   - use `has_more/next_offset` to continue paging
 
 ## 10) Common Issues
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`

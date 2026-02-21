@@ -225,6 +225,60 @@ async def test_ensure_conversation_meta_uses_configured_default_timezone(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_ensure_conversation_meta_merges_existing_user_details(monkeypatch):
+    monkeypatch.setattr(
+        catalog_module,
+        "EVERMEMOS_USER_DETAILS",
+        {
+            "mcp-user": {
+                "full_name": "Default User",
+                "role": "user",
+            }
+        },
+    )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2024-01-01T00:00:00Z",
+                "user_details": {
+                    "alice": {
+                        "full_name": "Alice",
+                        "role": "user",
+                    }
+                },
+            },
+        }
+    )
+    client.update_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta(
+        "coding:app",
+        actor_user_id="bob",
+        actor_role="assistant",
+    )
+
+    client.set_conversation_metadata.assert_not_called()
+    _, kwargs = client.update_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["mcp-user"]["full_name"] == "Default User"
+    assert user_details["alice"]["full_name"] == "Alice"
+    assert user_details["bob"]["role"] == "assistant"
+
+    info = catalog.get_space("coding:app")
+    assert info is not None
+    assert info.created_at == "2024-01-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
 async def test_register_updates_description():
     client = AsyncMock(spec=EverMemosClient)
     client.add_message = AsyncMock(return_value={"status": "queued"})
@@ -652,6 +706,74 @@ async def test_recover_from_paginated_fetch_without_topk_truncation():
     assert len(spaces) == total
     assert catalog.get_space("bulk:space-0") is not None
     assert catalog.get_space("bulk:space-219") is not None
+
+
+@pytest.mark.asyncio
+async def test_recover_from_paginated_fetch_clamps_page_size_to_client_limit(
+    monkeypatch,
+):
+    monkeypatch.setattr(catalog_module, "_CATALOG_PAGE_SIZE", 120)
+
+    total = 205
+    observed_event_offsets: list[int] = []
+    observed_event_limits: list[int] = []
+
+    def _structured_entry(index: int) -> str:
+        payload = {
+            "version": 1,
+            "space_id": f"bulk:space-{index}",
+            "description": f"Bulk space {index}",
+            "created_at": "2026-02-10T10:00:00+00:00",
+            "updated_at": "2026-02-10T10:00:00+00:00",
+        }
+        return f"{catalog_module._ENTRY_JSON_PREFIX}{json.dumps(payload)}"
+
+    async def fetch_side_effect(
+        group_id, *, memory_type="episodic_memory", limit=40, offset=0, **kwargs
+    ):
+        if group_id != "space::catalog":
+            return {"result": {"memories": [], "count": 0, "total_count": 0}}
+
+        if memory_type == "event_log":
+            observed_event_limits.append(limit)
+            observed_event_offsets.append(offset)
+            if offset >= total:
+                return {"result": {"memories": [], "count": 0, "total_count": total}}
+
+            end = min(offset + limit, total)
+            memories = [
+                {
+                    "memory_type": "event_log",
+                    "atomic_fact": _structured_entry(i),
+                    "timestamp": "2026-02-10T10:00:00+00:00",
+                }
+                for i in range(offset, end)
+            ]
+            return {
+                "result": {
+                    "memories": memories,
+                    "count": len(memories),
+                    "total_count": total,
+                }
+            }
+
+        return {"result": {"memories": [], "count": 0, "total_count": 0}}
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.fetch_memories = AsyncMock(side_effect=fetch_side_effect)
+    client.search_memories = AsyncMock(
+        return_value={"result": {"pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces(limit=500)
+
+    assert len(spaces) == total
+    assert observed_event_limits[:3] == [100, 100, 100]
+    assert observed_event_offsets[:3] == [0, 100, 200]
 
 
 @pytest.mark.asyncio

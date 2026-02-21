@@ -84,6 +84,7 @@
 - `recall`: 支持可选 `user_id` 过滤（适用于多用户共享空间）
 - `recall`: 支持 `space_id`（单空间）或 `space_ids`（多空间，最多 10 个去重后值）
 - `recall`: 响应包含 `space_ids`；若上游返回 `group_id`，单条结果会带 `space_id`
+- `recall`: 多空间检索若上游缺少 `group_id`，会做 best-effort 来源恢复；仍无法定位的结果会在 `warnings` 中提示
 - `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
 - `recall`: 支持 `current_time`、`radius`、`include_metadata`
 - `recall`: 可选 `memory_types` 目前仅支持 `profile|episodic_memory`（受 Cloud search API 限制）

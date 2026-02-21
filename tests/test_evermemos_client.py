@@ -386,6 +386,32 @@ async def test_fetch_memories_fallbacks_to_post_after_get_body_strip_hint():
 
 
 @pytest.mark.asyncio
+async def test_fetch_memories_fallback_post_failure_preserves_post_error():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(
+        side_effect=[
+            EverMemosError(
+                "Missing required field group_ids",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            ),
+            EverMemosError(
+                "bad gateway",
+                code="UPSTREAM_ERROR",
+                status_code=502,
+            ),
+        ]
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.fetch_memories("space::coding:app")
+
+    assert str(exc_info.value) == "bad gateway"
+    assert exc_info.value.status_code == 502
+    assert "GET request JSON body may be stripped" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
 async def test_add_message_sends_flush_false_explicitly():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(return_value={"status": "queued", "request_id": "req-1"})

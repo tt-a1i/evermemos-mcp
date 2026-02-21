@@ -138,6 +138,7 @@ EverMemOS API
   - `results[]`（每项包含 `memory_id`, `memory_type`, `snippet`, `timestamp`, `score`）
   - 使用 `auto` 时会返回 `retrieve_method_actual=auto(hybrid+keyword)`
   - `pending_count/pending_hint`（存在待提取消息时）
+  - 上游缺少 `group_id` 时，来源恢复相关信息会通过可选 `warnings[]` 返回
 
 ### 5.4 `briefing`
 - 输入：

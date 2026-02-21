@@ -81,6 +81,7 @@ class SpaceCatalogService:
         self._cache: dict[str, SpaceInfo] = {}
         self._recovered = False
         self._recover_failed_at: float = 0.0
+        self._conversation_meta_locks: dict[str, asyncio.Lock] = {}
 
     # -- public API --
 
@@ -111,7 +112,7 @@ class SpaceCatalogService:
 
         # Best-effort persist to catalog space
         await self._persist_entry(space_id, description, created_at=info.created_at)
-        await self._persist_conversation_meta(
+        await self._persist_conversation_meta_locked(
             space_id,
             description,
             created_at=info.created_at,
@@ -175,7 +176,7 @@ class SpaceCatalogService:
         created_at = info.created_at or datetime.now(timezone.utc).isoformat()
         if not info.created_at:
             info.created_at = created_at
-        await self._persist_conversation_meta(
+        await self._persist_conversation_meta_locked(
             space_id,
             info.description,
             created_at=created_at,
@@ -237,6 +238,32 @@ class SpaceCatalogService:
         except EverMemosError:
             logger.warning("Failed to persist catalog entry for %s", space_id)
 
+    def _get_conversation_meta_lock(self, space_id: str) -> asyncio.Lock:
+        lock = self._conversation_meta_locks.get(space_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._conversation_meta_locks[space_id] = lock
+        return lock
+
+    async def _persist_conversation_meta_locked(
+        self,
+        space_id: str,
+        description: str,
+        *,
+        created_at: str,
+        actor_user_id: str | None = None,
+        actor_role: str = "user",
+    ) -> None:
+        lock = self._get_conversation_meta_lock(space_id)
+        async with lock:
+            await self._persist_conversation_meta(
+                space_id,
+                description,
+                created_at=created_at,
+                actor_user_id=actor_user_id,
+                actor_role=actor_role,
+            )
+
     async def _persist_conversation_meta(
         self,
         space_id: str,
@@ -266,16 +293,61 @@ class SpaceCatalogService:
             "source": "evermemos-mcp",
         }
         tags = ["mcp", "memory-space", f"domain:{domain}", f"space:{space_id}"]
-        user_details = self._merge_user_details(
+        base_user_details = self._merge_user_details(
             actor_user_id=actor_user_id,
             actor_role=actor_role,
         )
+
+        existing_meta: dict | None = None
+        try:
+            existing_response = await self._client.get_conversation_metadata(group_id)
+        except EverMemosError:
+            existing_response = None
+        if isinstance(existing_response, dict):
+            result = existing_response.get("result")
+            if isinstance(result, dict):
+                existing_meta = result
+
+        effective_created_at = created_at
+        if isinstance(existing_meta, dict):
+            existing_created_at = existing_meta.get(
+                "conversation_created_at"
+            ) or existing_meta.get("created_at")
+            if isinstance(existing_created_at, str) and existing_created_at.strip():
+                effective_created_at = existing_created_at.strip()
+                info = self._cache.get(space_id)
+                if info is not None:
+                    info.created_at = effective_created_at
+
+        user_details = self._merge_with_existing_user_details(
+            base_user_details,
+            existing_meta.get("user_details")
+            if isinstance(existing_meta, dict)
+            else None,
+        )
+
+        if isinstance(existing_meta, dict):
+            try:
+                await self._client.update_conversation_metadata(
+                    group_id=group_id,
+                    description=payload_description or None,
+                    scene_desc=scene_desc,
+                    tags=tags,
+                    llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
+                    user_details=user_details,
+                    default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
+                )
+            except EverMemosError as exc:
+                logger.warning(
+                    "Failed to persist conversation metadata for %s: %s", space_id, exc
+                )
+            return
 
         try:
             await self._client.set_conversation_metadata(
                 group_id=group_id,
                 scene=scene,
-                created_at=created_at,
+                created_at=effective_created_at,
                 description=payload_description or None,
                 scene_desc=scene_desc,
                 tags=tags,
@@ -356,6 +428,49 @@ class SpaceCatalogService:
 
         return merged or None
 
+    @staticmethod
+    def _normalize_user_details(payload: object) -> dict[str, dict]:
+        if not isinstance(payload, dict):
+            return {}
+
+        normalized: dict[str, dict] = {}
+        for raw_user_id, raw_profile in payload.items():
+            if not isinstance(raw_user_id, str) or not raw_user_id.strip():
+                continue
+            user_id = raw_user_id.strip()
+            profile = dict(raw_profile) if isinstance(raw_profile, dict) else {}
+            normalized[user_id] = profile
+        return normalized
+
+    @classmethod
+    def _merge_with_existing_user_details(
+        cls,
+        base_user_details: dict | None,
+        existing_user_details: object,
+    ) -> dict | None:
+        merged = cls._normalize_user_details(base_user_details)
+        existing = cls._normalize_user_details(existing_user_details)
+
+        for user_id, profile in existing.items():
+            current = merged.get(user_id)
+            if current is None:
+                merged[user_id] = profile
+                continue
+
+            if not isinstance(current.get("full_name"), str) or not current.get(
+                "full_name"
+            ):
+                current_name = profile.get("full_name")
+                if isinstance(current_name, str) and current_name.strip():
+                    current["full_name"] = current_name.strip()
+
+            if not isinstance(current.get("role"), str) or not current.get("role"):
+                current_role = profile.get("role")
+                if isinstance(current_role, str) and current_role.strip():
+                    current["role"] = current_role.strip()
+
+        return merged or None
+
     def _should_try_recover(self) -> bool:
         """Check if recovery should be attempted."""
         if self._recovered:
@@ -414,14 +529,17 @@ class SpaceCatalogService:
         """
 
         saw_valid_fetch = False
+        # Keep pagination aligned with client-side limit clamp (<=100).
+        page_size = max(1, min(_CATALOG_PAGE_SIZE, 100))
         for memory_type in ("event_log", "episodic_memory"):
-            page = 1
-            while page <= _CATALOG_MAX_FETCH_PAGES:
+            page = 0
+            offset = 0
+            while page < _CATALOG_MAX_FETCH_PAGES:
                 response = await self._client.fetch_memories(
                     CATALOG_GROUP_ID,
                     memory_type=memory_type,
-                    limit=_CATALOG_PAGE_SIZE,
-                    offset=(page - 1) * _CATALOG_PAGE_SIZE,
+                    limit=page_size,
+                    offset=offset,
                 )
                 if not isinstance(response, dict):
                     return saw_valid_fetch
@@ -446,11 +564,12 @@ class SpaceCatalogService:
                 if count <= 0:
                     break
                 if isinstance(total_count, int) and total_count >= 0:
-                    if (page - 1) * _CATALOG_PAGE_SIZE + count >= total_count:
+                    if offset + count >= total_count:
                         break
-                elif count < _CATALOG_PAGE_SIZE:
+                elif count < page_size:
                     break
                 page += 1
+                offset += page_size
             else:
                 logger.warning(
                     "Catalog recovery stopped at max pages for %s (limit=%d)",

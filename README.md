@@ -83,6 +83,7 @@ If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
 - `recall`: supports optional `user_id` filter for multi-user spaces
 - `recall`: accepts `space_id` (single space) or `space_ids` (multi-space, up to 10 unique)
 - `recall`: response includes `space_ids`; when upstream provides `group_id`, each row may include `space_id`
+- `recall`: for multi-space search, missing `group_id` triggers best-effort source recovery; unresolved rows are reported in `warnings`
 - `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
 - `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
 - `recall`: `memory_types` currently supports only `profile|episodic_memory` (Cloud search API limitation)

@@ -372,8 +372,13 @@ class EverMemosClient:
             if hinted is not exc:
                 try:
                     return await self._request("POST", path, json=payload)
-                except EverMemosError:
-                    raise hinted from exc
+                except EverMemosError as post_error:
+                    post_hinted = self._maybe_hint_get_body_stripping(
+                        post_error, payload
+                    )
+                    if post_hinted is not post_error:
+                        raise post_hinted from exc
+                    raise post_error from exc
             raise
 
     # -- public API --
