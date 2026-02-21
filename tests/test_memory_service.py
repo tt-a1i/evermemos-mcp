@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -1037,6 +1038,42 @@ async def test_briefing_profile_highlight_uses_common_text_extractor():
 
 
 @pytest.mark.asyncio
+async def test_briefing_includes_multiple_profiles_without_user_filter():
+    async def mock_fetch(group_id, *, memory_type="episodic_memory", **kw):
+        if memory_type == "profile":
+            assert kw["limit"] == 4
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "summary": "Alice profile",
+                            "updated_at": "2026-02-10T10:00:00Z",
+                        },
+                        {
+                            "summary": "Bob profile",
+                            "updated_at": "2026-02-10T10:01:00Z",
+                        },
+                    ]
+                }
+            }
+        return {"result": {"memories": []}}
+
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(side_effect=mock_fetch)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.briefing("coding:app", max_items=4)
+    profile_highlights = [
+        item for item in result["highlights"] if item.get("type") == "profile"
+    ]
+
+    assert result["ok"] is True
+    assert len(profile_highlights) == 2
+    assert "Alice" in profile_highlights[0]["content"]
+    assert "Bob" in profile_highlights[1]["content"]
+
+
+@pytest.mark.asyncio
 async def test_briefing_episodic_highlight_uses_episode_when_summary_missing():
     async def mock_fetch(group_id, *, memory_type="episodic_memory", **kw):
         if memory_type == "episodic_memory":
@@ -1460,6 +1497,213 @@ async def test_recall_recovers_space_id_when_multi_space_result_missing_group_id
     assert result["results"][0]["space_id"] == "coding:infra"
     assert "warnings" not in result
     assert client.search_memories.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_recall_source_recovery_probe_uses_max_top_k_when_request_is_small():
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        if isinstance(group_ids, list):
+            assert top_k == 3
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-004",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        if group_ids == "space::coding:infra":
+            if top_k < 100:
+                return {"result": {"memories": [], "pending_messages": []}}
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-004",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:app", "coding:infra"],
+        retrieve_method="keyword",
+        top_k=3,
+    )
+
+    assert result["ok"] is True
+    assert result["results"][0]["space_id"] == "coding:infra"
+
+    probe_calls = [
+        call
+        for call in client.search_memories.call_args_list
+        if isinstance(call.args[1], str)
+    ]
+    assert len(probe_calls) == 2
+    assert all(call.kwargs["top_k"] == 100 for call in probe_calls)
+
+
+@pytest.mark.asyncio
+async def test_recall_source_recovery_probes_spaces_concurrently():
+    in_flight = 0
+    max_in_flight = 0
+
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        nonlocal in_flight, max_in_flight
+
+        if isinstance(group_ids, list):
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.01)
+        in_flight -= 1
+
+        if group_ids == "space::coding:s3":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    for sid in ["coding:s1", "coding:s2", "coding:s3", "coding:s4"]:
+        svc._catalog.ensure_space(sid)
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:s1", "coding:s2", "coding:s3", "coding:s4"],
+        retrieve_method="keyword",
+    )
+
+    assert result["ok"] is True
+    assert result["results"][0]["space_id"] == "coding:s3"
+    assert max_in_flight >= 2
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_reuses_source_recovery_cache_across_branches():
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        if isinstance(group_ids, list):
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        if group_ids == "space::coding:infra":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "id": "mem-001",
+                            "memory_type": "episodic_memory",
+                            "summary": "Discussed infra deployment",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:app", "coding:infra"],
+        retrieve_method="auto",
+    )
+
+    assert result["ok"] is True
+    assert result["results"][0]["space_id"] == "coding:infra"
+
+    probe_calls = [
+        call
+        for call in client.search_memories.call_args_list
+        if isinstance(call.args[1], str)
+    ]
+    assert len(probe_calls) == 2
 
 
 @pytest.mark.asyncio

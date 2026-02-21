@@ -28,6 +28,8 @@ _HYBRID_ALLOWED_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
 _MAX_FETCH_HISTORY_LIMIT = 100
+_SOURCE_RECOVERY_PROBE_TOP_K = _MAX_RECALL_TOP_K
+_SOURCE_RECOVERY_PROBE_CONCURRENCY = 4
 
 logger = logging.getLogger(__name__)
 
@@ -882,26 +884,39 @@ class MemoryService:
                 return f"{source_space_id}::{base_key}"
             return base_key
 
+        recovered_candidate_spaces: dict[str, set[str]] = {}
+        completed_probe_signatures: set[tuple[str, tuple[str, ...] | None]] = set()
+
         async def _run_single(
             method: str,
             method_memory_types: list[str] | None,
             *,
             scope: str | list[str] | None = None,
+            top_k_override: int | None = None,
+            include_metadata_override: bool | None = None,
         ) -> dict:
             effective_scope = search_scope if scope is None else scope
+            effective_top_k = (
+                request_top_k if top_k_override is None else top_k_override
+            )
+            effective_include_metadata = (
+                include_metadata
+                if include_metadata_override is None
+                else include_metadata_override
+            )
             try:
                 return await self._client.search_memories(
                     query,
                     effective_scope,
                     user_id=user_id,
                     retrieve_method=method,
-                    top_k=request_top_k,
+                    top_k=effective_top_k,
                     memory_types=method_memory_types,
                     start_time=start_time,
                     end_time=end_time,
                     current_time=current_time,
                     radius=radius,
-                    include_metadata=include_metadata,
+                    include_metadata=effective_include_metadata,
                 )
             except EverMemosError as exc:
                 has_profile = (
@@ -927,13 +942,13 @@ class MemoryService:
                     effective_scope,
                     user_id=user_id,
                     retrieve_method=method,
-                    top_k=request_top_k,
+                    top_k=effective_top_k,
                     memory_types=fallback_memory_types,
                     start_time=start_time,
                     end_time=end_time,
                     current_time=current_time,
                     radius=radius,
-                    include_metadata=include_metadata,
+                    include_metadata=effective_include_metadata,
                 )
 
                 if isinstance(fallback, dict):
@@ -971,6 +986,18 @@ class MemoryService:
                         row["space_id"] = default_space_id
                 return []
 
+            for row in rows:
+                row_key = _row_lookup_key(row)
+                source_space_id = row.get("space_id")
+                if (
+                    row_key is not None
+                    and isinstance(source_space_id, str)
+                    and source_space_id
+                ):
+                    recovered_candidate_spaces.setdefault(row_key, set()).add(
+                        source_space_id
+                    )
+
             missing_rows = [
                 row
                 for row in rows
@@ -979,52 +1006,83 @@ class MemoryService:
             if not missing_rows:
                 return []
 
-            candidate_spaces_by_key: dict[str, set[str]] = {}
-            probe_errors: list[dict] = []
-
-            for sid in resolved_space_ids:
-                try:
-                    scoped_result = await _run_single(
-                        method,
-                        method_memory_types,
-                        scope=to_group_id(sid),
-                    )
-                except EverMemosError as exc:
-                    probe_errors.append({"space_id": sid, "message": str(exc)})
-                    continue
-
-                scoped_rows, _, _, _, _ = self._map_search_response_to_results(
-                    scoped_result,
-                    include_metadata=include_metadata,
-                )
-
-                for scoped_row in scoped_rows:
-                    scoped_space_id = scoped_row.get("space_id")
-                    if not isinstance(scoped_space_id, str) or not scoped_space_id:
-                        scoped_row["space_id"] = sid
-
-                    row_key = _row_lookup_key(scoped_row)
+            def _apply_cached_source_space(target_rows: list[dict]) -> int:
+                unresolved = 0
+                for row in target_rows:
+                    row_key = _row_lookup_key(row)
                     if row_key is None:
+                        unresolved += 1
                         continue
 
-                    source_space_id = scoped_row.get("space_id")
-                    if isinstance(source_space_id, str) and source_space_id:
-                        candidate_spaces_by_key.setdefault(row_key, set()).add(
-                            source_space_id
+                    candidate_spaces = recovered_candidate_spaces.get(row_key, set())
+                    if len(candidate_spaces) == 1:
+                        row["space_id"] = next(iter(candidate_spaces))
+                    else:
+                        unresolved += 1
+                return unresolved
+
+            unresolved_count = _apply_cached_source_space(missing_rows)
+            if unresolved_count == 0:
+                return []
+
+            probe_signature = (
+                method,
+                tuple(method_memory_types) if method_memory_types is not None else None,
+            )
+
+            probe_errors: list[dict] = []
+            if probe_signature not in completed_probe_signatures:
+                completed_probe_signatures.add(probe_signature)
+
+                probe_semaphore = asyncio.Semaphore(
+                    min(len(resolved_space_ids), _SOURCE_RECOVERY_PROBE_CONCURRENCY)
+                )
+
+                async def _probe_one_space(
+                    sid: str,
+                ) -> tuple[str, list[dict] | None, str | None]:
+                    async with probe_semaphore:
+                        try:
+                            scoped_result = await _run_single(
+                                method,
+                                method_memory_types,
+                                scope=to_group_id(sid),
+                                top_k_override=_SOURCE_RECOVERY_PROBE_TOP_K,
+                                include_metadata_override=False,
+                            )
+                        except EverMemosError as exc:
+                            return sid, None, str(exc)
+
+                    scoped_rows, _, _, _, _ = self._map_search_response_to_results(
+                        scoped_result,
+                        include_metadata=False,
+                    )
+                    return sid, scoped_rows, None
+
+                probe_results = await asyncio.gather(
+                    *(_probe_one_space(sid) for sid in resolved_space_ids)
+                )
+
+                for sid, scoped_rows, error_message in probe_results:
+                    if error_message is not None:
+                        probe_errors.append({"space_id": sid, "message": error_message})
+                        continue
+
+                    assert scoped_rows is not None
+                    for scoped_row in scoped_rows:
+                        scoped_space_id = scoped_row.get("space_id")
+                        if not isinstance(scoped_space_id, str) or not scoped_space_id:
+                            scoped_space_id = sid
+
+                        row_key = _row_lookup_key(scoped_row)
+                        if row_key is None:
+                            continue
+
+                        recovered_candidate_spaces.setdefault(row_key, set()).add(
+                            scoped_space_id
                         )
 
-            unresolved_count = 0
-            for row in missing_rows:
-                row_key = _row_lookup_key(row)
-                if row_key is None:
-                    unresolved_count += 1
-                    continue
-
-                candidate_spaces = candidate_spaces_by_key.get(row_key, set())
-                if len(candidate_spaces) == 1:
-                    row["space_id"] = next(iter(candidate_spaces))
-                else:
-                    unresolved_count += 1
+            unresolved_count = _apply_cached_source_space(missing_rows)
 
             recovery_warnings: list[dict] = []
             if unresolved_count > 0:
@@ -1215,9 +1273,14 @@ class MemoryService:
         group_id = to_group_id(space_id)
         self._catalog.touch_space(space_id)
 
+        profile_limit = 1 if user_id is not None else max_items
+
         profile_res, episodic_res, event_res, foresight_res = await asyncio.gather(
             self._client.fetch_memories(
-                group_id, user_id=user_id, memory_type="profile", limit=1
+                group_id,
+                user_id=user_id,
+                memory_type="profile",
+                limit=profile_limit,
             ),
             self._client.fetch_memories(
                 group_id,
@@ -1274,7 +1337,7 @@ class MemoryService:
         # Profile
         if isinstance(profile_res, dict):
             profiles_wrapper = profile_res.get("result", {}).get("memories", [])
-            for pw in profiles_wrapper[:1]:
+            for pw in profiles_wrapper[:profile_limit]:
                 if not isinstance(pw, dict):
                     continue
                 text = self._extract_memory_text(pw)
