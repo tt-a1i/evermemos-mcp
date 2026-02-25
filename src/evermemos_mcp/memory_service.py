@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from . import config
 from .evermemos_client import EverMemosClient, EverMemosError
 from .space_catalog_service import SpaceCatalogService, from_group_id, to_group_id
 
@@ -28,8 +29,8 @@ _HYBRID_ALLOWED_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
 _FORGET_DELETE_CONCURRENCY = 8
 _MAX_FETCH_HISTORY_LIMIT = 100
-_SOURCE_RECOVERY_PROBE_TOP_K = _MAX_RECALL_TOP_K
-_SOURCE_RECOVERY_PROBE_CONCURRENCY = 4
+_SOURCE_RECOVERY_PROBE_TOP_K = config.EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K
+_SOURCE_RECOVERY_PROBE_CONCURRENCY = config.EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY
 
 logger = logging.getLogger(__name__)
 
@@ -868,10 +869,25 @@ class MemoryService:
             if isinstance(memory_id, str) and memory_id:
                 return f"id:{memory_id}"
 
+            source_message_id = row.get("source_message_id")
+            if isinstance(source_message_id, str) and source_message_id.strip():
+                return f"msg:{source_message_id.strip()}"
+
             memory_type = row.get("memory_type")
+            normalized_type = (
+                memory_type.strip()
+                if isinstance(memory_type, str) and memory_type.strip()
+                else "unknown"
+            )
+            timestamp = row.get("timestamp")
             snippet = row.get("snippet")
-            if isinstance(snippet, str) and snippet:
-                return f"{memory_type}::{snippet}"
+            if isinstance(snippet, str) and snippet.strip():
+                normalized_snippet = snippet.strip()
+                if isinstance(timestamp, str) and timestamp.strip():
+                    return (
+                        f"{normalized_type}::{timestamp.strip()}::{normalized_snippet}"
+                    )
+                return f"{normalized_type}::{normalized_snippet}"
             return None
 
         def _row_merge_key(row: dict) -> str:
@@ -886,6 +902,7 @@ class MemoryService:
 
         recovered_candidate_spaces: dict[str, set[str]] = {}
         completed_probe_signatures: set[tuple[str, tuple[str, ...] | None]] = set()
+        probed_row_keys: set[str] = set()
 
         async def _run_single(
             method: str,
@@ -1025,14 +1042,26 @@ class MemoryService:
             if unresolved_count == 0:
                 return []
 
+            unresolved_probe_keys = {
+                row_key
+                for row in missing_rows
+                if (row_key := _row_lookup_key(row)) is not None
+                and len(recovered_candidate_spaces.get(row_key, set())) != 1
+            }
+            has_new_probe_keys = bool(unresolved_probe_keys - probed_row_keys)
+
             probe_signature = (
                 method,
                 tuple(method_memory_types) if method_memory_types is not None else None,
             )
 
             probe_errors: list[dict] = []
-            if probe_signature not in completed_probe_signatures:
+            if (
+                probe_signature not in completed_probe_signatures
+                and has_new_probe_keys
+            ):
                 completed_probe_signatures.add(probe_signature)
+                probed_row_keys.update(unresolved_probe_keys)
 
                 probe_semaphore = asyncio.Semaphore(
                     min(len(resolved_space_ids), _SOURCE_RECOVERY_PROBE_CONCURRENCY)

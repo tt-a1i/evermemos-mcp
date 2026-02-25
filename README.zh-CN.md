@@ -38,6 +38,8 @@
 - 可选：`EVERMEMOS_LLM_CUSTOM_SETTING_JSON` 用于透传 `llm_custom_setting`
 - 可选：`EVERMEMOS_USER_DETAILS_JSON` 用于透传 conversation `user_details`
 - 可选：`EVERMEMOS_DEFAULT_TIMEZONE` 用于 conversation metadata 时区（默认 `UTC`）
+- 可选：`EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K` 用于调节来源空间探针的检索范围（默认 `100`）
+- 可选：`EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY` 用于调节来源空间探针并发（默认 `4`）
 
 ## 安装方式
 - 克隆仓库：`git clone https://github.com/tt-a1i/evermemos-mcp.git`

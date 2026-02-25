@@ -1571,6 +1571,66 @@ async def test_recall_source_recovery_probe_uses_max_top_k_when_request_is_small
 
 
 @pytest.mark.asyncio
+async def test_recall_source_recovery_prefers_source_message_id_key_when_id_missing():
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        if isinstance(group_ids, list):
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "episodic_memory",
+                            "summary": "Main search snippet",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                            "source_message_id": "msg-007",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        if group_ids == "space::coding:infra":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "episodic_memory",
+                            "summary": "Probe snippet is intentionally different",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                            "source_message_id": "msg-007",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:app", "coding:infra"],
+        retrieve_method="keyword",
+    )
+
+    assert result["ok"] is True
+    assert result["results"][0]["space_id"] == "coding:infra"
+    assert "warnings" not in result
+
+
+@pytest.mark.asyncio
 async def test_recall_source_recovery_probes_spaces_concurrently():
     in_flight = 0
     max_in_flight = 0
@@ -1656,6 +1716,54 @@ async def test_recall_source_recovery_probes_spaces_concurrently():
     assert result["ok"] is True
     assert result["results"][0]["space_id"] == "coding:s3"
     assert max_in_flight >= 2
+
+
+@pytest.mark.asyncio
+async def test_recall_auto_skips_duplicate_probes_for_already_attempted_keys():
+    scoped_probe_calls: list[tuple[str, str]] = []
+
+    async def mock_search(
+        query,
+        group_ids,
+        *,
+        user_id=None,
+        retrieve_method="keyword",
+        top_k=10,
+        memory_types=None,
+        **kw,
+    ):
+        if isinstance(group_ids, list):
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "episodic_memory",
+                            "summary": "Shared unresolved snippet",
+                            "timestamp": "2026-02-10T10:00:00Z",
+                        }
+                    ],
+                    "pending_messages": [],
+                }
+            }
+
+        scoped_probe_calls.append((retrieve_method, group_ids))
+        return {"result": {"memories": [], "pending_messages": []}}
+
+    svc, client = _make_svc()
+    client.search_memories = AsyncMock(side_effect=mock_search)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "deploy",
+        space_ids=["coding:app", "coding:infra"],
+        retrieve_method="auto",
+    )
+
+    assert result["ok"] is True
+    assert any(w.get("code") == "SOURCE_SPACE_UNRESOLVED" for w in result["warnings"])
+    assert len(scoped_probe_calls) == 2
+    assert all(method == "hybrid" for method, _ in scoped_probe_calls)
 
 
 @pytest.mark.asyncio

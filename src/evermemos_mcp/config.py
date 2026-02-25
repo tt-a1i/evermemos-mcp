@@ -33,6 +33,47 @@ EVERMEMOS_DEFAULT_TIMEZONE = (
     os.getenv("EVERMEMOS_DEFAULT_TIMEZONE", "UTC").strip() or "UTC"
 )
 
+
+def _get_positive_int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    text = raw.strip()
+    if not text:
+        return default
+
+    try:
+        value = int(text)
+    except ValueError:
+        return default
+
+    if value < minimum:
+        return minimum
+    if maximum is not None and value > maximum:
+        return maximum
+    return value
+
+
+EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K = _get_positive_int_env(
+    "EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K",
+    100,
+    minimum=1,
+    maximum=100,
+)
+EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY = _get_positive_int_env(
+    "EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY",
+    4,
+    minimum=1,
+    maximum=10,
+)
+
 _LLM_CUSTOM_SETTING_RAW = os.getenv("EVERMEMOS_LLM_CUSTOM_SETTING_JSON", "").strip()
 EVERMEMOS_LLM_CUSTOM_SETTING: dict[str, Any] | None
 if _LLM_CUSTOM_SETTING_RAW:

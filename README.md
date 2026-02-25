@@ -38,6 +38,8 @@ Universal MCP memory layer powered by EverMemOS.
 - Optional: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` to pass `llm_custom_setting`
 - Optional: `EVERMEMOS_USER_DETAILS_JSON` to pass conversation `user_details`
 - Optional: `EVERMEMOS_DEFAULT_TIMEZONE` for conversation metadata timezone (default `UTC`)
+- Optional: `EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K` to tune source-space probe breadth (default `100`)
+- Optional: `EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY` to tune source-space probe concurrency (default `4`)
 
 ## Installation
 - Clone repo: `git clone https://github.com/tt-a1i/evermemos-mcp.git`
