@@ -109,3 +109,49 @@ Raw runs distribution (Release asset):
   - https://github.com/tt-a1i/evermemos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl
 - SHA256:
   - `4facef0cbebf752eb1d34709072a2d81aa7fd3b946d3970dbe542b95382f3421`
+
+## 10) Lightweight Write/Read/Delete Lifecycle Appendix (Supplemental)
+
+Scope:
+- This appendix is supplemental evidence only.
+- It does **not** change the primary benchmark gates in Sections 2 and 5.
+
+Purpose:
+- Demonstrate that memory lifecycle is operational end-to-end:
+  `remember -> searchable -> isolated recall -> forget`.
+
+### 10.1 Suggested minimal checks
+1. `remember` success rate  
+2. time-to-searchable (`remember` ack to first recall hit)  
+3. `space_id` isolation correctness (cross-space no-hit)  
+4. `forget` effectiveness (post-delete recall miss for deleted item)
+
+### 10.2 Minimal execution protocol
+Use a small sample (for example `N=10` writes per scenario) and keep raw logs.
+
+1. Preload baseline spaces:
+```bash
+uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
+```
+
+2. Execute lifecycle walkthrough and capture terminal logs:
+```bash
+uv run python scripts/demo_live_walkthrough.py --do-forget
+```
+
+3. Record evidence rows in an appendix artifact (example path):
+- `artifacts/competition/2026-02-26-lifecycle/appendix_notes.md`
+- `artifacts/competition/2026-02-26-lifecycle/raw_logs.txt`
+
+### 10.3 Reporting template (fill after run)
+
+| Check | Definition | Sample size | Result | Status |
+| --- | --- | --- | --- | --- |
+| Remember success rate | successful remember acknowledgements / total remember calls | `TBD` | `TBD` | `TBD` |
+| Time-to-searchable P50/P95 | time from remember ack to first recall hit | `TBD` | `TBD` | `TBD` |
+| Space isolation correctness | cross-space false hits / cross-space queries | `TBD` | `TBD` | `TBD` |
+| Forget effectiveness | deleted item still recalled / delete attempts | `TBD` | `TBD` | `TBD` |
+
+Notes:
+- Keep metric formulas explicit when filling this table.
+- Keep this appendix independent from the primary gate decision.
