@@ -60,12 +60,13 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 ## Links
 - Repository: https://github.com/tt-a1i/evermemos-mcp
 - Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.0
+- Evidence release: https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26
 - Demo video: TBD
 - Short clip: TBD
 - Benchmark artifacts (Phase 2):
   - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` (primary evidence)
   - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`
-  - `runs.jsonl` raw data (Release asset): `TBD`
+  - `runs.jsonl` raw data (Release asset): `https://github.com/tt-a1i/evermemos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
   - `artifacts/competition/2026-02-25-smoke/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-formal-real/benchmark_summary.json` (earlier failed baseline)
