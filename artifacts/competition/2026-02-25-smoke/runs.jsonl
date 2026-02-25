@@ -1,0 +1,8 @@
+{"scenario":"coding","query":"FastAPI rollback plan","mode":"with_memory","latency_ms":920,"hit":true,"resolved_rows":4,"wrong_attributions":0}
+{"scenario":"chat","query":"coffee preference","mode":"with_memory","latency_ms":1080,"hit":true,"resolved_rows":4,"wrong_attributions":0}
+{"scenario":"study","query":"bias variance review","mode":"with_memory","latency_ms":1330,"hit":true,"resolved_rows":4,"wrong_attributions":0}
+{"scenario":"coding","query":"rate limiting algorithm","mode":"with_memory","latency_ms":1490,"hit":true,"resolved_rows":4,"wrong_attributions":0}
+{"scenario":"coding","query":"FastAPI rollback plan","mode":"without_memory","latency_ms":890,"hit":false,"resolved_rows":0,"wrong_attributions":0}
+{"scenario":"chat","query":"coffee preference","mode":"without_memory","latency_ms":990,"hit":true,"resolved_rows":0,"wrong_attributions":0}
+{"scenario":"study","query":"bias variance review","mode":"without_memory","latency_ms":1210,"hit":false,"resolved_rows":0,"wrong_attributions":0}
+{"scenario":"coding","query":"rate limiting algorithm","mode":"without_memory","latency_ms":1420,"hit":false,"resolved_rows":0,"wrong_attributions":0}

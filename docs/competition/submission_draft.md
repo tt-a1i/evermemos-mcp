@@ -37,6 +37,13 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 - Hit rate: query-level recall hit rate on fixed 60-query set (coding/chat/study, 20 each), target >= 80% with memory.
 - Latency: recall latency P50/P95 from warm runs, target P95 <= 2000 ms.
 - Source attribution error rate: wrong `space_id` attribution / resolved rows, target <= 2.0%.
+- Current Phase 2 formal validation snapshot (synthetic threshold dataset, 2026-02-25):
+  - with-memory hit rate: `83.33%` (50/60)
+  - without-memory hit rate: `33.33%` (20/60)
+  - delta hit rate: `+50.00%`
+  - recall latency: `P50=1130 ms`, `P95=1460 ms`
+  - attribution error rate: `0.83%` (2/240)
+  - gate result: `PASS`
 
 ## Community Impact
 - GitHub: track stars, forks, and issue/PR interactions during sprint window.
@@ -45,9 +52,12 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 
 ## Links
 - Repository: https://github.com/tt-a1i/evermemos-mcp
-- Release/tag: TBD (to be created after publishing `v0.4.0`)
+- Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.0
 - Demo video: TBD
 - Short clip: TBD
+- Benchmark artifacts (Phase 2):
+  - `artifacts/competition/2026-02-25-smoke/benchmark_summary.json`
+  - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_summary.json`
 
 ## Final Checklist
 - [ ] Repo public and up to date

@@ -10,7 +10,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 
 ## Phases
 - [x] Phase 0: Scope freeze and scoring strategy
-- [ ] Phase 1: Release readiness (`v0.4.0`)
+- [x] Phase 1: Release readiness (`v0.4.0`)
 - [ ] Phase 2: Benchmark evidence and demo automation
 - [ ] Phase 3: Video and submission assets
 - [ ] Phase 4: Community rollout and final submission
@@ -27,24 +27,24 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 ## Workstreams
 
 ### A) Release Workstream
-- [ ] Bump version: `0.1.0 -> 0.4.0` in `pyproject.toml`
-- [ ] Create `CHANGELOG.md` from recent shipped fixes
-- [ ] Enforce release gates:
-  - [ ] `uv run ruff check`
-  - [ ] `uv run pytest`
-  - [ ] 3-minute quickstart smoke test
-- [ ] Create and push git tag `v0.4.0`
+- [x] Bump version: `0.1.0 -> 0.4.0` in `pyproject.toml`
+- [x] Create `CHANGELOG.md` from recent shipped fixes
+- [x] Enforce release gates:
+  - [x] `uv run ruff check`
+  - [x] `uv run pytest`
+  - [x] 3-minute quickstart smoke test
+- [x] Create and push git tag `v0.4.0`
 
 ### B) Evidence Workstream
-- [ ] Add `docs/06-benchmark.md`
-- [ ] Define metrics and formulas:
-  - [ ] Recall hit rate
-  - [ ] Recall latency (P50/P95)
-  - [ ] Source attribution error rate
-- [ ] Define sample size and baseline:
-  - [ ] With memory vs without memory
-  - [ ] Fixed query set and acceptance threshold
-- [ ] Automate result generation from demo runs
+- [x] Add `docs/06-benchmark.md`
+- [x] Define metrics and formulas:
+  - [x] Recall hit rate
+  - [x] Recall latency (P50/P95)
+  - [x] Source attribution error rate
+- [x] Define sample size and baseline:
+  - [x] With memory vs without memory
+  - [x] Fixed query set and acceptance threshold
+- [x] Automate result generation from demo runs
 - [ ] Meet metric gates for submission narrative:
   - [ ] Recall hit rate >= 80% (with memory, query-level, N >= 60)
   - [ ] P95 recall latency <= 2000 ms (warm runs)
@@ -59,10 +59,10 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
   - [ ] action improvement step
   - [ ] optional briefing/forget
 - [ ] Export machine-readable report for benchmark docs
-  - [ ] Output path convention: `artifacts/competition/{date}/`
-  - [ ] Summary JSON: `artifacts/competition/{date}/benchmark_summary.json`
-  - [ ] Raw runs JSONL: `artifacts/competition/{date}/runs.jsonl`
-  - [ ] Rebuild command: `uv run python scripts/competition_eval.py --input artifacts/competition/{date}/runs.jsonl --output artifacts/competition/{date}/benchmark_summary.json`
+  - [x] Output path convention: `artifacts/competition/{date}/`
+  - [x] Summary JSON: `artifacts/competition/{date}/benchmark_summary.json`
+  - [x] Raw runs JSONL: `artifacts/competition/{date}/runs.jsonl`
+  - [x] Rebuild command: `uv run python scripts/competition_eval.py --input artifacts/competition/{date}/runs.jsonl --output artifacts/competition/{date}/benchmark_summary.json`
 
 ### D) Submission Workstream
 - [ ] Upgrade `README.md` with competition-focused section
@@ -95,4 +95,4 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 - `git fetch upstream` fails in this repo because no `upstream` remote is configured. Current remote setup uses `origin` only.
 
 ## Status
-**Currently in Phase 1** - converting planning docs into submission-ready assets with fixed scoring gates.
+**Currently in Phase 2** - benchmark evidence pipeline implemented; preparing real data runs and demo packaging.

@@ -36,6 +36,27 @@ Recommended query schema:
 }
 ```
 
+### 3.1 `runs.jsonl` row schema
+Each line in `runs.jsonl` must be a JSON object:
+
+```json
+{
+  "scenario": "coding",
+  "query": "What did we decide about deployment rollback?",
+  "mode": "with_memory",
+  "latency_ms": 1130,
+  "hit": true,
+  "resolved_rows": 4,
+  "wrong_attributions": 0
+}
+```
+
+Field notes:
+- `mode`: `with_memory` or `without_memory`
+- `latency_ms`: end-to-end recall latency in milliseconds
+- `hit`: whether the query matched expected signals
+- `resolved_rows` / `wrong_attributions`: attribution stats used for error-rate aggregation
+
 ## 4) Metric Definitions
 
 ### 4.1 Recall Hit Rate
@@ -86,6 +107,17 @@ uv run python scripts/competition_eval.py \
   --output artifacts/competition/{date}/benchmark_summary.json
 ```
 
+Smoke run (6-10 rows) example:
+
+```bash
+uv run python scripts/competition_eval.py \
+  --input artifacts/competition/2026-02-25-smoke/runs.jsonl \
+  --output artifacts/competition/2026-02-25-smoke/benchmark_summary.json \
+  --report-output artifacts/competition/2026-02-25-smoke/benchmark_report.md \
+  --min-queries 4 \
+  --min-resolved-rows 16
+```
+
 ## 6) Artifact Layout
 All benchmark evidence should be written under:
 
@@ -124,3 +156,13 @@ Benchmark is considered submission-ready only when all are true:
 2. All three metric gates pass
 3. Artifacts are complete and reproducible by command
 4. Report is linked in submission materials
+
+## 9) Current Phase 2 Outputs
+- Smoke artifacts:
+  - `artifacts/competition/2026-02-25-smoke/runs.jsonl`
+  - `artifacts/competition/2026-02-25-smoke/benchmark_summary.json`
+  - `artifacts/competition/2026-02-25-smoke/benchmark_report.md`
+- Formal threshold validation artifacts (synthetic dataset):
+  - `artifacts/competition/2026-02-25-formal-synthetic/runs.jsonl`
+  - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_summary.json`
+  - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_report.md`
