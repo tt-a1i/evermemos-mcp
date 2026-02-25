@@ -1,0 +1,61 @@
+# 60-query template (20 per scenario). Replace/adapt queries as needed.
+{"id":"coding-01","scenario":"coding","query":"What is our backend stack for the demo app?","expected_signals":["FastAPI","PostgreSQL"]}
+{"id":"coding-02","scenario":"coding","query":"Did we record SQLAlchemy 2.0 async as ORM style?","expected_signals":["SQLAlchemy","async"]}
+{"id":"coding-03","scenario":"coding","query":"Do we have cache in architecture?","expected_signals":["Redis cache"]}
+{"id":"coding-04","scenario":"coding","query":"What architecture boundary did we decide?","expected_signals":["domain services","adapters at boundary"]}
+{"id":"coding-05","scenario":"coding","query":"What coding tools are required?","expected_signals":["ruff","black"]}
+{"id":"coding-06","scenario":"coding","query":"How strict is typing in this project?","expected_signals":["strict typing"]}
+{"id":"coding-07","scenario":"coding","query":"Summarize stack decisions for API and database.","expected_signals":["FastAPI","PostgreSQL"]}
+{"id":"coding-08","scenario":"coding","query":"Did we choose Redis for caching?","expected_signals":["Redis cache"]}
+{"id":"coding-09","scenario":"coding","query":"What is the coding rule: no hidden magic defaults?","expected_signals":["hidden magic","strict typing"]}
+{"id":"coding-10","scenario":"coding","query":"What architecture note says adapters at boundary?","expected_signals":["adapters should be placed","domain services should remain pure"]}
+{"id":"coding-11","scenario":"coding","query":"What style guide do we enforce?","expected_signals":["ruff","strict typing"]}
+{"id":"coding-12","scenario":"coding","query":"What app framework and DB combo do we use?","expected_signals":["FastAPI","PostgreSQL"]}
+{"id":"coding-13","scenario":"coding","query":"Did we decide to keep domain services pure?","expected_signals":["domain services","pure"]}
+{"id":"coding-14","scenario":"coding","query":"Do we rely on SQLAlchemy async APIs?","expected_signals":["SQLAlchemy 2.0 async"]}
+{"id":"coding-15","scenario":"coding","query":"What lint and format tools are in policy?","expected_signals":["ruff","black"]}
+{"id":"coding-16","scenario":"coding","query":"What cache layer is part of architecture?","expected_signals":["Redis cache"]}
+{"id":"coding-17","scenario":"coding","query":"Which rule mentions no hidden magic defaults and implicit behavior?","expected_signals":["hidden magic","strict typing"]}
+{"id":"coding-18","scenario":"coding","query":"Where is boundary between business logic and adapters?","expected_signals":["domain services","adapters at boundary"]}
+{"id":"coding-19","scenario":"coding","query":"What are core stack keywords for this project?","expected_signals":["FastAPI","Redis"]}
+{"id":"coding-20","scenario":"coding","query":"Which coding rules mention strict typing and no hidden magic defaults?","expected_signals":["strict typing","no hidden magic defaults"]}
+{"id":"chat-01","scenario":"chat","query":"What coffee preference did I mention for mornings?","expected_signals":["hand-drip coffee","morning"]}
+{"id":"chat-02","scenario":"chat","query":"What did I say about avoid sugary drinks?","expected_signals":["avoided sugary drinks","hand-drip coffee"]}
+{"id":"chat-03","scenario":"chat","query":"How should answers be written in style?","expected_signals":["concise answers","clear next steps"]}
+{"id":"chat-04","scenario":"chat","query":"In trade-offs, did I ask to call out risks first before recommendations?","expected_signals":["risks first","before recommendations"]}
+{"id":"chat-05","scenario":"chat","query":"Do I like long essays or short responses?","expected_signals":["not long essays","concise answers"]}
+{"id":"chat-06","scenario":"chat","query":"What is my morning routine preference around coffee?","expected_signals":["hand-drip coffee"]}
+{"id":"chat-07","scenario":"chat","query":"What answer format helps me most?","expected_signals":["clear next steps"]}
+{"id":"chat-08","scenario":"chat","query":"How should recommendations handle trade-offs: call out risks first?","expected_signals":["risks must","trade-offs"]}
+{"id":"chat-09","scenario":"chat","query":"Which beverage is discouraged: sugary drinks?","expected_signals":["sugary drinks"]}
+{"id":"chat-10","scenario":"chat","query":"Summarize my communication preference.","expected_signals":["concise answers","clear next steps"]}
+{"id":"chat-11","scenario":"chat","query":"How should the assistant handle risk disclosure before recommendations?","expected_signals":["risks first","before recommendations"]}
+{"id":"chat-12","scenario":"chat","query":"What kind of coffee do I prefer?","expected_signals":["hand-drip coffee"]}
+{"id":"chat-13","scenario":"chat","query":"Do I avoid sugary drinks in the morning?","expected_signals":["avoided sugary drinks","morning"]}
+{"id":"chat-14","scenario":"chat","query":"What did I say about response length, specifically not long essays?","expected_signals":["avoiding long essays","lengthy explanations"]}
+{"id":"chat-15","scenario":"chat","query":"What is the default tone I want from replies?","expected_signals":["concise answers"]}
+{"id":"chat-16","scenario":"chat","query":"Before final recommendation, should we call out risks first?","expected_signals":["risks must","trade-offs"]}
+{"id":"chat-17","scenario":"chat","query":"How should action items be presented as clear next steps?","expected_signals":["clear next steps"]}
+{"id":"chat-18","scenario":"chat","query":"What morning drink preference is stored?","expected_signals":["hand-drip coffee","avoid sugary drinks"]}
+{"id":"chat-19","scenario":"chat","query":"What style should be avoided in responses?","expected_signals":["long essays"]}
+{"id":"chat-20","scenario":"chat","query":"What is the preferred balance: concise plus what?","expected_signals":["clear next steps"]}
+{"id":"study-01","scenario":"study","query":"Bias-variance tradeoff: high bias underfits and high variance overfits, right?","expected_signals":["underfitting","overfitting"]}
+{"id":"study-02","scenario":"study","query":"Which regularization options were listed?","expected_signals":["L2","dropout"]}
+{"id":"study-03","scenario":"study","query":"Was early stopping part of the notes?","expected_signals":["early stopping"]}
+{"id":"study-04","scenario":"study","query":"What is the current weak point in study notes?","expected_signals":["validation strategy","small datasets"]}
+{"id":"study-05","scenario":"study","query":"What phrase says high variance overfits?","expected_signals":["overfitting","high variance leading"]}
+{"id":"study-06","scenario":"study","query":"What phrase says high bias underfits?","expected_signals":["underfitting","high bias leading"]}
+{"id":"study-07","scenario":"study","query":"Name regularization techniques in memory.","expected_signals":["L2","dropout","early stopping"]}
+{"id":"study-08","scenario":"study","query":"What validation challenge is called out?","expected_signals":["validation strategy"]}
+{"id":"study-09","scenario":"study","query":"What data regime is mentioned in weak points?","expected_signals":["small datasets"]}
+{"id":"study-10","scenario":"study","query":"Summarize bias and variance behavior: high bias underfits, high variance overfits.","expected_signals":["underfitting","overfitting"]}
+{"id":"study-11","scenario":"study","query":"Do notes mention L2 as an option?","expected_signals":["L2"]}
+{"id":"study-12","scenario":"study","query":"Do notes mention dropout as an option?","expected_signals":["dropout"]}
+{"id":"study-13","scenario":"study","query":"Do notes mention early stopping?","expected_signals":["early stopping"]}
+{"id":"study-14","scenario":"study","query":"What is the concise statement: high bias underfits, high variance overfits?","expected_signals":["underfitting","overfitting"]}
+{"id":"study-15","scenario":"study","query":"Which part is hardest right now for model validation?","expected_signals":["validation strategy for small datasets"]}
+{"id":"study-16","scenario":"study","query":"List all regularization items from notes.","expected_signals":["L2","dropout","early stopping"]}
+{"id":"study-17","scenario":"study","query":"Which line links variance to overfitting: high variance overfits?","expected_signals":["overfitting","high variance leading"]}
+{"id":"study-18","scenario":"study","query":"Which line links bias to underfitting: high bias underfits?","expected_signals":["underfitting","high bias leading"]}
+{"id":"study-19","scenario":"study","query":"What should I revisit for small dataset validation?","expected_signals":["validation strategy","small datasets"]}
+{"id":"study-20","scenario":"study","query":"What are the three regularization levers recorded?","expected_signals":["L2","dropout","early stopping"]}
