@@ -1,6 +1,6 @@
-# Main Video Script (EN, 2-3 min)
+# Main Video Script (EN, 2-3 min, read-as-is)
 
-## 0) Locked Evidence Scope (must stay fixed)
+## 0) Locked evidence scope
 - Primary evidence is fixed to:
   `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json`
 - No parameter changes during recording.
@@ -11,42 +11,42 @@ uv sync --group dev
 uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 ```
 
-## 2) On-camera script and actions
+## 2) Narration + shots
 
-### 00:00-00:20 Problem
+### 00:00-00:20 (Evaluation goal)
 Narration:
-“AI assistants often lose context across sessions, forcing users to repeat preferences and prior decisions. `evermemos-mcp` turns long-term memory into auditable MCP plugin capabilities.”
+"This is not a feature-only demo. It is a reproducible evaluation. We verify three things: recall quality improvement, production-safe latency, and correct source attribution."
 
-### 00:20-00:50 Capability overview
+### 00:20-00:45 (Evaluation method)
+Narration:
+"We run A/B on a fixed 60-query set: with_memory versus without_memory, using the same dataset and scoring rules, and output runs.jsonl, benchmark_summary.json, and benchmark_report.md."
+
+### 00:45-01:20 (Product loop)
 Action:
 ```bash
 uv run python scripts/demo_live_walkthrough.py
 ```
 Narration:
-“We start with `list_spaces` for routing and isolation, then use `recall` and `briefing` with traceable fields instead of opaque summaries.”
+"The product loop is remember -> recall/briefing -> forget. It proves we can store memory, restore context across sessions, and support controlled deletion."
 
-### 00:50-01:30 Isolation and restoration
+### 01:20-01:55 (Metric meaning)
 Narration:
-“`coding:*` and `chat:*` are strictly isolated to prevent memory leakage. `briefing` restores session context quickly at startup.”
+"Hit rate shows usefulness. Delta shows gains from memory instead of chance. P95 latency shows production usability. Attribution error shows whether space routing is reliable."
 
-### 01:30-02:10 Primary evidence
-Action:
+### 01:55-02:20 (Primary evidence result)
+Action (recommended: show pre-generated file, no live full rerun):
 ```bash
-examples/competition-demo/run.sh --retrieve-method auto --top-k -1
 cat artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json
 ```
 Narration:
-“This is our formal-real primary evidence. With memory: 100% hit rate on 60 queries, P95 latency 1957.75ms, zero attribution errors, and all gates pass.”
+"Formal real-data primary evidence: with-memory 60 out of 60, P95 equals 1957.75 milliseconds, resolved rows 236, attribution error zero, and all gates pass."
 
-### 02:10-02:35 Transparency and auditability
+### 02:20-02:45 (Transparency and auditability)
 Narration:
-“We keep failed v1/v2 attempts visible, and v3 passes. Raw `runs.jsonl` is distributed as a release asset with checksum for independent verification.”
+"We keep failed v1 and v2 attempts visible, and v3 passes. Raw runs.jsonl is published as a release asset with checksum for independent audit."
 
-### 02:35-02:55 Closing
-Narration:
-“`evermemos-mcp` delivers practical long-term memory as reproducible, auditable plugin infrastructure.”
-
-## 3) End card
-- Hold for 3 seconds:
-  - Primary evidence path
-  - Evidence release URL
+## 3) End card (3 seconds)
+- Primary evidence directory:
+  `artifacts/competition/2026-02-26-formal-real-auto-all-v3/`
+- Evidence release:
+  `competition-evidence-2026-02-26`
