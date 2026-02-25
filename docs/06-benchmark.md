@@ -99,7 +99,21 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 ```
 
 ### 5.2 Benchmark Run
-Run benchmark collector (script path aligned with sprint plan):
+Collect real run rows and aggregate in one command:
+
+```bash
+examples/competition-demo/run.sh
+```
+
+Equivalent direct run:
+
+```bash
+uv run python examples/competition-demo/run_demo.py \
+  --queries examples/competition-demo/query_set_real_template.jsonl \
+  --artifact-dir artifacts/competition/{date}-formal-real
+```
+
+Standalone aggregation (if `runs.jsonl` already exists):
 
 ```bash
 uv run python scripts/competition_eval.py \
@@ -127,6 +141,10 @@ Required files:
 - `runs.jsonl`: raw per-query run records
 - `benchmark_summary.json`: aggregated metrics and pass/fail against gates
 - `benchmark_report.md`: human-readable summary for submission
+
+Repository boundary for submission packaging:
+- Commit to git: `benchmark_summary.json` + `benchmark_report.md` + docs/scripts.
+- Keep out of git: `runs.jsonl` (upload as Release asset for audit download).
 
 ## 7) Reporting Template
 Minimal summary schema:
@@ -158,11 +176,45 @@ Benchmark is considered submission-ready only when all are true:
 4. Report is linked in submission materials
 
 ## 9) Current Phase 2 Outputs
+- Demo runner and template:
+  - `examples/competition-demo/run_demo.py`
+  - `examples/competition-demo/run.sh`
+  - `examples/competition-demo/query_set_real_template.jsonl`
+- Formal real-data artifacts (primary evidence, 2026-02-26):
+  - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json`
+  - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`
+  - Gate status: `overall=pass` (`data_volume/hit_rate/latency_p95/attribution_error_rate` all pass)
 - Smoke artifacts:
   - `artifacts/competition/2026-02-25-smoke/runs.jsonl`
   - `artifacts/competition/2026-02-25-smoke/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-smoke/benchmark_report.md`
-- Formal threshold validation artifacts (synthetic dataset):
+- Formal threshold validation artifacts (synthetic dataset, appendix only):
   - `artifacts/competition/2026-02-25-formal-synthetic/runs.jsonl`
   - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_report.md`
+- Formal real-data diagnostics (appendix only):
+  - `artifacts/competition/2026-02-25-formal-real/benchmark_summary.json`
+  - `artifacts/competition/2026-02-26-formal-real-k12/benchmark_summary.json`
+  - `artifacts/competition/2026-02-26-formal-real-kall/benchmark_summary.json`
+  - `artifacts/competition/2026-02-26-formal-real-kall-v2/benchmark_summary.json`
+  - `artifacts/competition/2026-02-26-formal-real-hybrid-all-v2/benchmark_summary.json`
+  - `artifacts/competition/2026-02-26-formal-real-auto-all-v2/benchmark_summary.json`
+
+## 10) Audit Trail (Formal-Real)
+- Primary evidence run command:
+
+```bash
+ARTIFACT_DIR=artifacts/competition/2026-02-26-formal-real-auto-all-v3 \
+examples/competition-demo/run.sh --retrieve-method auto --top-k -1
+```
+
+- Iteration transparency:
+  - v1 (`2026-02-25-formal-real`): `overall=fail` (hit rate and resolved rows below gate)
+  - v2 (`2026-02-26-*-v2`): `overall=fail` (hit rate below gate)
+  - v3 (`2026-02-26-formal-real-auto-all-v3`): `overall=pass`
+  - v3 change scope: minimal query/signal alignment on failed cases only; no retrieval core code changes.
+- Raw dataset checksum:
+  - `runs.jsonl` sha256:
+    `4facef0cbebf752eb1d34709072a2d81aa7fd3b946d3970dbe542b95382f3421`
+- Raw dataset distribution:
+  - Stored as Release asset (not committed): `runs.jsonl` download link: `TBD`

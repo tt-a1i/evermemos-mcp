@@ -1,0 +1,38 @@
+{
+  "date": "2026-02-25",
+  "row_count": 120,
+  "with_memory": {
+    "queries": 60,
+    "hits": 38,
+    "hit_rate": 0.6333333333333333,
+    "latency_samples": 38,
+    "latency_p50_ms": 1308.29,
+    "latency_p95_ms": 3927.73
+  },
+  "without_memory": {
+    "queries": 60,
+    "hits": 0,
+    "hit_rate": 0.0
+  },
+  "delta_hit_rate": 0.6333333333333333,
+  "attribution": {
+    "resolved_rows": 177,
+    "wrong_attributions": 0,
+    "attribution_error_rate": 0.0
+  },
+  "targets": {
+    "hit_rate_with_memory": 0.8,
+    "hit_rate_delta": 0.4,
+    "latency_p95_ms": 2000.0,
+    "attribution_error_rate": 0.02,
+    "min_queries": 60,
+    "min_resolved_rows": 200
+  },
+  "gates": {
+    "data_volume": "pass",
+    "hit_rate": "fail",
+    "latency_p95": "fail",
+    "attribution_error_rate": "fail",
+    "overall": "fail"
+  }
+}

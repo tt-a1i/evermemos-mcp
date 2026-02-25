@@ -19,6 +19,10 @@
   - Competition prep switched from stability iteration to submission asset production.
   - Main narrative frozen as Track 2 (Platform Plugins), with a lightweight Track 1-compatible agent demo.
   - Benchmark-first rule adopted: metrics must be reproducible from scripts, not manual screenshots.
+- 2026-02-26:
+  - Formal-real benchmark reached full gate pass at `artifacts/competition/2026-02-26-formal-real-auto-all-v3/`.
+  - Iteration trail kept for audit: v1/v2 failed, v3 passed after minimal query/signal alignment on failed cases.
+  - Raw `runs.jsonl` is distributed via Release asset (repo keeps summary/report only).
 
 ## Metrics Design Notes
 
@@ -76,6 +80,13 @@
   - Channel:
   - URL:
   - Outcome:
+
+## Evidence Release
+- Tag: `competition-evidence-2026-02-26`
+- Release URL: `TBD`
+- Raw runs asset URL (`runs.jsonl`): `TBD`
+- Raw runs sha256:
+  - `4facef0cbebf752eb1d34709072a2d81aa7fd3b946d3970dbe542b95382f3421`
 
 ## Risks and Mitigations
 - Risk: Cloud API latency spikes or transient errors during recording/demo.

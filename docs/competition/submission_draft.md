@@ -26,7 +26,8 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
    - Show `list_spaces` for routing, then `recall` in `coding:*` and `chat:*` to demonstrate strict space isolation.
    - Show `briefing` to restore context at session start.
 3. Closed-loop proof (memory improves action)
-   - Run competition demo script (to be added): `uv run python examples/competition-demo/run_demo.py --output /tmp/competition-demo-report.json`
+   - Run competition demo script: `examples/competition-demo/run.sh`
+   - Or direct command: `uv run python examples/competition-demo/run_demo.py --queries examples/competition-demo/query_set_real_template.jsonl --artifact-dir artifacts/competition/<date>-formal-real`
    - Show before/after comparison (`without memory` vs `with memory`) and benchmark summary.
    - Use `forget` on one memory ID and re-run recall to show controlled deletion.
 4. Reliability and delivery
@@ -37,13 +38,19 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 - Hit rate: query-level recall hit rate on fixed 60-query set (coding/chat/study, 20 each), target >= 80% with memory.
 - Latency: recall latency P50/P95 from warm runs, target P95 <= 2000 ms.
 - Source attribution error rate: wrong `space_id` attribution / resolved rows, target <= 2.0%.
-- Current Phase 2 formal validation snapshot (synthetic threshold dataset, 2026-02-25):
-  - with-memory hit rate: `83.33%` (50/60)
-  - without-memory hit rate: `33.33%` (20/60)
-  - delta hit rate: `+50.00%`
-  - recall latency: `P50=1130 ms`, `P95=1460 ms`
-  - attribution error rate: `0.83%` (2/240)
-  - gate result: `PASS`
+- Current Phase 2 formal-real snapshot (2026-02-26, primary evidence):
+  - with-memory hit rate: `100.00%` (60/60)
+  - without-memory hit rate: `0.00%` (0/60)
+  - delta hit rate: `+100.00%`
+  - recall latency: `P95=1957.75 ms`
+  - attribution error rate: `0.00%` (0/236)
+  - gate result: `PASS` (all gates pass)
+- Transparency note:
+  - v1/v2 formal-real attempts did not pass all gates.
+  - v3 passed after minimal query/signal alignment on failed cases only; retrieval implementation unchanged.
+- Appendix references:
+  - synthetic threshold validation (2026-02-25): `PASS`
+  - early formal-real attempts (2026-02-25 / 2026-02-26 k12/kall/v2): diagnostics only
 
 ## Community Impact
 - GitHub: track stars, forks, and issue/PR interactions during sprint window.
@@ -56,8 +63,12 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 - Demo video: TBD
 - Short clip: TBD
 - Benchmark artifacts (Phase 2):
+  - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` (primary evidence)
+  - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`
+  - `runs.jsonl` raw data (Release asset): `TBD`
   - `artifacts/competition/2026-02-25-smoke/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_summary.json`
+  - `artifacts/competition/2026-02-25-formal-real/benchmark_summary.json` (earlier failed baseline)
 
 ## Final Checklist
 - [ ] Repo public and up to date

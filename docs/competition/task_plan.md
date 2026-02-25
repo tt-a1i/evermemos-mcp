@@ -11,7 +11,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 ## Phases
 - [x] Phase 0: Scope freeze and scoring strategy
 - [x] Phase 1: Release readiness (`v0.4.0`)
-- [ ] Phase 2: Benchmark evidence and demo automation
+- [x] Phase 2: Benchmark evidence and demo automation
 - [ ] Phase 3: Video and submission assets
 - [ ] Phase 4: Community rollout and final submission
 
@@ -46,13 +46,13 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
   - [x] Fixed query set and acceptance threshold
 - [x] Automate result generation from demo runs
 - [ ] Meet metric gates for submission narrative:
-  - [ ] Recall hit rate >= 80% (with memory, query-level, N >= 60)
-  - [ ] P95 recall latency <= 2000 ms (warm runs)
-  - [ ] Source attribution error rate <= 2.0% (resolved rows, N >= 200)
+  - [x] Recall hit rate >= 80% (with memory, query-level, N >= 60)
+  - [x] P95 recall latency <= 2000 ms (warm runs)
+  - [x] Source attribution error rate <= 2.0% (resolved rows, N >= 200)
 
 ### C) Demo Workstream
-- [ ] Create `examples/competition-demo/`
-- [ ] Provide one-command entrypoint (`run.sh` or `Makefile`)
+- [x] Create `examples/competition-demo/`
+- [x] Provide one-command entrypoint (`run.sh` or `Makefile`)
 - [ ] Include end-to-end flow:
   - [ ] remember
   - [ ] cross-session recall
@@ -95,4 +95,4 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 - `git fetch upstream` fails in this repo because no `upstream` remote is configured. Current remote setup uses `origin` only.
 
 ## Status
-**Currently in Phase 2** - benchmark evidence pipeline implemented; preparing real data runs and demo packaging.
+**Currently in Phase 3** - Phase 2 gates are met on formal-real run `artifacts/competition/2026-02-26-formal-real-auto-all-v3/` (`overall=pass`, all four gate checks pass).
