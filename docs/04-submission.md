@@ -11,6 +11,8 @@
 - [x] Tests passing: `uv run pytest`
 
 ## 2. Video Checklist (3-5 min)
+- [ ] Script finalized: `docs/competition/video_script_main.en.md` / `docs/competition/video_script_main.zh-CN.md`
+- [ ] Short clip script finalized: `docs/competition/video_script_short_clip.md`
 - [ ] Explain pain point: context loss across sessions
 - [ ] Show `list_spaces` routing
 - [ ] Show citation fields in `recall` (`timestamp/snippet/type/score`)

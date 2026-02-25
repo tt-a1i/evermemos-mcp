@@ -61,6 +61,9 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 - Repository: https://github.com/tt-a1i/evermemos-mcp
 - Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.0
 - Evidence release: https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26
+- Main video script (ZH): `docs/competition/video_script_main.zh-CN.md`
+- Main video script (EN): `docs/competition/video_script_main.en.md`
+- Short clip script: `docs/competition/video_script_short_clip.md`
 - Demo video: TBD
 - Short clip: TBD
 - Benchmark artifacts (Phase 2):

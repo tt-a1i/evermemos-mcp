@@ -13,6 +13,8 @@
 
 ## 2. 演示视频检查（3-5 分钟）
 
+- [ ] 脚本定稿：`docs/competition/video_script_main.en.md` / `docs/competition/video_script_main.zh-CN.md`
+- [ ] 短视频脚本定稿：`docs/competition/video_script_short_clip.md`
 - [ ] 介绍痛点：跨 session 丢失上下文
 - [ ] 展示 `list_spaces` 路由
 - [ ] 展示 `recall` 引用字段（timestamp/snippet/type/score）
