@@ -22,6 +22,7 @@ This benchmark focuses on three measurable outcomes:
   - `20` queries per scenario (`coding/chat/study`)
 - Comparison:
   - `with memory` vs `without memory` on the same fixed query set
+  - Baseline definition: `without_memory` means calling the same `recall` pipeline on control `no-memory` spaces (not disabling recall).
 - Attribution sample:
   - Minimum `N = 200` resolved rows for attribution error analysis
 
@@ -53,6 +54,8 @@ Each line in `runs.jsonl` must be a JSON object:
 
 Field notes:
 - `mode`: `with_memory` or `without_memory`
+  - `with_memory`: recall on scenario target spaces (preloaded with relevant memories)
+  - `without_memory`: recall on control `no-memory` spaces for A/B baseline
 - `latency_ms`: end-to-end recall latency in milliseconds
 - `hit`: whether the query matched expected signals
 - `resolved_rows` / `wrong_attributions`: attribution stats used for error-rate aggregation
