@@ -614,6 +614,12 @@ class MemoryService:
                 }
                 for s in spaces
             ],
+            "scope": "mcp-managed",
+            "scope_hint": (
+                "Only spaces created through evermemos-mcp are listed. "
+                "Spaces created directly on EverMemOS Cloud web UI are not included. "
+                "To use an existing Cloud space, call remember with that space_id to register it."
+            ),
             "memory_count_hint": (
                 "memory_count is approximate in Cloud mode because extraction is async "
                 "and one message can yield zero or multiple memories."

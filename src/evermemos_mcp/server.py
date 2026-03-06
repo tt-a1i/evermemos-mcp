@@ -62,8 +62,9 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="list_spaces",
         description=(
-            "List available memory spaces. Call this first to discover "
-            "which space_id values exist before using other memory tools. "
+            "List memory spaces managed by this MCP server. "
+            "Note: this only shows spaces created through evermemos-mcp, "
+            "not spaces created directly on EverMemOS Cloud web UI. "
             "Each space isolates memories by project or topic "
             "(e.g. coding:my-app, study:ml-notes, chat:preferences). "
             "If no spaces exist yet, create one by calling remember with a new space_id and description."
