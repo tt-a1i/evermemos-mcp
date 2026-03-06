@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -103,3 +106,61 @@ CATALOG_GROUP_ID = "space::catalog"
 
 # Prefix for user-facing space group_ids
 SPACE_GROUP_PREFIX = "space::"
+
+_logger = logging.getLogger(__name__)
+
+# Git remote URL patterns → repo name extraction
+_GIT_REMOTE_RE = re.compile(
+    r"(?:github\.com|gitlab\.com|bitbucket\.org)[:/]"
+    r"[^/]+/([^/.]+?)(?:\.git)?$"
+)
+
+
+def _detect_git_repo_name() -> str | None:
+    """Try to infer a repo name from git remote origin URL.
+
+    Returns the repo slug (e.g. 'my-app') or None if detection fails.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode != 0:
+            return None
+        url = result.stdout.strip()
+        if not url:
+            return None
+        m = _GIT_REMOTE_RE.search(url)
+        if m:
+            return m.group(1)
+        # Fallback: last path component
+        basename = url.rstrip("/").rsplit("/", 1)[-1]
+        if basename.endswith(".git"):
+            basename = basename[:-4]
+        return basename if basename else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def _resolve_default_space() -> str | None:
+    """Resolve a default space_id from env or git repo.
+
+    Priority: EVERMEMOS_DEFAULT_SPACE env > git remote detection.
+    """
+    env_space = os.getenv("EVERMEMOS_DEFAULT_SPACE", "").strip()
+    if env_space:
+        return env_space
+
+    repo = _detect_git_repo_name()
+    if repo:
+        space = f"coding:{repo}"
+        _logger.debug("Auto-detected default space from git: %s", space)
+        return space
+
+    return None
+
+
+EVERMEMOS_DEFAULT_SPACE: str | None = _resolve_default_space()

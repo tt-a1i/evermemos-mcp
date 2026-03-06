@@ -738,8 +738,9 @@ class MemoryService:
             "request_id": request_id,
             "created_at": created_at,
             "processing_hint": (
-                "Memory is queued for extraction. "
-                "It may take a few minutes before it becomes searchable."
+                "Memory queued for AI extraction. "
+                "Use recall or briefing after 1-2 minutes to verify. "
+                "Tip: use flush=true at session end to finalize extraction."
             ),
             "memory_count_hint": (
                 "Space memory_count is approximate in Cloud mode. "

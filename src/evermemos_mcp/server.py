@@ -15,7 +15,7 @@ from mcp import types
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-from . import __version__
+from . import __version__, config
 from .evermemos_client import EverMemosClient, EverMemosError
 from .memory_service import MemoryService
 from .space_catalog_service import SpaceCatalogService
@@ -37,6 +37,23 @@ def _require_service() -> MemoryService:
     return _svc
 
 
+def _resolve_space_id(args: dict[str, Any] | None, required: bool = True) -> str | None:
+    """Resolve space_id from args, falling back to auto-detected default."""
+    space_id = args.get("space_id") if args else None
+    if space_id:
+        return space_id
+    default = config.EVERMEMOS_DEFAULT_SPACE
+    if default:
+        return default
+    if required:
+        raise EverMemosError(
+            "space_id is required (no auto-detected default available — "
+            "set EVERMEMOS_DEFAULT_SPACE or run inside a git repo)",
+            code="INVALID_INPUT",
+        )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Tool definitions
 # ---------------------------------------------------------------------------
@@ -46,8 +63,10 @@ TOOLS: list[types.Tool] = [
         name="list_spaces",
         description=(
             "List available memory spaces. Call this first to discover "
-            "which space_id to use with other memory tools. "
-            "Each space isolates memories by topic (e.g. coding:my-app, chat:daily)."
+            "which space_id values exist before using other memory tools. "
+            "Each space isolates memories by project or topic "
+            "(e.g. coding:my-app, study:ml-notes, chat:preferences). "
+            "If no spaces exist yet, create one by calling remember with a new space_id and description."
         ),
         inputSchema={
             "type": "object",
@@ -68,8 +87,11 @@ TOOLS: list[types.Tool] = [
         name="remember",
         description=(
             "Store information in long-term memory within a specific space. "
-            "The content is queued for extraction and may take a few minutes "
-            "to become searchable via recall. "
+            "Use this proactively to save architecture decisions, user preferences, "
+            "project conventions, bug solutions, and key context. "
+            "Content is queued for AI extraction and becomes searchable via recall "
+            "after a few minutes. "
+            "Set flush=true at end of session or topic switch; flush=false during ongoing work. "
             "Provide a description when creating a new space for the first time."
         ),
         inputSchema={
@@ -83,7 +105,8 @@ TOOLS: list[types.Tool] = [
                     "type": "string",
                     "description": (
                         "Target memory space in <domain>:<slug> format "
-                        "(e.g. coding:my-app, chat:daily, study:ml)"
+                        "(e.g. coding:my-app, chat:daily, study:ml). "
+                        "If omitted, auto-detected from git remote (coding:<repo-name>)."
                     ),
                 },
                 "description": {
@@ -132,16 +155,19 @@ TOOLS: list[types.Tool] = [
                     "default": False,
                 },
             },
-            "required": ["content", "space_id"],
+            "required": ["content"],
         },
     ),
     types.Tool(
         name="recall",
         description=(
             "Search for relevant memories in one or more spaces. "
-            "Returns matching memories with source citations "
-            "(type, snippet, timestamp, relevance score). "
-            "Also reports how many messages are still being processed."
+            "Use this when you need context about prior decisions, preferences, "
+            "conventions, or anything discussed in previous sessions. "
+            "Returns matching memories with traceable citations "
+            "(memory_type, snippet, timestamp, relevance score). "
+            "Also reports pending_count — how many messages are still being extracted. "
+            "If space_id and space_ids are both omitted, auto-detected from git remote (coding:<repo-name>)."
         ),
         inputSchema={
             "type": "object",
@@ -238,9 +264,10 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="briefing",
         description=(
-            "Get a contextual briefing for a memory space. "
-            "Returns the user profile, recent episodes, key facts, and future foresights "
-            "to quickly restore context at the start of a session."
+            "Get a structured context briefing for a memory space. "
+            "Call this at the start of every new session to restore context. "
+            "Returns: user profile, recent episodes, key facts, and foresights. "
+            "This is the fastest way to catch up on everything stored in a space."
         ),
         inputSchema={
             "type": "object",
@@ -278,9 +305,9 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Delete specific memories by their IDs. "
+            "Delete specific memories by their IDs (permanent). "
             "Use recall first to find the memory_id values you want to remove. "
-            "Deletion is permanent."
+            "Useful for correcting outdated or incorrect memories."
         ),
         inputSchema={
             "type": "object",
@@ -313,7 +340,8 @@ TOOLS: list[types.Tool] = [
         name="fetch_history",
         description=(
             "Page through historical memories in a space by memory_type. "
-            "Useful for timeline-style review when recall ranking is not enough."
+            "Useful for chronological timeline review when recall's relevance ranking "
+            "is not sufficient, or when you need to browse all memories of a type."
         ),
         inputSchema={
             "type": "object",
@@ -391,11 +419,34 @@ async def handle_call_tool(
     try:
         result = await _dispatch(name, arguments)
     except EverMemosError as exc:
-        result = {"ok": False, "error": exc.code, "message": str(exc)}
+        result = _diagnose_error(exc)
     except (KeyError, TypeError, ValueError) as exc:
         result = {"ok": False, "error": "INVALID_INPUT", "message": str(exc)}
 
     return [types.TextContent(type="text", text=_to_json(result))]
+
+
+def _diagnose_error(exc: EverMemosError) -> dict:
+    """Enrich error responses with actionable troubleshooting hints."""
+    base: dict = {"ok": False, "error": exc.code, "message": str(exc)}
+    if exc.code == "CONFIG_ERROR" and "API_KEY" in str(exc):
+        base["hint"] = (
+            "Set EVERMEMOS_API_KEY in your MCP client env config. "
+            "Get a key at https://evermind.ai/"
+        )
+    elif exc.code == "UPSTREAM_UNAVAILABLE":
+        base["hint"] = (
+            "Cannot reach EverMemOS Cloud. Check your network connection "
+            "and verify EVERMEMOS_BASE_URL is correct."
+        )
+    elif exc.status_code == 401:
+        base["hint"] = (
+            "API key is invalid or expired. "
+            "Verify your EVERMEMOS_API_KEY at https://evermind.ai/"
+        )
+    elif exc.status_code == 429:
+        base["hint"] = "Rate limited. Wait a moment and try again."
+    return base
 
 
 async def _dispatch(name: str, args: dict[str, Any]) -> dict:
@@ -409,7 +460,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
 
     if name == "remember":
         return await svc.remember(
-            space_id=args["space_id"],
+            space_id=_resolve_space_id(args),
             content=args["content"],
             description=args.get("description"),
             sender=args.get("sender", "user"),
@@ -421,10 +472,15 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
         )
 
     if name == "recall":
+        raw_space_id = args.get("space_id")
+        raw_space_ids = args.get("space_ids")
+        # Auto-fill default space only when no scope is provided at all
+        if not raw_space_id and not raw_space_ids:
+            raw_space_id = _resolve_space_id(args, required=False)
         return await svc.recall(
             query=args["query"],
-            space_id=args.get("space_id"),
-            space_ids=args.get("space_ids"),
+            space_id=raw_space_id,
+            space_ids=raw_space_ids,
             top_k=args.get("top_k", 10),
             retrieve_method=args.get("retrieve_method", "hybrid"),
             start_time=args.get("start_time"),

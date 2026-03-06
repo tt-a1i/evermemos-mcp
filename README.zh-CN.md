@@ -185,8 +185,17 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
 | `EVERMEMOS_API_VERSION` | `v0` | API 版本 |
 | `EVERMEMOS_ENABLE_CONVERSATION_META` | `true` | 是否同步会话元数据 |
 | `EVERMEMOS_DEFAULT_TIMEZONE` | `UTC` | 元数据时区 |
+| `EVERMEMOS_DEFAULT_SPACE` | *（自动）* | 默认 space_id。未设置时从 git remote 自动推断为 `coding:<仓库名>` |
 | `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` | — | 自定义 LLM 提取设置 |
 | `EVERMEMOS_USER_DETAILS_JSON` | — | 会话用户详情 |
+
+### Space 自动推断
+
+当 `remember` 或 `recall` 未指定 `space_id` 时，服务器自动推断默认值：
+1. `EVERMEMOS_DEFAULT_SPACE` 环境变量（如已设置）
+2. 从 git remote origin URL 推断 → `coding:<仓库名>`（如 `coding:my-saas`）
+
+这意味着在 git 项目目录中，你可以直接调用 `remember` 而无需指定 space——记忆会自动路由到正确的空间。
 
 ## `flush` 边界规则
 
