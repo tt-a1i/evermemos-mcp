@@ -868,11 +868,12 @@ class SpaceCatalogService:
 
         return parsed_any
 
-    def _parse_content(self, content: str, timestamp: str = "") -> None:
+    def _parse_content(self, content: str, timestamp: str = "") -> bool:
         if not content:
-            return
+            return False
         if self._parse_structured_content(content, timestamp=timestamp):
-            return
+            return True
+        parsed_any = False
         for m in self._ENTRY_RE.finditer(content):
             sid = m.group(1).rstrip(".")
             desc = (m.group(2) or "").strip().rstrip(".")
@@ -886,6 +887,34 @@ class SpaceCatalogService:
                 created_at=timestamp,
                 updated_at=timestamp,
             )
+            parsed_any = True
+        return parsed_any
+
+    def _parse_original_content(self, memory: dict, timestamp: str = "") -> bool:
+        original_data = memory.get("original_data")
+        if not isinstance(original_data, dict):
+            return False
+
+        parsed_any = False
+
+        def _parse_candidate(content: object) -> None:
+            nonlocal parsed_any
+            if isinstance(content, str) and content:
+                parsed_any = self._parse_content(content, timestamp=timestamp) or parsed_any
+
+        _parse_candidate(original_data.get("content"))
+
+        message = original_data.get("message")
+        if isinstance(message, dict):
+            _parse_candidate(message.get("content"))
+
+        messages = original_data.get("messages")
+        if isinstance(messages, list):
+            for item in messages:
+                if isinstance(item, dict):
+                    _parse_candidate(item.get("content"))
+
+        return parsed_any
 
     def _parse_memory(self, memory: dict) -> None:
         """Parse a flat search-result item.
@@ -903,4 +932,6 @@ class SpaceCatalogService:
         if not isinstance(text, str):
             text = str(text)
         ts = memory.get("timestamp", "") or memory.get("created_at", "")
+        if self._parse_original_content(memory, timestamp=ts):
+            return
         self._parse_content(text, timestamp=ts)
