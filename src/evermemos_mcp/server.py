@@ -167,7 +167,7 @@ TOOLS: list[types.Tool] = [
             "Returns matching memories with traceable citations "
             "(memory_type, snippet, timestamp, relevance score). "
             "Also reports pending_count — how many messages are still being extracted. "
-            "Requires at least one of space_id or space_ids."
+            "If space_id and space_ids are both omitted, auto-detected from git remote (coding:<repo-name>)."
         ),
         inputSchema={
             "type": "object",
