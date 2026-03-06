@@ -217,6 +217,7 @@ CI 在每次 push 和 PR 时自动运行，配置见 [`.github/workflows/ci.yml`
 | [`docs/02-architecture.zh-CN.md`](docs/02-architecture.zh-CN.md) | 架构设计 |
 | [`docs/03-demo-playbook.zh-CN.md`](docs/03-demo-playbook.zh-CN.md) | 演示手册 |
 | [`docs/05-client-integrations.zh-CN.md`](docs/05-client-integrations.zh-CN.md) | 客户端接入指南 |
+| [`docs/auto-memory-prompt.zh-CN.md`](docs/auto-memory-prompt.zh-CN.md) | 自动记忆 Prompt 模板（CLAUDE.md / Cursor / Cline） |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本历史 |
 
 ## License

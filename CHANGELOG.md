@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-03-07
+
+### Added
+- PyPI publishing via `uvx evermemos-mcp` — no clone needed for end users.
+- Auto-memory prompt templates (`docs/auto-memory-prompt.md`) for Claude Code, Cursor, and Cline.
+- GitHub Actions workflow for automated PyPI releases on tag.
+
+### Changed
+- Updated READMEs with PyPI install instructions (Option A) and documentation links.
+
+### Fixed
+- Fixed space catalog recovery parsing to read `original_data.messages[].content` first, resolving `list_spaces` returning empty results.
+
 ## [0.4.0] - 2026-02-25
 
 ### Added
