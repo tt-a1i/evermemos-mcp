@@ -46,33 +46,45 @@ https://github.com/user-attachments/assets/demo-placeholder
 
 ## 快速开始
 
-### 1. 克隆并配置
+从 [EverMemOS Cloud](https://evermind.ai/) 获取 API Key。
+
+### 方式 A：从 PyPI 安装（推荐）
+
+无需克隆仓库，直接在 MCP 客户端配置中添加：
+
+```json
+{
+  "mcpServers": {
+    "evermemos-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["evermemos-mcp"],
+      "env": {
+        "EVERMEMOS_API_KEY": "你的KEY",
+        "EVERMEMOS_USER_ID": "mcp-user"
+      }
+    }
+  }
+}
+```
+
+或直接在命令行运行：
+
+```bash
+uvx evermemos-mcp
+```
+
+### 方式 B：从源码安装
 
 ```bash
 git clone https://github.com/tt-a1i/evermemos-mcp.git
 cd evermemos-mcp
 cp .env.example .env
 # 编辑 .env，填入你的 EVERMEMOS_API_KEY
-```
-
-从 [EverMemOS Cloud](https://evermind.ai/) 获取 API Key。
-
-### 2. 运行
-
-```bash
 uv run evermemos-mcp
 ```
 
-或全局安装：
-
-```bash
-uv tool install --from . evermemos-mcp
-evermemos-mcp
-```
-
-### 3. 接入 MCP 客户端
-
-在你的 MCP 客户端配置中添加：
+源码安装的 MCP 客户端配置：
 
 ```json
 {
