@@ -46,33 +46,45 @@ https://github.com/user-attachments/assets/demo-placeholder
 
 ## Quick Start
 
-### 1. Clone and configure
+Get your API key from [EverMemOS Cloud](https://evermind.ai/).
+
+### Option A: Install from PyPI (recommended)
+
+No clone needed — just add to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "evermemos-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["evermemos-mcp"],
+      "env": {
+        "EVERMEMOS_API_KEY": "your-key-here",
+        "EVERMEMOS_USER_ID": "mcp-user"
+      }
+    }
+  }
+}
+```
+
+Or run directly from the command line:
+
+```bash
+uvx evermemos-mcp
+```
+
+### Option B: Install from source
 
 ```bash
 git clone https://github.com/tt-a1i/evermemos-mcp.git
 cd evermemos-mcp
 cp .env.example .env
 # Edit .env and set your EVERMEMOS_API_KEY
-```
-
-Get your API key from [EverMemOS Cloud](https://evermind.ai/).
-
-### 2. Run
-
-```bash
 uv run evermemos-mcp
 ```
 
-Or install globally:
-
-```bash
-uv tool install --from . evermemos-mcp
-evermemos-mcp
-```
-
-### 3. Connect to your MCP client
-
-Add this to your MCP client configuration:
+MCP client config for source installs:
 
 ```json
 {

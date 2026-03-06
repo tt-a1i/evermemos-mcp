@@ -11,6 +11,11 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/tt-a1i/evermemos-mcp"
+Repository = "https://github.com/tt-a1i/evermemos-mcp"
+Issues = "https://github.com/tt-a1i/evermemos-mcp/issues"
+
 [project.scripts]
 evermemos-mcp = "evermemos_mcp.server:main"
 
