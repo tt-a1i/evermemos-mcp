@@ -976,6 +976,61 @@ async def test_recover_from_paginated_fetch_clamps_page_size_to_client_limit(
 
 
 @pytest.mark.asyncio
+async def test_recover_from_paginated_fetch_uses_original_message_content_when_summary_is_rewritten():
+    payload = {
+        "version": 1,
+        "space_id": "study:ml-notes",
+        "description": "Machine learning notes",
+        "created_at": "2026-02-25T10:00:00+00:00",
+        "updated_at": "2026-02-25T10:00:00+00:00",
+    }
+    raw_content = (
+        f"{catalog_module._ENTRY_JSON_PREFIX}{json.dumps(payload)}\n"
+        "Registered memory space: study:ml-notes — Machine learning notes"
+    )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.fetch_memories = AsyncMock(
+        side_effect=[
+            {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "event_log",
+                            "atomic_fact": (
+                                "mcp-user registered a memory space with space_id "
+                                "'study:ml-notes'."
+                            ),
+                            "timestamp": "2026-02-25T10:00:00+00:00",
+                            "original_data": {
+                                "messages": [{"content": raw_content}],
+                            },
+                        }
+                    ],
+                    "count": 1,
+                    "total_count": 1,
+                }
+            },
+            {"result": {"memories": [], "count": 0, "total_count": 0}},
+        ]
+    )
+    client.search_memories = AsyncMock(
+        return_value={"result": {"pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces(limit=20)
+
+    assert len(spaces) == 1
+    assert spaces[0].space_id == "study:ml-notes"
+    assert spaces[0].description == "Machine learning notes"
+    assert spaces[0].created_at == "2026-02-25T10:00:00+00:00"
+
+
+@pytest.mark.asyncio
 async def test_conversation_meta_enrich_is_capped_for_large_catalog():
     memories = []
     for i in range(120):

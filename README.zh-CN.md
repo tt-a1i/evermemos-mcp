@@ -2,54 +2,77 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-基于 EverMemOS 的通用 MCP 长期记忆层。
+**基于 [EverMemOS](https://evermind.ai/) 的通用 AI 长期记忆层，通过 MCP 协议为任意 AI 编程助手赋予跨会话记忆能力。**
 
-## 当前定位
-- 适用于 MCP 兼容客户端（coding/chat/study 等场景）
-- 使用 `space_id` 作为一级隔离键
-- Cloud-only 策略（不做本地持久化）
+> 参赛项目：[Memory Genesis Competition 2026](https://luma.com/n88icl03) — Track 2: Platform Plugins
 
-## V1 工具集
-- `list_spaces`
-- `remember`
-- `recall`
-- `briefing`
-- `forget`
-- `fetch_history`
+evermemos-mcp 是一个 MCP（Model Context Protocol）服务器，可以让 Claude Code、Cursor、Cline、Cherry Studio 等任意兼容客户端拥有持久化的跨会话记忆。它填补了 AI 对话"无状态"与真实工作流"需要上下文"之间的鸿沟。
 
-## 核心行为（Cloud v0）
-- 写入是异步队列：`remember` 成功后返回 `request_id`，并不代表立刻可召回
-- 检索可见待处理提示：`recall` 会返回 `pending_count/pending_hint`
-- `space_id` 是唯一隔离键（格式 `<domain>:<slug>`）
-- 默认路由依赖 `list_spaces` + 描述，不做 cwd/git 自动猜测
-- `remember` 传入动态 `user_id` 时，会 best-effort 同步参与者身份到 conversation metadata
+## 为什么需要它
 
-## 为什么需要 `space::catalog`
-- EverMemOS 的 metadata 接口都要求传具体 `group_id`（`get/set/update`），没有全局会话列表接口
-- 因此 `list_spaces` 需要通过保留分组 `space::catalog` 维护一份可恢复的空间索引
-- 空间注册采用 best-effort 双写：catalog 文本条目 + `conversation-meta` 同步
-- 恢复时先读 catalog 条目，再用 `conversation-meta` 做描述补全
+AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个人偏好、项目上下文——下一次对话，全部归零。evermemos-mcp 通过 **记忆 → 推理 → 行动** 闭环解决这个问题：
+
+1. **Remember（记住）** — 工作中随时存储决策、偏好和上下文
+2. **Recall（回忆）** — 通过混合检索（关键词 + 向量 + 语义）找回相关记忆
+3. **Briefing（简报）** — 新会话开始时一键恢复完整上下文
+
+所有记忆按 **空间（space）** 隔离（如 `coding:my-app`、`study:ml-notes`、`chat:daily`），不同项目和工作流互不干扰。
+
+## 演示
+
+https://github.com/user-attachments/assets/demo-placeholder
+
+<!-- TODO: 替换为实际演示视频链接 -->
+
+## 功能一览
+
+| 工具 | 说明 |
+|------|------|
+| `list_spaces` | 发现可用的记忆空间 |
+| `remember` | 将信息存入长期记忆（异步提取） |
+| `recall` | 搜索记忆，支持 6 种检索策略（`keyword`、`hybrid`、`vector`、`rrf`、`agentic`、`auto`） |
+| `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测 |
+| `forget` | 按 ID 删除指定记忆（永久删除，幂等） |
+| `fetch_history` | 按类型分页浏览记忆时间线 |
+
+### 核心特性
+
+- **空间隔离** — `space_id`（`<domain>:<slug>` 格式）确保记忆按项目/主题分离
+- **多空间检索** — 单次 `recall` 可查询最多 10 个空间，自动标注来源
+- **可追溯引用** — 每条结果包含 `memory_type`、`snippet`、`timestamp`、`score` 及可选 `source_message_id`
+- **多用户支持** — 可选 `user_id` 过滤，适用于共享空间场景
+- **会话元数据同步** — 自动与 EverMemOS Cloud 的 `conversation-meta` 集成
+- **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
 
 ## 快速开始
-- Cloud 默认值已内置：`EVERMEMOS_BASE_URL=https://api.evermind.ai`、`EVERMEMOS_API_VERSION=v0`
-- Cloud 需要配置：`EVERMEMOS_API_KEY`
-- 启动：`uv run evermemos-mcp` 或 `uv run python -m evermemos_mcp.server`
-- 可选：`EVERMEMOS_ENABLE_CONVERSATION_META=true`（默认开启）
-- 可选：`EVERMEMOS_LLM_CUSTOM_SETTING_JSON` 用于透传 `llm_custom_setting`
-- 可选：`EVERMEMOS_USER_DETAILS_JSON` 用于透传 conversation `user_details`
-- 可选：`EVERMEMOS_DEFAULT_TIMEZONE` 用于 conversation metadata 时区（默认 `UTC`）
-- 可选：`EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K` 用于调节来源空间探针的检索范围（默认 `100`）
-- 可选：`EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY` 用于调节来源空间探针并发（默认 `4`）
 
-## 安装方式
-- 克隆仓库：`git clone https://github.com/tt-a1i/evermemos-mcp.git`
-- 进入目录：`cd evermemos-mcp`
-- 创建环境变量文件：`cp .env.example .env`，并配置 `EVERMEMOS_API_KEY`
-- 推荐源码运行：`uv run --directory . evermemos-mcp`
-- 可选全局安装：`uv tool install --from . evermemos-mcp`
+### 1. 克隆并配置
 
-## 通用 MCP 配置（stdio）
-支持 `command + args + env` 的 MCP 客户端都可以直接使用下面模板：
+```bash
+git clone https://github.com/tt-a1i/evermemos-mcp.git
+cd evermemos-mcp
+cp .env.example .env
+# 编辑 .env，填入你的 EVERMEMOS_API_KEY
+```
+
+从 [EverMemOS Cloud](https://evermind.ai/) 获取 API Key。
+
+### 2. 运行
+
+```bash
+uv run evermemos-mcp
+```
+
+或全局安装：
+
+```bash
+uv tool install --from . evermemos-mcp
+evermemos-mcp
+```
+
+### 3. 接入 MCP 客户端
+
+在你的 MCP 客户端配置中添加：
 
 ```json
 {
@@ -72,62 +95,118 @@
 }
 ```
 
-若已全局安装，可改为：`"command": "evermemos-mcp", "args": []`。
+各客户端详细配置指南（Claude Code、Cursor、Cline、Cherry Studio）见 [`docs/05-client-integrations.zh-CN.md`](docs/05-client-integrations.zh-CN.md)。
 
-## Tool 契约说明
-- `list_spaces`: Cloud 模式下 `memory_count` 为近似值（异步提取）
-- `remember`: 支持 `include_status`（可选），开启后会附带一次 `request_status`
-- `remember` 输出包含：`message_id`（提交的消息 ID）、`request_id`、`created_at`、`processing_hint`
-- `remember`: 还会返回 `memory_count_hint`，说明 Cloud 模式下计数是近似值
-- `remember`: 会显式透传 `flush`（`true/false`），避免依赖上游默认值
-- `remember`: 默认 `flush=false`，仅在明确会话边界时使用 `flush=true`
-- `recall`: `retrieve_method` 支持 `keyword|hybrid|vector|rrf|agentic|auto`
-- `recall`: 默认 `top_k=10`，可接受范围为 `-1` 或 `1-100`（`-1` 表示服务层不做截断；对上游请求会使用 `top_k=100`）
-- `recall`: 支持可选 `user_id` 过滤（适用于多用户共享空间）
-- `recall`: 支持 `space_id`（单空间）或 `space_ids`（多空间，最多 10 个去重后值）
-- `recall`: 响应包含 `space_ids`；若上游返回 `group_id`，单条结果会带 `space_id`
-- `recall`: 多空间检索若上游缺少 `group_id`，会做 best-effort 来源恢复；仍无法定位的结果会在 `warnings` 中提示
-- `recall`: 支持 `start_time/end_time`（ISO 8601，若无时区按 UTC 处理），仅对 `episodic_memory` 生效
-- `recall`: 支持 `current_time`、`radius`、`include_metadata`
-- `recall`: 可选 `memory_types` 目前仅支持 `profile|episodic_memory`（受 Cloud search API 限制）
-- `recall`: 对 `hybrid|rrf|agentic`，默认会收敛到 `profile+episodic_memory`
-- `recall`: `auto` 会并行执行 `hybrid + keyword` 并按 `memory_id` 去重合并，分支失败会以提示形式返回
-- `recall/briefing` 返回可追溯引用字段：`memory_type/snippet/timestamp/score`（可选 `source_message_id`）
-- `briefing`: 除 `profile/episodic_memory/event_log` 外，也会包含 `foresight` 高亮
-- `briefing`: 支持 `start_time/end_time` 时间过滤（ISO 8601，若无时区按 UTC 处理，作用于 `episodic_memory/event_log/foresight`，不作用于 `profile`）
-- `briefing`: 支持可选 `user_id` 过滤
-- `forget`: 支持可选 `user_id` 删除范围；默认会使用 MCP 客户端身份，降低多用户误删风险
-- `forget`: 保持幂等删除语义；未命中的 ID 会通过 `unmatched_ids/unmatched_count` 和 `warnings` 返回
-- `fetch_history`: 支持按 `memory_type`（`profile|episodic_memory|foresight|event_log`）用精确 0-based `limit/offset` 分页读取历史
-- `fetch_history`: 内部会对上游 `page/page_size` 结果做拼接，保证非整页 offset 也不会错位
-- `fetch_history`: 返回 `has_more/next_offset`，并携带可追溯字段（`memory_id`、`timestamp`、`snippet` + `content`、可选 `source_message_id`）
-- Cloud `fetch/search` 按官方 API 使用 `GET + JSON body`；若在代理/WAF 后出现缺字段错误，请检查是否被中间件剥离请求体
-- 状态查询使用 `/status/request`（Cloud v0 标准路径）
+## 架构
 
-### `flush` 边界规则
-- `flush` 由调用方（MCP 客户端/Agent）控制，本服务不做自动推断
-- 建议始终显式传 `flush`，不要依赖上游默认值
-- 同一段持续多轮对话的中间轮次用 `flush=false`
-- 收尾/总结/话题切换/会话结束或超时时用 `flush=true`
-- 若无法判断边界，默认使用 `flush=true` 更稳妥
-- 可直接复用的提示词和调用约束见：`docs/05-client-integrations.zh-CN.md`
+```
+MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
+        │
+        │  MCP stdio
+        ▼
+┌─────────────────────────────┐
+│     evermemos-mcp 服务器     │
+│  ┌───────────────────────┐  │
+│  │    6 个工具处理器       │  │
+│  └──────────┬────────────┘  │
+│  ┌──────────▼────────────┐  │
+│  │     记忆服务层         │  │  remember / recall / briefing / forget / fetch_history
+│  └──────────┬────────────┘  │
+│  ┌──────────▼────────────┐  │
+│  │   空间目录服务         │  │  空间注册、元数据同步、跨会话恢复
+│  └──────────┬────────────┘  │
+│  ┌──────────▼────────────┐  │
+│  │  EverMemOS HTTP 客户端 │  │  认证、重试、限流退避、错误规范化
+│  └──────────┬────────────┘  │
+└─────────────┼───────────────┘
+              │  HTTPS
+              ▼
+       EverMemOS Cloud API
+```
 
-## MCP 客户端接入
-- Claude Code / Cursor / Cline / Cherry 配置见：`docs/05-client-integrations.zh-CN.md`
-- 可直接复制的 JSON 片段：`docs/mcp-config-snippets/`
-- 演示脚本见：`scripts/demo_preload.py`、`scripts/demo_live_walkthrough.py`
+- **Cloud 优先** — 所有记忆存储在 EverMemOS Cloud，无本地持久化，不会丢失状态
+- **进程内缓存** — 空间目录在内存中缓存，启动时从 Cloud 恢复
+- **异步提取** — `remember` 将内容加入队列，由 AI 提取后变为可检索的记忆
 
-## 开发与验证
-- 安装开发依赖：`uv sync --group dev`
-- Lint：`uv run ruff check`
-- Test：`uv run pytest`
-- 可选集成测试：`EVERMEMOS_RUN_INTEGRATION_TESTS=true uv run pytest -m integration`
-- CI 工作流：`.github/workflows/ci.yml`（每次 push / PR 执行 ruff + pytest）
+## 使用场景
+
+### 编程：持久化架构上下文
+```
+你：记住我们选择 PostgreSQL 而非 MongoDB，因为数据高度关联
+    [space_id: coding:my-saas]
+
+—— 第二天，新会话 ——
+
+你：我们选了什么数据库？为什么？
+    → recall 找到："选择 PostgreSQL 而非 MongoDB — 数据模型高度关联"
+```
+
+### 学习：跨会话学习笔记
+```
+你：记住 bias-variance tradeoff — 高 bias = 欠拟合，高 variance = 过拟合
+    [space_id: study:ml-notes]
+
+—— 之后 ——
+
+你：给我 study:ml-notes 的简报
+    → 返回：用户画像（技术技能）、近期情景、关键事实、前瞻预测
+```
+
+### 聊天：个人偏好
+```
+你：记住我偏好暗色主题、vim 快捷键、简洁回复风格
+    [space_id: chat:preferences]
+
+—— 任意后续会话 ——
+
+你：回忆我的 UI 偏好
+    → "偏好暗色主题、vim 快捷键、简洁回复风格"
+```
+
+## 配置项
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `EVERMEMOS_API_KEY` | *（必填）* | EverMemOS Cloud API Key |
+| `EVERMEMOS_USER_ID` | `mcp-user` | 默认用户身份 |
+| `EVERMEMOS_BASE_URL` | `https://api.evermind.ai` | API 地址 |
+| `EVERMEMOS_API_VERSION` | `v0` | API 版本 |
+| `EVERMEMOS_ENABLE_CONVERSATION_META` | `true` | 是否同步会话元数据 |
+| `EVERMEMOS_DEFAULT_TIMEZONE` | `UTC` | 元数据时区 |
+| `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` | — | 自定义 LLM 提取设置 |
+| `EVERMEMOS_USER_DETAILS_JSON` | — | 会话用户详情 |
+
+## `flush` 边界规则
+
+`flush` 控制 EverMemOS 何时触发记忆提取：
+
+| 场景 | `flush` |
+|------|---------|
+| 对话进行中，还有后续消息 | `false` |
+| 会话结束 / 话题切换 / 总结 | `true` |
+| 不确定 | `true`（更稳妥） |
+
+## 开发
+
+```bash
+uv sync --group dev       # 安装开发依赖
+uv run ruff check         # 代码检查
+uv run pytest             # 单元测试
+EVERMEMOS_RUN_INTEGRATION_TESTS=true uv run pytest -m integration  # 集成测试
+```
+
+CI 在每次 push 和 PR 时自动运行，配置见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
 
 ## 文档索引
-- 需求文档：`docs/01-requirements.zh-CN.md`
-- 架构设计：`docs/02-architecture.zh-CN.md`
-- 演示手册：`docs/03-demo-playbook.zh-CN.md`
-- 提交清单：`docs/04-submission.zh-CN.md`
-- 客户端接入：`docs/05-client-integrations.zh-CN.md`
-- 任务计划：`task_plan.zh-CN.md`
+
+| 文档 | 说明 |
+|------|------|
+| [`docs/01-requirements.zh-CN.md`](docs/01-requirements.zh-CN.md) | 需求文档 |
+| [`docs/02-architecture.zh-CN.md`](docs/02-architecture.zh-CN.md) | 架构设计 |
+| [`docs/03-demo-playbook.zh-CN.md`](docs/03-demo-playbook.zh-CN.md) | 演示手册 |
+| [`docs/05-client-integrations.zh-CN.md`](docs/05-client-integrations.zh-CN.md) | 客户端接入指南 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 版本历史 |
+
+## License
+
+见 [LICENSE](LICENSE)。

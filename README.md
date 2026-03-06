@@ -1,55 +1,78 @@
 # evermemos-mcp
 
-[English](README.md) | [Chinese](README.zh-CN.md)
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-Universal MCP memory layer powered by EverMemOS.
+**Universal long-term memory layer for AI coding assistants, powered by [EverMemOS](https://evermind.ai/).**
 
-## Positioning
-- Works with MCP-compatible clients (coding/chat/study workflows)
-- Uses `space_id` as the primary isolation key
-- Cloud-first strategy with no local persistence
+> Built for the [Memory Genesis Competition 2026](https://luma.com/n88icl03) — Track 2: Platform Plugins
 
-## V1 Tool Set
-- `list_spaces`
-- `remember`
-- `recall`
-- `briefing`
-- `forget`
-- `fetch_history`
+evermemos-mcp is an MCP (Model Context Protocol) server that gives any compatible AI client — Claude Code, Cursor, Cline, Cherry Studio, and more — persistent, cross-session memory. It bridges the gap between stateless AI conversations and the contextual awareness that real-world workflows demand.
 
-## Core Behavior (Cloud v0)
-- Writes are async queued: `remember` returns a `request_id` and does not guarantee immediate recall
-- `recall` can include `pending_count` and `pending_hint` while extraction is still running
-- `space_id` is the only isolation key (`<domain>:<slug>`)
-- Routing is expected to use `list_spaces` and descriptions, not cwd/git auto-detection
-- `remember` with a dynamic `user_id` best-effort syncs participant identity into conversation metadata
+## Why This Exists
 
-## Why `space::catalog` Exists
-- EverMemOS metadata APIs are scoped by `group_id` (`get/set/update`) and do not provide a global list endpoint
-- `list_spaces` therefore uses a reserved catalog group (`space::catalog`) as a durable index
-- Space registration uses best-effort dual-write: catalog entry text + `conversation-meta` metadata sync
-- On recovery, catalog entries are read first, then `conversation-meta` is used to enrich descriptions
+AI coding assistants forget everything between sessions. You explain your architecture, your preferences, your project context — and next session, it's all gone. evermemos-mcp solves this by providing a **Memory → Reasoning → Action** loop:
+
+1. **Remember** — Store decisions, preferences, and context as you work
+2. **Recall** — Retrieve relevant memories using hybrid search (keyword + vector + semantic)
+3. **Brief** — Get a full context restoration at the start of any new session
+
+All memories are organized into isolated **spaces** (e.g. `coding:my-app`, `study:ml-notes`, `chat:daily`), so different projects and workflows never bleed into each other.
+
+## Demo
+
+https://github.com/user-attachments/assets/demo-placeholder
+
+<!-- TODO: Replace with actual demo video link -->
+
+## Features
+
+| Tool | Description |
+|------|-------------|
+| `list_spaces` | Discover available memory spaces |
+| `remember` | Store information into long-term memory (async extraction) |
+| `recall` | Search memories with 6 retrieval strategies (`keyword`, `hybrid`, `vector`, `rrf`, `agentic`, `auto`) |
+| `briefing` | Get a structured context briefing: profile + episodes + facts + foresights |
+| `forget` | Delete specific memories by ID (permanent, idempotent) |
+| `fetch_history` | Paginate through memory timeline by type |
+
+### Key Capabilities
+
+- **Space isolation** — `space_id` (`<domain>:<slug>`) keeps memories separated by project or topic
+- **Multi-space search** — Query up to 10 spaces in a single `recall` call with automatic source attribution
+- **Traceable citations** — Every result includes `memory_type`, `snippet`, `timestamp`, `score`, and optional `source_message_id`
+- **Multi-user support** — Optional `user_id` filtering for shared spaces
+- **Conversation metadata sync** — Automatic `conversation-meta` integration with EverMemOS Cloud
+- **Robust error handling** — Retry with backoff (429 / 5xx), GET body fallback for proxy/WAF compatibility, and structured error codes
 
 ## Quick Start
-- Cloud defaults are built in: `EVERMEMOS_BASE_URL=https://api.evermind.ai`, `EVERMEMOS_API_VERSION=v0`
-- Required for Cloud: `EVERMEMOS_API_KEY`
-- Start server: `uv run evermemos-mcp` or `uv run python -m evermemos_mcp.server`
-- Optional: `EVERMEMOS_ENABLE_CONVERSATION_META=true` (enabled by default)
-- Optional: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` to pass `llm_custom_setting`
-- Optional: `EVERMEMOS_USER_DETAILS_JSON` to pass conversation `user_details`
-- Optional: `EVERMEMOS_DEFAULT_TIMEZONE` for conversation metadata timezone (default `UTC`)
-- Optional: `EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K` to tune source-space probe breadth (default `100`)
-- Optional: `EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY` to tune source-space probe concurrency (default `4`)
 
-## Installation
-- Clone repo: `git clone https://github.com/tt-a1i/evermemos-mcp.git`
-- Enter project: `cd evermemos-mcp`
-- Create env file: `cp .env.example .env` and set `EVERMEMOS_API_KEY`
-- Run from source (recommended): `uv run --directory . evermemos-mcp`
-- Optional global install: `uv tool install --from . evermemos-mcp`
+### 1. Clone and configure
 
-## Generic MCP Configuration (stdio)
-Use this generic config in any MCP client that supports `command + args + env`:
+```bash
+git clone https://github.com/tt-a1i/evermemos-mcp.git
+cd evermemos-mcp
+cp .env.example .env
+# Edit .env and set your EVERMEMOS_API_KEY
+```
+
+Get your API key from [EverMemOS Cloud](https://evermind.ai/).
+
+### 2. Run
+
+```bash
+uv run evermemos-mcp
+```
+
+Or install globally:
+
+```bash
+uv tool install --from . evermemos-mcp
+evermemos-mcp
+```
+
+### 3. Connect to your MCP client
+
+Add this to your MCP client configuration:
 
 ```json
 {
@@ -60,11 +83,11 @@ Use this generic config in any MCP client that supports `command + args + env`:
       "args": [
         "run",
         "--directory",
-        "/ABS/PATH/evermemos-mcp",
+        "/absolute/path/to/evermemos-mcp",
         "evermemos-mcp"
       ],
       "env": {
-        "EVERMEMOS_API_KEY": "YOUR_KEY",
+        "EVERMEMOS_API_KEY": "your-key-here",
         "EVERMEMOS_USER_ID": "mcp-user"
       }
     }
@@ -72,61 +95,118 @@ Use this generic config in any MCP client that supports `command + args + env`:
 }
 ```
 
-If globally installed, replace with `"command": "evermemos-mcp", "args": []`.
+Client-specific setup guides (Claude Code, Cursor, Cline, Cherry Studio) are in [`docs/05-client-integrations.md`](docs/05-client-integrations.md).
 
-## Tool Contract Notes
-- `list_spaces`: `memory_count` is approximate in Cloud mode due async extraction
-- `remember`: optional `include_status`; returns `message_id` (submitted message ID), `request_id`, `created_at`, `processing_hint`
-- `remember`: also returns `memory_count_hint` to clarify Cloud-mode counts are approximate
-- `remember`: forwards `flush` explicitly (`true` or `false`) to keep behavior deterministic
-- `remember`: default `flush=false`; use `flush=true` only at clear conversation boundaries
-- `recall`: supports `retrieve_method=keyword|hybrid|vector|rrf|agentic|auto`
-- `recall`: default `top_k=10`; accepted range is `-1` or `1-100` (`-1` means no service-side truncation; upstream request uses `top_k=100`)
-- `recall`: supports optional `user_id` filter for multi-user spaces
-- `recall`: accepts `space_id` (single space) or `space_ids` (multi-space, up to 10 unique)
-- `recall`: response includes `space_ids`; when upstream provides `group_id`, each row may include `space_id`
-- `recall`: for multi-space search, missing `group_id` triggers best-effort source recovery; unresolved rows are reported in `warnings`
-- `recall`: supports `start_time/end_time` (ISO 8601; naive values default to UTC), applied to `episodic_memory`
-- `recall`: supports `current_time`, `radius`, `include_metadata`, optional `memory_types`
-- `recall`: `memory_types` currently supports only `profile|episodic_memory` (Cloud search API limitation)
-- `recall`: for `hybrid|rrf|agentic`, default `memory_types` is `profile+episodic_memory`
-- `recall`: `auto` runs `hybrid + keyword` in parallel, deduplicates by `memory_id`, and merges partial failures as hints
-- `recall` and `briefing`: return traceable fields (`memory_type`, `snippet`, `timestamp`, `score`, optional `source_message_id`)
-- `briefing`: combines `profile`, `episodic_memory`, `event_log`, and `foresight`
-- `briefing` time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
-- `briefing`: supports optional `user_id` filter
-- `forget`: supports optional `user_id` scope; defaults to the MCP client identity for safer multi-user deletes
-- `forget`: keeps idempotent delete semantics; unmatched IDs are returned as `unmatched_ids/unmatched_count` with warnings
-- `fetch_history`: paginates by `memory_type` (`profile|episodic_memory|foresight|event_log`) with exact 0-based `limit/offset`
-- `fetch_history`: internally stitches page-based upstream results to keep non-aligned offsets accurate
-- `fetch_history`: returns `has_more/next_offset` and trace fields (`memory_id`, `timestamp`, `snippet` + `content`, optional `source_message_id`)
-- Cloud `fetch/search` follow upstream `GET + JSON body`; some proxies/WAFs may strip GET bodies
-- Request status uses `/status/request` (Cloud v0 canonical path)
+## Architecture
 
-### `flush` Boundary Rule
-- `flush` is caller-controlled (MCP client/agent), not auto-inferred by this server
-- Always pass `flush` explicitly; do not rely on upstream defaults
-- Use `flush=false` for intermediate turns in one ongoing conversation
-- Use `flush=true` for final answer/summary/topic switch/session close or timeout
-- If uncertain, prefer `flush=true` as the safe fallback
-- Prompt template and host-side rules: `docs/05-client-integrations.md`
+```
+MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
+        │
+        │  MCP stdio
+        ▼
+┌─────────────────────────────┐
+│     evermemos-mcp server    │
+│  ┌───────────────────────┐  │
+│  │   6 Tool Handlers     │  │
+│  └──────────┬────────────┘  │
+│  ┌──────────▼────────────┐  │
+│  │   Memory Service      │  │  remember / recall / briefing / forget / fetch_history
+│  └──────────┬────────────┘  │
+│  ┌──────────▼────────────┐  │
+│  │ Space Catalog Service │  │  space registry, metadata sync, cross-session recovery
+│  └──────────┬────────────┘  │
+│  ┌──────────▼────────────┐  │
+│  │  EverMemOS HTTP Client│  │  auth, retries, rate-limit backoff, error normalization
+│  └──────────┬────────────┘  │
+└─────────────┼───────────────┘
+              │  HTTPS
+              ▼
+       EverMemOS Cloud API
+```
 
-## MCP Client Integration
-- Integration guide: `docs/05-client-integrations.md`
-- Copy-paste snippets: `docs/mcp-config-snippets/`
-- Demo scripts: `scripts/demo_preload.py`, `scripts/demo_live_walkthrough.py`
+- **Cloud-first** — All memories live in EverMemOS Cloud. No local persistence, no state to lose.
+- **Process-local cache** — Space catalog is cached in-memory for fast lookups, recovered from Cloud on startup.
+- **Async extraction** — `remember` queues content for AI-powered extraction. Memories become searchable after processing.
+
+## Use Cases
+
+### Coding: Persistent Architecture Context
+```
+You: remember that we chose PostgreSQL over MongoDB because our data is highly relational
+     [space_id: coding:my-saas]
+
+-- next day, new session --
+
+You: what database did we choose and why?
+     → recall finds: "Chose PostgreSQL over MongoDB — highly relational data model"
+```
+
+### Study: Cross-Session Learning Notes
+```
+You: remember: bias-variance tradeoff — high bias = underfitting, high variance = overfitting
+     [space_id: study:ml-notes]
+
+-- later --
+
+You: briefing for study:ml-notes
+     → Returns: profile (technical skills), recent episodes, key facts, foresights
+```
+
+### Chat: Personal Preferences
+```
+You: remember I prefer dark mode, vim keybindings, and concise responses
+     [space_id: chat:preferences]
+
+-- any future session --
+
+You: recall my UI preferences
+     → "Prefers dark mode, vim keybindings, concise responses"
+```
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EVERMEMOS_API_KEY` | *(required)* | EverMemOS Cloud API key |
+| `EVERMEMOS_USER_ID` | `mcp-user` | Default user identity |
+| `EVERMEMOS_BASE_URL` | `https://api.evermind.ai` | API endpoint |
+| `EVERMEMOS_API_VERSION` | `v0` | API version |
+| `EVERMEMOS_ENABLE_CONVERSATION_META` | `true` | Sync conversation metadata |
+| `EVERMEMOS_DEFAULT_TIMEZONE` | `UTC` | Timezone for metadata |
+| `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` | — | Custom LLM extraction settings |
+| `EVERMEMOS_USER_DETAILS_JSON` | — | User profile details for conversations |
+
+## `flush` Boundary Rules
+
+`flush` controls when EverMemOS triggers memory extraction:
+
+| Scenario | `flush` |
+|----------|---------|
+| Mid-conversation, more messages coming | `false` |
+| End of session / topic switch / summary | `true` |
+| Uncertain | `true` (safer default) |
 
 ## Development
-- Install dev dependencies: `uv sync --group dev`
-- Lint: `uv run ruff check`
-- Test: `uv run pytest`
-- Optional integration tests: `EVERMEMOS_RUN_INTEGRATION_TESTS=true uv run pytest -m integration`
-- CI: `.github/workflows/ci.yml` (runs ruff + pytest on push/PR)
+
+```bash
+uv sync --group dev       # Install dev dependencies
+uv run ruff check         # Lint
+uv run pytest             # Unit tests
+EVERMEMOS_RUN_INTEGRATION_TESTS=true uv run pytest -m integration  # Integration tests
+```
+
+CI runs on every push and PR via [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## Documentation
-- Requirements: `docs/01-requirements.md`
-- Architecture: `docs/02-architecture.md`
-- Demo playbook: `docs/03-demo-playbook.md`
-- Submission notes: `docs/04-submission.md`
-- Client integrations: `docs/05-client-integrations.md`
-- Work plan: `task_plan.md`
+
+| Document | Description |
+|----------|-------------|
+| [`docs/01-requirements.md`](docs/01-requirements.md) | Product requirements |
+| [`docs/02-architecture.md`](docs/02-architecture.md) | Technical architecture |
+| [`docs/03-demo-playbook.md`](docs/03-demo-playbook.md) | Demo walkthrough |
+| [`docs/05-client-integrations.md`](docs/05-client-integrations.md) | Client setup guides |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history |
+
+## License
+
+See [LICENSE](LICENSE).
