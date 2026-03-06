@@ -185,8 +185,17 @@ You: recall my UI preferences
 | `EVERMEMOS_API_VERSION` | `v0` | API version |
 | `EVERMEMOS_ENABLE_CONVERSATION_META` | `true` | Sync conversation metadata |
 | `EVERMEMOS_DEFAULT_TIMEZONE` | `UTC` | Timezone for metadata |
+| `EVERMEMOS_DEFAULT_SPACE` | *(auto)* | Default space_id. If unset, auto-detected from git remote as `coding:<repo-name>` |
 | `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` | — | Custom LLM extraction settings |
 | `EVERMEMOS_USER_DETAILS_JSON` | — | User profile details for conversations |
+
+### Space Auto-Detection
+
+When `space_id` is omitted from `remember` or `recall`, the server automatically infers a default from:
+1. `EVERMEMOS_DEFAULT_SPACE` environment variable (if set)
+2. Git remote origin URL → `coding:<repo-name>` (e.g. `coding:my-saas`)
+
+This means inside a git project, you can simply call `remember` without specifying a space — memories are automatically routed to the right place.
 
 ## `flush` Boundary Rules
 

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from evermemos_mcp import server as server_mod
+from evermemos_mcp import config, server as server_mod
 from evermemos_mcp.evermemos_client import EverMemosClient, EverMemosError
 from evermemos_mcp.memory_service import MemoryService
 from evermemos_mcp.space_catalog_service import SpaceCatalogService
@@ -191,15 +191,28 @@ async def test_dispatch_recall_hybrid_rejects_event_log_memory_types(svc):
 
 @pytest.mark.asyncio
 async def test_dispatch_recall_requires_space_scope(svc):
-    result = await server_mod.handle_call_tool(
-        "recall",
-        {
-            "query": "FastAPI",
-        },
-    )
+    with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", None):
+        result = await server_mod.handle_call_tool(
+            "recall",
+            {
+                "query": "FastAPI",
+            },
+        )
     data = _parse(result)
     assert data["ok"] is False
     assert data["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_recall_auto_detects_space(svc):
+    with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", "coding:my-repo"):
+        svc._catalog.ensure_space("coding:my-repo")
+        result = await server_mod.handle_call_tool(
+            "recall", {"query": "FastAPI"}
+        )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert data["space_id"] == "coding:my-repo"
 
 
 @pytest.mark.asyncio
@@ -344,10 +357,22 @@ async def test_upstream_error_mapped(svc):
 
 @pytest.mark.asyncio
 async def test_missing_required_field(svc):
-    result = await server_mod.handle_call_tool("remember", {"content": "no space"})
+    with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", None):
+        result = await server_mod.handle_call_tool("remember", {"content": "no space"})
     data = _parse(result)
     assert data["ok"] is False
     assert data["error"] == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_remember_auto_detects_space(svc):
+    with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", "coding:my-repo"):
+        result = await server_mod.handle_call_tool(
+            "remember", {"content": "auto space"}
+        )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert data["space_id"] == "coding:my-repo"
 
 
 @pytest.mark.asyncio
@@ -375,7 +400,8 @@ async def test_unknown_tool(svc):
 
 @pytest.mark.asyncio
 async def test_arguments_none_mapped_to_invalid_input(svc):
-    result = await server_mod.handle_call_tool("remember", None)  # type: ignore[arg-type]
+    with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", None):
+        result = await server_mod.handle_call_tool("remember", None)  # type: ignore[arg-type]
     data = _parse(result)
     assert data["ok"] is False
     assert data["error"] == "INVALID_INPUT"
@@ -388,3 +414,30 @@ async def test_uninitialized_service_returns_config_error():
     data = _parse(result)
     assert data["ok"] is False
     assert data["error"] == "CONFIG_ERROR"
+
+
+# -- error diagnostics --
+
+
+@pytest.mark.asyncio
+async def test_upstream_unavailable_includes_hint(svc):
+    svc._client.search_memories = AsyncMock(
+        side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
+    )
+    svc._catalog.ensure_space("coding:app")
+    result = await server_mod.handle_call_tool(
+        "recall", {"query": "x", "space_id": "coding:app"}
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert "hint" in data
+    assert "network" in data["hint"].lower()
+
+
+@pytest.mark.asyncio
+async def test_config_error_includes_hint():
+    server_mod._svc = None
+    result = await server_mod.handle_call_tool("list_spaces", {})
+    data = _parse(result)
+    # CONFIG_ERROR about missing service — no API_KEY hint
+    assert data["ok"] is False

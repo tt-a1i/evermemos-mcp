@@ -1,0 +1,36 @@
+# Smithery configuration for evermemos-mcp
+# https://smithery.ai/docs/config
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      EVERMEMOS_API_KEY:
+        type: string
+        description: "EverMemOS Cloud API key (required). Get one at https://evermind.ai/"
+      EVERMEMOS_USER_ID:
+        type: string
+        description: "Default user identity"
+        default: "mcp-user"
+      EVERMEMOS_BASE_URL:
+        type: string
+        description: "API endpoint"
+        default: "https://api.evermind.ai"
+      EVERMEMOS_DEFAULT_TIMEZONE:
+        type: string
+        description: "Timezone for metadata"
+        default: "UTC"
+    required:
+      - EVERMEMOS_API_KEY
+  commandFunction: |-
+    (config) => ({
+      command: "uvx",
+      args: ["evermemos-mcp"],
+      env: {
+        EVERMEMOS_API_KEY: config.EVERMEMOS_API_KEY,
+        EVERMEMOS_USER_ID: config.EVERMEMOS_USER_ID || "mcp-user",
+        EVERMEMOS_BASE_URL: config.EVERMEMOS_BASE_URL || "https://api.evermind.ai",
+        EVERMEMOS_DEFAULT_TIMEZONE: config.EVERMEMOS_DEFAULT_TIMEZONE || "UTC"
+      }
+    })

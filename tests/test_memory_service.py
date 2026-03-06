@@ -131,10 +131,8 @@ async def test_remember_returns_queued():
     assert result["message_id"].startswith("msg_")
     assert result["message_id"] != result["request_id"]
     assert result["created_at"]
-    assert (
-        "queued" in result["processing_hint"].lower()
-        or "minutes" in result["processing_hint"].lower()
-    )
+    assert "queued" in result["processing_hint"].lower()
+    assert "flush" in result["processing_hint"].lower()
     assert "approximate" in result["memory_count_hint"].lower()
 
     # Verify Cloud call
