@@ -217,6 +217,7 @@ CI runs on every push and PR via [`.github/workflows/ci.yml`](.github/workflows/
 | [`docs/02-architecture.md`](docs/02-architecture.md) | Technical architecture |
 | [`docs/03-demo-playbook.md`](docs/03-demo-playbook.md) | Demo walkthrough |
 | [`docs/05-client-integrations.md`](docs/05-client-integrations.md) | Client setup guides |
+| [`docs/auto-memory-prompt.md`](docs/auto-memory-prompt.md) | Auto-memory prompt templates for CLAUDE.md / Cursor / Cline |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
 
 ## License
