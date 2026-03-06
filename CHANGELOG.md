@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2026-03-07
+
+### Added
+- Space auto-detection from git remote — `space_id` now optional in `remember` and `recall`, auto-inferred as `coding:<repo-name>`.
+- `EVERMEMOS_DEFAULT_SPACE` environment variable for explicit default space override.
+- `smithery.yaml` for MCP registry listing (smithery.ai / mcp.so).
+- Actionable error diagnostics with hints for API key missing, network unreachable, 401 auth, and 429 rate limit.
+
+### Changed
+- Enhanced all 6 tool descriptions for better AI comprehension and proactive usage.
+- Improved `remember` return hint with flush guidance and verification instructions.
+
 ## [0.4.1] - 2026-03-07
 
 ### Added
