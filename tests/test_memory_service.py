@@ -227,6 +227,23 @@ async def test_remember_chat_identity_mirrors_name_and_preferences_to_metadata()
 
 
 @pytest.mark.asyncio
+async def test_remember_chat_identity_mirrors_chinese_name_to_metadata():
+    svc, client = _make_svc()
+
+    result = await svc.remember(
+        "chat:preferences",
+        "用户名叫 Tom。",
+        user_id="mcp-user",
+    )
+
+    assert result["metadata_mirror"]["enabled"] is True
+    client.set_conversation_metadata.assert_called_once()
+    _, kwargs = client.set_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["mcp-user"]["full_name"] == "Tom"
+
+
+@pytest.mark.asyncio
 async def test_remember_include_status_fetches_request_status():
     svc, client = _make_svc()
     result = await svc.remember("study:ml", "Neural nets", include_status=True)
@@ -1256,6 +1273,32 @@ async def test_briefing_uses_conversation_meta_fallback_when_profile_is_empty():
     assert result["highlights"][0]["stability"] == "fallback"
     assert "Tom" in result["highlights"][0]["content"]
     assert "Conversation metadata fallback" in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_briefing_skips_placeholder_user_id_name_in_metadata_fallback():
+    svc, client = _make_svc()
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2026-02-10T10:00:00Z",
+                "user_details": {
+                    "mcp-user": {
+                        "full_name": "mcp-user",
+                        "role": "user",
+                    }
+                },
+            },
+        }
+    )
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.briefing("chat:preferences")
+
+    assert result["ok"] is True
+    assert result["highlights"] == []
+    assert "no memories" in result["summary"].lower()
 
 
 @pytest.mark.asyncio

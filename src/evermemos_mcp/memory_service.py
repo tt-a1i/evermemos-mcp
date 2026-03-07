@@ -35,6 +35,7 @@ _CHAT_SPACE_PREFIX = "chat:"
 _NAME_EXTRACTION_PATTERNS = (
     re.compile(r"\bmy name is\s+([A-Za-z][A-Za-z0-9'\- ]{0,48})", re.IGNORECASE),
     re.compile(r"\bcall me\s+([A-Za-z][A-Za-z0-9'\- ]{0,48})", re.IGNORECASE),
+    re.compile(r"(?:我的?名字(?:叫|是)|用户名叫)\s*([A-Za-z\u4e00-\u9fff·•][A-Za-z0-9\u4e00-\u9fff·•'\- ]{0,48})"),
     re.compile(r"我叫\s*([A-Za-z\u4e00-\u9fff·•]{1,20})"),
     re.compile(r"叫我\s*([A-Za-z\u4e00-\u9fff·•]{1,20})"),
 )
@@ -514,7 +515,10 @@ class MemoryService:
         full_name = profile.get("full_name")
         if isinstance(full_name, str) and full_name.strip():
             normalized_name = full_name.strip()
-            if asks_name or include_all_when_unspecified:
+            if (
+                normalized_name.casefold() != user_id.strip().casefold()
+                and (asks_name or include_all_when_unspecified)
+            ):
                 lines.append(f"Known name: {normalized_name}")
 
         preferences = profile.get("preferences")
@@ -535,7 +539,11 @@ class MemoryService:
 
         if not lines and include_all_when_unspecified:
             role = profile.get("role")
-            if isinstance(role, str) and role.strip():
+            if (
+                isinstance(role, str)
+                and role.strip()
+                and role.strip().casefold() != "user"
+            ):
                 lines.append(f"Known role for {user_id}: {role.strip()}")
 
         deduped: list[str] = []
