@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-03-07T11:28:10.870186+08:00",
+  "prefix": "appendix-dec0612e",
+  "spaces": {
+    "coding": "coding:appendix-dec0612e-app",
+    "chat": "chat:appendix-dec0612e-daily",
+    "study": "study:appendix-dec0612e-ml-notes"
+  },
+  "remember": {
+    "attempts": 9,
+    "successes": 9,
+    "success_rate": 1.0,
+    "per_space": {
+      "coding": {
+        "space_id": "coding:appendix-dec0612e-app",
+        "remember_attempts": 3,
+        "remember_successes": 3,
+        "request_status_successes": 3,
+        "request_status_found": 0,
+        "first_ack_monotonic": 94664.352091666,
+        "queued_message_ids": [
+          "msg_ac85689d9c4d",
+          "msg_7cd25a27ab05",
+          "msg_f19fcf476282"
+        ],
+        "searchable_after_seconds": 69.07,
+        "first_search_hit_count": 3
+      },
+      "chat": {
+        "space_id": "chat:appendix-dec0612e-daily",
+        "remember_attempts": 3,
+        "remember_successes": 3,
+        "request_status_successes": 3,
+        "request_status_found": 0,
+        "first_ack_monotonic": 94669.8763215,
+        "queued_message_ids": [
+          "msg_0698937cd58e",
+          "msg_f49e24b5d8f9",
+          "msg_fd6446306d03"
+        ],
+        "searchable_after_seconds": 37.82,
+        "first_search_hit_count": 3
+      },
+      "study": {
+        "space_id": "study:appendix-dec0612e-ml-notes",
+        "remember_attempts": 3,
+        "remember_successes": 3,
+        "request_status_successes": 3,
+        "request_status_found": 0,
+        "first_ack_monotonic": 94675.316552083,
+        "queued_message_ids": [
+          "msg_444ad92bf665",
+          "msg_0d10f56e70dd",
+          "msg_92eca4e1f26d"
+        ],
+        "searchable_after_seconds": 91.48,
+        "first_search_hit_count": 1
+      }
+    }
+  },
+  "searchable": {
+    "all_searchable": true,
+    "sample_size": 3,
+    "per_space_seconds": {
+      "coding:appendix-dec0612e-app": 69.07,
+      "chat:appendix-dec0612e-daily": 37.82,
+      "study:appendix-dec0612e-ml-notes": 91.48
+    }
+  },
+  "isolation": {
+    "cross_space_queries": 6,
+    "false_hits": 0,
+    "details": [
+      {
+        "query_domain": "coding",
+        "target_space": "chat:appendix-dec0612e-daily",
+        "hit_count": 3,
+        "leaked_rows": 0
+      },
+      {
+        "query_domain": "coding",
+        "target_space": "study:appendix-dec0612e-ml-notes",
+        "hit_count": 1,
+        "leaked_rows": 0
+      },
+      {
+        "query_domain": "chat",
+        "target_space": "coding:appendix-dec0612e-app",
+        "hit_count": 2,
+        "leaked_rows": 0
+      },
+      {
+        "query_domain": "chat",
+        "target_space": "study:appendix-dec0612e-ml-notes",
+        "hit_count": 1,
+        "leaked_rows": 0
+      },
+      {
+        "query_domain": "study",
+        "target_space": "coding:appendix-dec0612e-app",
+        "hit_count": 2,
+        "leaked_rows": 0
+      },
+      {
+        "query_domain": "study",
+        "target_space": "chat:appendix-dec0612e-daily",
+        "hit_count": 3,
+        "leaked_rows": 0
+      }
+    ],
+    "correct": true
+  },
+  "forget": {
+    "attempts": 1,
+    "deleted_count": 0,
+    "still_recalled": true,
+    "ok": false,
+    "memory_id": "69ab9b88173dee6adc23e1d4",
+    "warnings": [
+      "Some memory IDs were not matched (already deleted or outside current scope)."
+    ],
+    "unmatched_ids": [
+      "69ab9b88173dee6adc23e1d4"
+    ]
+  }
+}
