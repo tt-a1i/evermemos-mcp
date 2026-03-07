@@ -28,6 +28,7 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+.sisyphus/
 
 # Competition artifacts (raw data stays in Release assets)
 artifacts/competition/*/runs.jsonl
