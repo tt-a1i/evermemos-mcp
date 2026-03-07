@@ -1,6 +1,6 @@
 """MCP Server entry point for evermemos-mcp.
 
-Registers 6 tools and runs over stdio transport.
+Registers 7 tools and runs over stdio transport.
 """
 
 from __future__ import annotations
@@ -156,6 +156,24 @@ TOOLS: list[types.Tool] = [
                 },
             },
             "required": ["content"],
+        },
+    ),
+    types.Tool(
+        name="request_status",
+        description=(
+            "Check the async processing status for a prior remember request. "
+            "Use this when remember returned a request_id and you need to know "
+            "whether extraction is still queued, processing, or completed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "description": "Queued remember request_id returned by remember",
+                }
+            },
+            "required": ["request_id"],
         },
     ),
     types.Tool(
@@ -459,8 +477,14 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
         )
 
     if name == "remember":
+        remember_space_id = _resolve_space_id(args)
+        if remember_space_id is None:
+            raise EverMemosError(
+                "space_id is required",
+                code="INVALID_INPUT",
+            )
         return await svc.remember(
-            space_id=_resolve_space_id(args),
+            space_id=remember_space_id,
             content=args["content"],
             description=args.get("description"),
             sender=args.get("sender", "user"),
@@ -470,6 +494,9 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             refer_list=args.get("refer_list"),
             include_status=args.get("include_status", False),
         )
+
+    if name == "request_status":
+        return await svc.request_status(args["request_id"])
 
     if name == "recall":
         raw_space_id = args.get("space_id")

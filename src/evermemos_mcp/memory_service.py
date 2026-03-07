@@ -31,6 +31,47 @@ _FORGET_DELETE_CONCURRENCY = 8
 _MAX_FETCH_HISTORY_LIMIT = 100
 _SOURCE_RECOVERY_PROBE_TOP_K = config.EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K
 _SOURCE_RECOVERY_PROBE_CONCURRENCY = config.EVERMEMOS_SOURCE_RECOVERY_PROBE_CONCURRENCY
+_CHAT_SPACE_PREFIX = "chat:"
+_NAME_EXTRACTION_PATTERNS = (
+    re.compile(r"\bmy name is\s+([A-Za-z][A-Za-z0-9'\- ]{0,48})", re.IGNORECASE),
+    re.compile(r"\bcall me\s+([A-Za-z][A-Za-z0-9'\- ]{0,48})", re.IGNORECASE),
+    re.compile(r"我叫\s*([A-Za-z\u4e00-\u9fff·•]{1,20})"),
+    re.compile(r"叫我\s*([A-Za-z\u4e00-\u9fff·•]{1,20})"),
+)
+_PREFERENCE_SENTENCE_MARKERS = (
+    "i prefer",
+    "i like",
+    "i love",
+    "my preference",
+    "preferences",
+    "偏好",
+    "喜欢",
+    "喜好",
+    "习惯",
+)
+_NAME_QUERY_MARKERS = (
+    "my name",
+    "what is my name",
+    "what's my name",
+    "who am i",
+    "call me",
+    "name?",
+    "名字",
+    "叫什么",
+    "称呼",
+)
+_PREFERENCE_QUERY_MARKERS = (
+    "preference",
+    "preferences",
+    "prefer",
+    "like",
+    "settings",
+    "style",
+    "偏好",
+    "喜欢",
+    "喜好",
+    "风格",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -348,6 +389,291 @@ class MemoryService:
         for index, pending_item in enumerate(pending_messages):
             keys.add(MemoryService._pending_message_key(pending_item, index))
         return keys
+
+    @staticmethod
+    def _normalize_note_text(value: str) -> str:
+        compact = re.sub(r"\s+", " ", value).strip()
+        return compact.strip("\t\n\r ;,，。.!！?？")
+
+    @classmethod
+    def _extract_name_from_text(cls, content: str) -> str | None:
+        for pattern in _NAME_EXTRACTION_PATTERNS:
+            match = pattern.search(content)
+            if not match:
+                continue
+            candidate = cls._normalize_note_text(match.group(1))
+            candidate = re.split(r"\s+(?:and|who|that|with|but)\b|[，。,.；;]", candidate, 1)[0]
+            candidate = cls._normalize_note_text(candidate)
+            if candidate:
+                return candidate
+        return None
+
+    @classmethod
+    def _extract_preference_items(cls, content: str) -> list[str]:
+        normalized = cls._normalize_note_text(content)
+        lowered = normalized.lower()
+        clauses: list[str] = []
+        for marker in _PREFERENCE_SENTENCE_MARKERS:
+            if marker not in lowered:
+                continue
+            start = lowered.find(marker)
+            clause = normalized[start + len(marker) :].strip(" :：,-")
+            if clause:
+                clauses.append(clause)
+
+        items: list[str] = []
+        seen: set[str] = set()
+        for clause in clauses:
+            for raw_item in re.split(r",|，|;|；|\band\b|以及|还有|和", clause):
+                item = cls._normalize_note_text(raw_item)
+                if not item:
+                    continue
+                lowered_item = item.lower()
+                if lowered_item.startswith("that "):
+                    item = cls._normalize_note_text(item[5:])
+                    lowered_item = item.lower()
+                if lowered_item.startswith("to "):
+                    continue
+                if lowered_item in seen:
+                    continue
+                seen.add(lowered_item)
+                items.append(item)
+        return items
+
+    @classmethod
+    def _extract_chat_profile_patch(
+        cls,
+        *,
+        space_id: str,
+        content: str,
+        role: str,
+    ) -> dict | None:
+        if not space_id.startswith(_CHAT_SPACE_PREFIX) or role != "user":
+            return None
+
+        normalized = cls._normalize_note_text(content)
+        if not normalized:
+            return None
+
+        patch: dict[str, object] = {}
+        full_name = cls._extract_name_from_text(normalized)
+        if full_name:
+            patch["full_name"] = full_name
+
+        preference_items = cls._extract_preference_items(normalized)
+        if preference_items:
+            patch["preferences"] = preference_items
+            patch["preference_notes"] = [normalized[:240]]
+        elif any(marker in normalized.lower() for marker in _PREFERENCE_SENTENCE_MARKERS):
+            patch["preference_notes"] = [normalized[:240]]
+
+        return patch or None
+
+    @staticmethod
+    def _classify_identity_query(query: str) -> tuple[bool, bool]:
+        lowered = query.lower()
+        asks_name = any(marker in lowered for marker in _NAME_QUERY_MARKERS)
+        asks_preferences = any(
+            marker in lowered for marker in _PREFERENCE_QUERY_MARKERS
+        )
+        return asks_name, asks_preferences
+
+    @staticmethod
+    def _select_conversation_meta_profile(
+        user_details: object,
+        *,
+        target_user_id: str | None,
+    ) -> tuple[str | None, dict | None]:
+        if not isinstance(user_details, dict) or not user_details:
+            return None, None
+
+        if isinstance(target_user_id, str) and target_user_id.strip():
+            normalized_target = target_user_id.strip()
+            profile = user_details.get(normalized_target)
+            if isinstance(profile, dict):
+                return normalized_target, profile
+
+        if len(user_details) == 1:
+            only_user_id, only_profile = next(iter(user_details.items()))
+            if isinstance(only_user_id, str) and isinstance(only_profile, dict):
+                return only_user_id, only_profile
+
+        return None, None
+
+    @classmethod
+    def _build_profile_summary_lines(
+        cls,
+        profile: dict,
+        *,
+        user_id: str,
+        asks_name: bool,
+        asks_preferences: bool,
+        include_all_when_unspecified: bool = False,
+    ) -> list[str]:
+        lines: list[str] = []
+        full_name = profile.get("full_name")
+        if isinstance(full_name, str) and full_name.strip():
+            normalized_name = full_name.strip()
+            if asks_name or include_all_when_unspecified:
+                lines.append(f"Known name: {normalized_name}")
+
+        preferences = profile.get("preferences")
+        if isinstance(preferences, list):
+            preference_text = ", ".join(
+                item.strip()
+                for item in preferences
+                if isinstance(item, str) and item.strip()
+            )
+            if preference_text and (asks_preferences or include_all_when_unspecified):
+                lines.append(f"Known preferences: {preference_text}")
+
+        preference_notes = profile.get("preference_notes")
+        if isinstance(preference_notes, list) and (asks_preferences or include_all_when_unspecified):
+            for note in preference_notes:
+                if isinstance(note, str) and note.strip():
+                    lines.append(note.strip())
+
+        if not lines and include_all_when_unspecified:
+            role = profile.get("role")
+            if isinstance(role, str) and role.strip():
+                lines.append(f"Known role for {user_id}: {role.strip()}")
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for line in lines:
+            if line in seen:
+                continue
+            seen.add(line)
+            deduped.append(line)
+        return deduped
+
+    @classmethod
+    def _build_pending_identity_rows(
+        cls,
+        *,
+        query: str,
+        search_results: list[dict],
+        default_space_id: str | None,
+    ) -> list[dict]:
+        asks_name, asks_preferences = cls._classify_identity_query(query)
+        if not asks_name and not asks_preferences:
+            return []
+        if not isinstance(default_space_id, str) or not default_space_id.startswith(
+            _CHAT_SPACE_PREFIX
+        ):
+            return []
+
+        rows: list[dict] = []
+        seen_texts: set[str] = set()
+        for search_result in search_results:
+            result_payload = search_result.get("result", {})
+            if not isinstance(result_payload, dict):
+                continue
+            pending_messages = result_payload.get("pending_messages", [])
+            if not isinstance(pending_messages, list):
+                continue
+
+            for index, pending_item in enumerate(pending_messages):
+                if not isinstance(pending_item, dict):
+                    continue
+                content = pending_item.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    continue
+
+                patch = cls._extract_chat_profile_patch(
+                    space_id=default_space_id,
+                    content=content,
+                    role="user",
+                )
+                if not isinstance(patch, dict):
+                    continue
+
+                lines = cls._build_profile_summary_lines(
+                    patch,
+                    user_id="pending-user",
+                    asks_name=asks_name,
+                    asks_preferences=asks_preferences,
+                )
+                if not lines:
+                    continue
+
+                text = " | ".join(lines)
+                if text in seen_texts:
+                    continue
+                seen_texts.add(text)
+
+                row = {
+                    "memory_id": f"pending:{index}:{cls._pending_message_key(pending_item, index)}",
+                    "memory_type": "pending_message",
+                    "snippet": text[:500],
+                    "content": text[:500],
+                    "timestamp": pending_item.get("created_at", ""),
+                    "source": "pending_messages",
+                    "stability": "provisional",
+                }
+                if isinstance(default_space_id, str) and default_space_id:
+                    row["space_id"] = default_space_id
+                rows.append(row)
+        return rows
+
+    async def _build_conversation_meta_rows(
+        self,
+        *,
+        query: str,
+        space_ids: list[str],
+        user_id: str | None,
+        include_all_when_unspecified: bool = False,
+    ) -> list[dict]:
+        asks_name, asks_preferences = self._classify_identity_query(query)
+        if not asks_name and not asks_preferences and not include_all_when_unspecified:
+            return []
+
+        target_user_id = user_id or getattr(self._client, "user_id", None)
+        snapshots = await asyncio.gather(
+            *(self._catalog.get_conversation_meta(space_id) for space_id in space_ids)
+        )
+
+        rows: list[dict] = []
+        seen_texts: set[str] = set()
+        for space_id, snapshot in zip(space_ids, snapshots, strict=True):
+            if not isinstance(snapshot, dict):
+                continue
+            selected_user_id, profile = self._select_conversation_meta_profile(
+                snapshot.get("user_details"),
+                target_user_id=target_user_id,
+            )
+            if not selected_user_id or not isinstance(profile, dict):
+                continue
+
+            lines = self._build_profile_summary_lines(
+                profile,
+                user_id=selected_user_id,
+                asks_name=asks_name,
+                asks_preferences=asks_preferences,
+                include_all_when_unspecified=include_all_when_unspecified,
+            )
+            if not lines:
+                continue
+
+            text = " | ".join(lines)
+            if text in seen_texts:
+                continue
+            seen_texts.add(text)
+
+            rows.append(
+                {
+                    "memory_id": f"conversation-meta:{space_id}:{selected_user_id}",
+                    "memory_type": "metadata_fallback",
+                    "snippet": text[:500],
+                    "content": text[:500],
+                    "timestamp": snapshot.get("created_at", ""),
+                    "space_id": space_id,
+                    "source": "conversation_meta",
+                    "stability": "fallback",
+                    "user_id": selected_user_id,
+                }
+            )
+        return rows
 
     @staticmethod
     def _is_user_scope_compat_error(error: EverMemosError) -> bool:
@@ -694,12 +1020,19 @@ class MemoryService:
                 code="INVALID_INPUT",
             )
 
+        actor_profile = self._extract_chat_profile_patch(
+            space_id=space_id,
+            content=content,
+            role=effective_role,
+        )
+
         if description:
             await self._catalog.register_space(
                 space_id,
                 description.strip(),
                 actor_user_id=sender_id,
                 actor_role=effective_role,
+                actor_profile=actor_profile,
             )
         else:
             self._catalog.ensure_space(space_id)
@@ -707,6 +1040,7 @@ class MemoryService:
                 space_id,
                 actor_user_id=sender_id,
                 actor_role=effective_role,
+                actor_profile=actor_profile,
             )
 
         group_id = to_group_id(space_id)
@@ -752,6 +1086,16 @@ class MemoryService:
             ),
         }
 
+        if actor_profile:
+            output["metadata_mirror"] = {
+                "enabled": True,
+                "message": (
+                    "Detected chat identity/preferences and attempted to mirror them "
+                    "into conversation metadata as a fallback when extracted results "
+                    "are unavailable."
+                ),
+            }
+
         if include_status and request_id:
             try:
                 status_res = await self._client.get_request_status(request_id)
@@ -772,6 +1116,34 @@ class MemoryService:
         return output
 
     # -- recall --
+
+    async def request_status(self, request_id: str) -> dict:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise EverMemosError("request_id is required", code="INVALID_INPUT")
+
+        normalized_request_id = request_id.strip()
+        status_res = await self._client.get_request_status(normalized_request_id)
+        data = status_res.get("data") if isinstance(status_res, dict) else None
+        status = data.get("status") if isinstance(data, dict) else None
+
+        output: dict = {
+            "ok": True,
+            "request_id": normalized_request_id,
+            "success": status_res.get("success", False)
+            if isinstance(status_res, dict)
+            else False,
+            "found": status_res.get("found", False)
+            if isinstance(status_res, dict)
+            else False,
+            "message": status_res.get("message", "")
+            if isinstance(status_res, dict)
+            else "",
+        }
+        if isinstance(status, str) and status:
+            output["status"] = status
+        if data is not None:
+            output["data"] = data
+        return output
 
     async def recall(
         self,
@@ -1163,6 +1535,33 @@ class MemoryService:
                 )
             )
 
+            if not rows:
+                fallback_rows = self._build_pending_identity_rows(
+                    query=query,
+                    search_results=[result],
+                    default_space_id=resolved_space_ids[0]
+                    if len(resolved_space_ids) == 1
+                    else None,
+                )
+                fallback_rows.extend(
+                    await self._build_conversation_meta_rows(
+                        query=query,
+                        space_ids=resolved_space_ids,
+                        user_id=user_id,
+                    )
+                )
+                if fallback_rows:
+                    rows = fallback_rows
+                    warnings.append(
+                        {
+                            "code": "IDENTITY_FALLBACK_APPLIED",
+                            "message": (
+                                "Search returned no extracted results; surfaced pending/messages "
+                                "or conversation metadata as a fallback."
+                            ),
+                        }
+                    )
+
             if top_k != -1:
                 rows = rows[:top_k]
 
@@ -1261,6 +1660,33 @@ class MemoryService:
             merged_rows = merged_rows[:top_k]
 
         pending_count = len(pending_keys)
+
+        if not merged_rows:
+            fallback_rows = self._build_pending_identity_rows(
+                query=query,
+                search_results=[success for _, _, success in successes],
+                default_space_id=resolved_space_ids[0]
+                if len(resolved_space_ids) == 1
+                else None,
+            )
+            fallback_rows.extend(
+                await self._build_conversation_meta_rows(
+                    query=query,
+                    space_ids=resolved_space_ids,
+                    user_id=user_id,
+                )
+            )
+            if fallback_rows:
+                merged_rows = fallback_rows[:top_k] if top_k != -1 else fallback_rows
+                warnings.append(
+                    {
+                        "code": "IDENTITY_FALLBACK_APPLIED",
+                        "message": (
+                            "Auto recall returned no extracted results; surfaced pending/messages "
+                            "or conversation metadata as a fallback."
+                        ),
+                    }
+                )
 
         output = {
             "ok": True,
@@ -1368,6 +1794,7 @@ class MemoryService:
 
         highlights: list[dict] = []
         summary_parts: list[str] = []
+        profile_highlight_count = 0
 
         # Profile
         if isinstance(profile_res, dict):
@@ -1402,8 +1829,9 @@ class MemoryService:
                             ),
                         }
                     )
+                    profile_highlight_count += 1
             if highlights:
-                summary_parts.append(f"User profile ({len(highlights)} entries)")
+                summary_parts.append(f"User profile ({profile_highlight_count} entries)")
 
         # Episodic memory
         if isinstance(episodic_res, dict):
@@ -1487,6 +1915,29 @@ class MemoryService:
                     highlights.append(highlight)
             if foresights:
                 summary_parts.append(f"{len(foresights)} foresight item(s)")
+
+        if profile_highlight_count == 0:
+            metadata_rows = await self._build_conversation_meta_rows(
+                query="profile briefing",
+                space_ids=[space_id],
+                user_id=user_id,
+                include_all_when_unspecified=True,
+            )
+            if metadata_rows:
+                for row in metadata_rows[:1]:
+                    highlights.insert(
+                        0,
+                        {
+                            "type": "metadata_fallback",
+                            "snippet": row["snippet"],
+                            "content": row["content"],
+                            "timestamp": row.get("timestamp", ""),
+                            "source": row.get("source", "conversation_meta"),
+                            "stability": row.get("stability", "fallback"),
+                            "user_id": row.get("user_id"),
+                        },
+                    )
+                summary_parts.insert(0, "Conversation metadata fallback (1 entry)")
 
         output: dict = {
             "ok": True,
