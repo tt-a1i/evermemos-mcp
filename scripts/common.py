@@ -53,6 +53,26 @@ def new_message_id() -> str:
     return f"msg_{uuid4().hex[:8]}"
 
 
+def searchable_result_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = result.get("results", []) if isinstance(result, dict) else []
+    if not isinstance(rows, list):
+        return []
+
+    filtered: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        stability = row.get("stability")
+        if isinstance(stability, str) and stability != "searchable":
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def has_searchable_rows(result: dict[str, Any]) -> bool:
+    return bool(searchable_result_rows(result))
+
+
 def flatten_search_memories(result: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     """Normalize search memories from flat or grouped response shapes."""
     flattened: list[tuple[str, dict[str, Any]]] = []
