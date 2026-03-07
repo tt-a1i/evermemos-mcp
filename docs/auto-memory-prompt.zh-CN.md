@@ -27,6 +27,9 @@
 - 已存在于代码注释或文档中的信息
 - 琐碎或显而易见的事实
 
+如果这次写入很重要，优先使用 `remember(..., include_status=true)`。
+写入后先查看 `status_check`，再看 `request_status.success` / `request_status.error`，最后才解释 `request_status.lifecycle.state`。
+
 ## 自动回忆规则
 
 在以下场景自动调用 `recall` 或 `briefing`：
@@ -56,6 +59,7 @@
 ```text
 你可以通过 evermemos-mcp 使用长期记忆，请主动使用：
 - 自动记忆：架构决策、用户偏好、项目惯例、Bug 解决方案
+- 重要写入优先使用 remember(..., include_status=true)，并先检查 request_status.success/error，再看 lifecycle.state
 - 自动回忆：会话开始时（briefing）、需要历史上下文时
 - 空间格式：coding:<仓库名>, study:<主题>, chat:<范围>
 - 对话中 flush=false，边界处 flush=true
@@ -73,11 +77,13 @@
 1. 调用 briefing(space_id="coding:<项目名>") 恢复上下文
 
 工作过程中：
-2. 做出架构决策或发现 Bug 时，调用 remember() 存储
+2. 做出架构决策或发现 Bug 时，调用 `remember(..., include_status=true)` 存储，并立即做写后检查
 3. 不确定之前的决策时，调用 recall() 查询
+4. 如果 `request_status.success` 为 false，应先暴露状态检查失败，而不是把它当成正常排队
+5. 如果 `request_status.lifecycle.state` 仍是 `queued`，把 recall/briefing 当作临时帮助，而不是 searchable 的正式证明
 
 会话结束时：
-4. 总结关键决策并调用 remember(flush=true)
+6. 总结关键决策并调用 `remember(flush=true, include_status=true)`
 ```
 
 ## 工作原理
@@ -96,12 +102,12 @@ briefing → 从上次会话恢复上下文
     ▼
 AI 处理任务
     │
-    ├─ remember(flush=false) → 随时存储决策和发现
+    ├─ remember(flush=false, include_status=true) → 随时存储决策和发现，并记录 request_status
     │
     ▼
 会话结束 / 话题切换
     │
-    └─ remember(flush=true) → 最终提取并保存记忆
+    └─ remember(flush=true, include_status=true) → 触发最终提取，并继续用 request_status 检查直到 searchable
 ```
 
 这构建了 **记忆 → 推理 → 行动** 闭环：

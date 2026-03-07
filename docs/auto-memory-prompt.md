@@ -27,6 +27,9 @@ Do NOT remember:
 - Information already stored in code comments or documentation
 - Trivial or obvious facts
 
+When a write matters, prefer `remember(..., include_status=true)`.
+After the call, inspect `status_check`, then `request_status.success` / `request_status.error`, and only then interpret `request_status.lifecycle.state`.
+
 ## Auto-Recall Rules
 
 Automatically call `recall` or `briefing` when:
@@ -56,6 +59,7 @@ For clients with limited system prompt space:
 ```text
 You have long-term memory via evermemos-mcp. Use it proactively:
 - Auto-remember: architecture decisions, user preferences, project conventions, bug solutions
+- For important writes, prefer remember(..., include_status=true) and inspect request_status.success/error before lifecycle.state
 - Auto-recall: at session start (briefing), when context from past sessions is relevant
 - Space format: coding:<repo>, study:<topic>, chat:<scope>
 - flush=false during conversation, flush=true at boundaries
@@ -73,11 +77,13 @@ At session start:
 1. Call briefing(space_id="coding:<project-name>") to restore context
 
 During work:
-2. When making architecture decisions or finding bugs, call remember() to store them
+2. When making architecture decisions or finding bugs, call `remember(..., include_status=true)` to store them and run a write-after check
 3. When unsure about prior decisions, call recall() to check
+4. If `request_status.success` is false, surface the status-check failure instead of treating it as normal queueing
+5. If `request_status.lifecycle.state` stays `queued`, treat recall/briefing as provisional help rather than proof of searchable extraction
 
 At session end:
-4. Summarize key decisions and call remember(flush=true)
+6. Summarize key decisions and call `remember(flush=true, include_status=true)`
 ```
 
 ## How It Works
@@ -96,12 +102,12 @@ User asks a question
     ▼
 AI works on the task
     │
-    ├─ remember(flush=false) → store decisions/findings as you go
+    ├─ remember(flush=false, include_status=true) → store decisions/findings and capture request status
     │
     ▼
 Session End / Topic Switch
     │
-    └─ remember(flush=true) → finalize and extract memories
+    └─ remember(flush=true, include_status=true) → finalize, then keep checking request_status until searchable
 ```
 
 This creates the **Memory → Reasoning → Action** loop:
