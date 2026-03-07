@@ -99,17 +99,16 @@
 
 ## 6) Cherry Studio 配置示例
 
+已发布版本推荐这样配置：
+
 ```json
 {
   "mcpServers": {
     "evermemos-mcp": {
       "type": "stdio",
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
-        "--directory",
-        "/ABS/PATH/evermemos-mcp",
-        "evermemos-mcp"
+        "evermemos-mcp@latest"
       ],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY",
@@ -120,6 +119,16 @@
   }
 }
 ```
+
+如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.5`。
+
+如果发布后 Cherry Studio 仍启动旧缓存版本，可执行：
+
+```bash
+uv cache clean evermemos-mcp
+```
+
+如果你是在本地源码联调，才继续使用 `uv run --directory /ABS/PATH/evermemos-mcp evermemos-mcp`。
 
 ## 7) 源码片段
 如果未安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`。
@@ -176,6 +185,10 @@ When calling remember:
 - `remember` 成功但 `recall` 为空
   - 原因：Cloud 提取是异步
   - 处理：等待 2-5 分钟后重试
+
+- Cherry Studio 发布后仍启动旧版本
+  - 原因：`uvx` 可能复用本地缓存
+  - 处理：执行 `uv cache clean evermemos-mcp`，或直接固定 `evermemos-mcp@latest`
 
 - 在代理/WAF 环境出现缺字段错误
   - 原因：中间件可能剥离了 GET 请求体（上游 fetch/search 使用 `GET + JSON body`）

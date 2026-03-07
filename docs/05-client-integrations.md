@@ -99,17 +99,16 @@ Reference snippet: `docs/mcp-config-snippets/claude-code.json`
 
 ## 6) Cherry Studio Example
 
+Recommended for published releases:
+
 ```json
 {
   "mcpServers": {
     "evermemos-mcp": {
       "type": "stdio",
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
-        "--directory",
-        "/ABS/PATH/evermemos-mcp",
-        "evermemos-mcp"
+        "evermemos-mcp@latest"
       ],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY",
@@ -120,6 +119,16 @@ Reference snippet: `docs/mcp-config-snippets/claude-code.json`
   }
 }
 ```
+
+If you prefer a fixed release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.5`.
+
+If Cherry Studio still launches an older cached build after an upgrade, run:
+
+```bash
+uv cache clean evermemos-mcp
+```
+
+For local source development, keep using `uv run --directory /ABS/PATH/evermemos-mcp evermemos-mcp`.
 
 ## 7) Source Snippet Reference
 Use `docs/mcp-config-snippets/from-source.json` when global command install is not available.
@@ -170,5 +179,7 @@ In your MCP client:
   - restart client and verify the active server is `evermemos`
 - Remember succeeds but recall is empty
   - Cloud extraction is async (wait 2-5 minutes)
+- Cherry Studio still starts an older version after a release
+  - `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin `evermemos-mcp@latest`
 - Missing required field errors behind proxy/WAF
   - your network may strip GET request bodies used by upstream `fetch/search`

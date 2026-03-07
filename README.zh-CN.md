@@ -64,7 +64,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
     "evermemos-mcp": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["evermemos-mcp"],
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "你的KEY",
         "EVERMEMOS_USER_ID": "mcp-user"
@@ -77,7 +77,13 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 或直接在命令行运行：
 
 ```bash
-uvx evermemos-mcp
+uvx evermemos-mcp@latest
+```
+
+如果发布后客户端仍启动旧缓存版本，可执行：
+
+```bash
+uv cache clean evermemos-mcp
 ```
 
 ### 方式 B：从源码安装

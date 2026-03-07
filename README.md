@@ -64,7 +64,7 @@ No clone needed — just add to your MCP client config:
     "evermemos-mcp": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["evermemos-mcp"],
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "your-key-here",
         "EVERMEMOS_USER_ID": "mcp-user"
@@ -77,7 +77,13 @@ No clone needed — just add to your MCP client config:
 Or run directly from the command line:
 
 ```bash
-uvx evermemos-mcp
+uvx evermemos-mcp@latest
+```
+
+If your client still launches an older cached build after a release, refresh it with:
+
+```bash
+uv cache clean evermemos-mcp
 ```
 
 ### Option B: Install from source
