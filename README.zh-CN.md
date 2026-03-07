@@ -47,7 +47,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 - **可追溯引用** — 每条结果包含 `memory_type`、`snippet`、`timestamp`、`score` 及可选 `source_message_id`
 - **多用户支持** — 可选 `user_id` 过滤，适用于共享空间场景
 - **会话元数据同步** — 自动与 EverMemOS Cloud 的 `conversation-meta` 集成
-- **异步身份兜底** — 聊天身份/偏好会轻量镜像到 `conversation-meta`，并在提取型搜索结果不可用时以显式 fallback 形式返回
+- **异步身份兜底** — 聊天身份/偏好会以 best-effort 方式轻量镜像到 `conversation-meta`，并在提取型搜索结果不可用时以显式 fallback 形式返回
 - **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
 
 ## 快速开始

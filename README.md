@@ -47,7 +47,7 @@ Current submission-ready evidence:
 - **Traceable citations** — Every result includes `memory_type`, `snippet`, `timestamp`, `score`, and optional `source_message_id`
 - **Multi-user support** — Optional `user_id` filtering for shared spaces
 - **Conversation metadata sync** — Automatic `conversation-meta` integration with EverMemOS Cloud
-- **Async-friendly identity fallback** — Chat identity/preferences are mirrored into `conversation-meta` and can be surfaced as explicit fallback results when extracted search results are unavailable
+- **Async-friendly identity fallback** — Chat identity/preferences are best-effort mirrored into `conversation-meta` and can be surfaced as explicit fallback results when extracted search results are unavailable
 - **Robust error handling** — Retry with backoff (429 / 5xx), GET body fallback for proxy/WAF compatibility, and structured error codes
 
 ## Quick Start
