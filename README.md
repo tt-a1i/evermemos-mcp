@@ -34,9 +34,9 @@ Current submission-ready evidence:
 |------|-------------|
 | `list_spaces` | Discover available memory spaces |
 | `remember` | Store information into long-term memory (async extraction) |
-| `request_status` | Check whether a queued write is still pending or already processed |
-| `recall` | Search memories with 6 retrieval strategies (`keyword`, `hybrid`, `vector`, `rrf`, `agentic`, `auto`) |
-| `briefing` | Get a structured context briefing: profile + episodes + facts + foresights |
+| `request_status` | Check whether a queued write is still queued or has been reported completed by upstream |
+| `recall` | Search memories with 6 retrieval strategies and label whether results are `searchable`, `provisional`, or `fallback` |
+| `briefing` | Get a structured context briefing: profile + episodes + facts + foresights, with explicit fallback labeling when needed |
 | `forget` | Attempt targeted memory deletion by ID (Cloud behavior may vary) |
 | `fetch_history` | Paginate through memory timeline by type |
 
@@ -48,6 +48,7 @@ Current submission-ready evidence:
 - **Multi-user support** — Optional `user_id` filtering for shared spaces
 - **Conversation metadata sync** — Automatic `conversation-meta` integration with EverMemOS Cloud
 - **Async-friendly identity fallback** — Chat identity/preferences are best-effort mirrored into `conversation-meta` and can be surfaced as explicit fallback results when extracted search results are unavailable
+- **Unified lifecycle semantics** — `remember`, `request_status`, `recall`, and `briefing` expose compatible `lifecycle` blocks so clients can collectively distinguish `queued`, `provisional`, `fallback`, and `searchable`
 - **Robust error handling** — Retry with backoff (429 / 5xx), GET body fallback for proxy/WAF compatibility, and structured error codes
 
 ## Quick Start
@@ -151,6 +152,17 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
 - **Cloud-first** — All memories live in EverMemOS Cloud. No local persistence, no state to lose.
 - **Process-local cache** — Space catalog is cached in-memory for fast lookups, recovered from Cloud on startup.
 - **Async extraction** — `remember` queues content for AI-powered extraction. Memories become searchable after processing.
+
+## Memory Lifecycle States
+
+| State | Meaning | Typical surface |
+|-------|---------|-----------------|
+| `queued` | The write was accepted, but formal extraction is not confirmed searchable yet | `remember.lifecycle`, `request_status.lifecycle`, `recall.pending_count` |
+| `provisional` | The answer comes from `pending_messages` while extraction is still queued | `recall.results[].stability == provisional` |
+| `fallback` | The answer comes from mirrored `conversation-meta`, not formal extracted memory | `recall.results[].stability == fallback`, `briefing.highlights[].stability == fallback` |
+| `searchable` | The answer comes from formal extracted memories returned by search/fetch APIs | `recall.results[].stability == searchable`, `briefing.highlights[].stability == searchable` |
+
+If a tool can answer using `provisional` or `fallback` data, that does not mean formal extraction has completed.
 
 ## Use Cases
 

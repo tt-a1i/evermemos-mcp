@@ -34,9 +34,9 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 |------|------|
 | `list_spaces` | 发现可用的记忆空间 |
 | `remember` | 将信息存入长期记忆（异步提取） |
-| `request_status` | 查询某次 `remember` 写入当前是否仍在排队或已处理完成 |
-| `recall` | 搜索记忆，支持 6 种检索策略（`keyword`、`hybrid`、`vector`、`rrf`、`agentic`、`auto`） |
-| `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测 |
+| `request_status` | 查询某次 `remember` 写入当前是否仍在排队，或已被上游标记为完成 |
+| `recall` | 搜索记忆，支持 6 种检索策略，并显式标注结果是 `searchable`、`provisional` 还是 `fallback` |
+| `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测，必要时会显式标记 fallback |
 | `forget` | 按 ID 发起定向删除（当前 Cloud 行为可能有差异） |
 | `fetch_history` | 按类型分页浏览记忆时间线 |
 
@@ -48,6 +48,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 - **多用户支持** — 可选 `user_id` 过滤，适用于共享空间场景
 - **会话元数据同步** — 自动与 EverMemOS Cloud 的 `conversation-meta` 集成
 - **异步身份兜底** — 聊天身份/偏好会以 best-effort 方式轻量镜像到 `conversation-meta`，并在提取型搜索结果不可用时以显式 fallback 形式返回
+- **统一生命周期语义** — `remember`、`request_status`、`recall`、`briefing` 都会返回兼容的 `lifecycle` 视图，让客户端可以组合区分 `queued`、`provisional`、`fallback`、`searchable`
 - **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
 
 ## 快速开始
@@ -151,6 +152,17 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
 - **Cloud 优先** — 所有记忆存储在 EverMemOS Cloud，无本地持久化，不会丢失状态
 - **进程内缓存** — 空间目录在内存中缓存，启动时从 Cloud 恢复
 - **异步提取** — `remember` 将内容加入队列，由 AI 提取后变为可检索的记忆
+
+## 记忆生命周期状态
+
+| 状态 | 含义 | 常见体现位置 |
+|------|------|--------------|
+| `queued` | 写入已被接受，但正式提取结果还没有确认可检索 | `remember.lifecycle`、`request_status.lifecycle`、`recall.pending_count` |
+| `provisional` | 当前答案来自 `pending_messages`，说明还在排队阶段 | `recall.results[].stability == provisional` |
+| `fallback` | 当前答案来自镜像后的 `conversation-meta`，不是正式提取记忆 | `recall.results[].stability == fallback`、`briefing.highlights[].stability == fallback` |
+| `searchable` | 当前答案来自正式提取后的记忆结果 | `recall.results[].stability == searchable`、`briefing.highlights[].stability == searchable` |
+
+如果工具能用 `provisional` 或 `fallback` 给出答案，并不代表正式提取已经完成。
 
 ## 使用场景
 
