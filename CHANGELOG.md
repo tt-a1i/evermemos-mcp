@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.5] - 2026-03-07
+
+### Changed
+- Updated Cherry Studio and `uvx` docs to recommend `evermemos-mcp@latest` and explicit cache refresh steps after upgrades.
+
+### Fixed
+- Added Chinese name extraction support for phrases like `用户名叫 Tom` when mirroring chat identity into conversation metadata.
+- Stopped exposing placeholder names such as `mcp-user` as user-facing identity fallback results in `briefing`.
+
 ## [0.4.4] - 2026-03-07
 
 ### Added
