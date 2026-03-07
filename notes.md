@@ -4,8 +4,8 @@
 
 ## Competition Context
 - Hackathon: Memory Genesis 2026 (Track 2: Platform Plugin)
-- Submission deadline: Feb 28, 2026
-- Evaluation priority: Innovation > Technical Depth > Consumer Value
+- Submission deadline: Mar 15, 2026
+- Evaluation priority: Quality & Execution > Memory Integration > Community Impact
 - Submission package: GitHub repo + README + 3-5 minute video
 
 ## EverMemOS API Summary
