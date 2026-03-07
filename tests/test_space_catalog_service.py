@@ -370,6 +370,36 @@ async def test_ensure_conversation_meta_refetches_before_patch_after_set_conflic
 
 
 @pytest.mark.asyncio
+async def test_ensure_conversation_meta_retries_group_create_without_scene_fields_and_with_name():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+    client.set_conversation_metadata = AsyncMock(
+        side_effect=[
+            EverMemosError(
+                "Field 'scene': Group-level config cannot set 'scene'. Scene is inherited from global config.",
+                code="HTTP_ERROR",
+                status_code=400,
+            ),
+            {"status": "ok", "result": {"id": "meta-1"}},
+        ]
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta("study:ml-notes")
+
+    assert client.set_conversation_metadata.call_count == 2
+    first_kwargs = client.set_conversation_metadata.call_args_list[0].kwargs
+    second_kwargs = client.set_conversation_metadata.call_args_list[1].kwargs
+    assert first_kwargs["scene"] == "assistant"
+    assert "scene_desc" in first_kwargs
+    assert "scene" not in second_kwargs
+    assert second_kwargs["name"] == "study:ml-notes"
+    assert "scene_desc" not in second_kwargs
+
+
+@pytest.mark.asyncio
 async def test_ensure_conversation_meta_serializes_same_space_updates():
     in_flight = 0
     max_in_flight = 0
@@ -1028,6 +1058,99 @@ async def test_recover_from_paginated_fetch_uses_original_message_content_when_s
     assert spaces[0].space_id == "study:ml-notes"
     assert spaces[0].description == "Machine learning notes"
     assert spaces[0].created_at == "2026-02-25T10:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_recover_from_paginated_fetch_uses_original_message_content_when_original_data_is_list():
+    payload = {
+        "version": 1,
+        "space_id": "chat:daily",
+        "description": "Daily chat memory",
+        "created_at": "2026-02-26T08:00:00+00:00",
+        "updated_at": "2026-02-26T08:00:00+00:00",
+    }
+    raw_content = (
+        f"{catalog_module._ENTRY_JSON_PREFIX}{json.dumps(payload)}\n"
+        "Registered memory space: chat:daily — Daily chat memory"
+    )
+
+    client = AsyncMock(spec=EverMemosClient)
+    client.fetch_memories = AsyncMock(
+        side_effect=[
+            {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "event_log",
+                            "atomic_fact": "The user registered a space.",
+                            "timestamp": "2026-02-26T08:00:00+00:00",
+                            "original_data": [
+                                {
+                                    "data_type": "Conversation",
+                                    "messages": [{"content": raw_content}],
+                                }
+                            ],
+                        }
+                    ],
+                    "count": 1,
+                    "total_count": 1,
+                }
+            },
+            {"result": {"memories": [], "count": 0, "total_count": 0}},
+        ]
+    )
+    client.search_memories = AsyncMock(
+        return_value={"result": {"pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces(limit=20)
+
+    assert len(spaces) == 1
+    assert spaces[0].space_id == "chat:daily"
+    assert spaces[0].description == "Daily chat memory"
+    assert spaces[0].created_at == "2026-02-26T08:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_ensure_conversation_meta_retries_update_without_scene_desc_when_group_patch_rejects_it():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2024-01-01T00:00:00Z",
+                "user_details": {},
+            },
+        }
+    )
+
+    async def update_side_effect(**kwargs):
+        if "scene_desc" in kwargs:
+            raise EverMemosError(
+                "Group-level config cannot update fields: ['scene_desc']. "
+                "These fields can only be set in global config (group_id=null).",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        return {"status": "ok", "result": {"id": "meta-1"}}
+
+    client.update_conversation_metadata = AsyncMock(side_effect=update_side_effect)
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta("coding:app", actor_user_id="alice")
+
+    assert client.update_conversation_metadata.call_count == 2
+    first_kwargs = client.update_conversation_metadata.call_args_list[0].kwargs
+    second_kwargs = client.update_conversation_metadata.call_args_list[1].kwargs
+    assert "scene_desc" in first_kwargs
+    assert "scene_desc" not in second_kwargs
 
 
 @pytest.mark.asyncio
