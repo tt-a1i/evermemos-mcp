@@ -113,15 +113,15 @@ Equivalent direct run:
 ```bash
 uv run python examples/competition-demo/run_demo.py \
   --queries examples/competition-demo/query_set_real_template.jsonl \
-  --artifact-dir artifacts/competition/{date}-formal-real
+  --artifact-dir artifacts/competition/{date}-<run-label>
 ```
 
 Standalone aggregation (if `runs.jsonl` already exists):
 
 ```bash
 uv run python scripts/competition_eval.py \
-  --input artifacts/competition/{date}/runs.jsonl \
-  --output artifacts/competition/{date}/benchmark_summary.json
+  --input artifacts/competition/{date}-<run-label>/runs.jsonl \
+  --output artifacts/competition/{date}-<run-label>/benchmark_summary.json
 ```
 
 Smoke run (6-10 rows) example:
@@ -138,7 +138,9 @@ uv run python scripts/competition_eval.py \
 ## 6) Artifact Layout
 All benchmark evidence should be written under:
 
-`artifacts/competition/{date}/`
+`artifacts/competition/{date}-<run-label>/`
+
+Examples of `<run-label>`: `smoke`, `formal-real`, `formal-real-auto-all-v3`.
 
 Required files:
 - `runs.jsonl`: raw per-query run records

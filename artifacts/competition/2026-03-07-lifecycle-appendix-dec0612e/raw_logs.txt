@@ -1,0 +1,70 @@
+=== lifecycle appendix start prefix=appendix-dec0612e ===
+=== phase 1/4 preload demo spaces ===
+
+=== preload coding:appendix-dec0612e-app ===
+[1/3] ok=True message_id=msg_ac85689d9c4d request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+[2/3] ok=True message_id=msg_7cd25a27ab05 request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+[3/3] ok=True message_id=msg_f19fcf476282 request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+
+=== preload chat:appendix-dec0612e-daily ===
+[1/3] ok=True message_id=msg_0698937cd58e request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+[2/3] ok=True message_id=msg_f49e24b5d8f9 request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+[3/3] ok=True message_id=msg_fd6446306d03 request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+
+=== preload study:appendix-dec0612e-ml-notes ===
+[1/3] ok=True message_id=msg_444ad92bf665 request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+[2/3] ok=True message_id=msg_0d10f56e70dd request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+[3/3] ok=True message_id=msg_92eca4e1f26d request_status={"success": true, "found": false, "data": null, "message": "Request is still being processed in the queue"}
+=== phase 2/4 wait until searchable ===
+
+=== wait_until_searchable === timeout=240s interval=10s pending=['chat', 'coding', 'study']
+
+=== readiness check t+0s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+chat:appendix-dec0612e-daily: results=0 pending=0
+coding:appendix-dec0612e-app: results=0 pending=0
+pending domains after t+0s: ['chat', 'coding', 'study']; next check in 10s; remaining budget ~240s
+
+=== readiness check t+12s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+chat:appendix-dec0612e-daily: results=0 pending=0
+coding:appendix-dec0612e-app: results=0 pending=0
+pending domains after t+12s: ['chat', 'coding', 'study']; next check in 10s; remaining budget ~228s
+
+=== readiness check t+25s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+chat:appendix-dec0612e-daily: results=3 pending=0
+coding:appendix-dec0612e-app: results=0 pending=0
+pending domains after t+25s: ['coding', 'study']; next check in 10s; remaining budget ~215s
+
+=== readiness check t+39s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+coding:appendix-dec0612e-app: results=0 pending=0
+pending domains after t+39s: ['coding', 'study']; next check in 10s; remaining budget ~201s
+
+=== readiness check t+51s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+coding:appendix-dec0612e-app: results=3 pending=0
+pending domains after t+51s: ['study']; next check in 10s; remaining budget ~189s
+
+=== readiness check t+63s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+pending domains after t+63s: ['study']; next check in 10s; remaining budget ~177s
+
+=== readiness check t+74s ===
+study:appendix-dec0612e-ml-notes: results=0 pending=0
+pending domains after t+74s: ['study']; next check in 10s; remaining budget ~166s
+
+=== readiness check t+85s ===
+study:appendix-dec0612e-ml-notes: results=1 pending=0
+
+All demo spaces are searchable.
+=== phase 3/4 measure isolation ===
+isolation query=coding target=chat:appendix-dec0612e-daily hits=3 leaked_rows=0
+isolation query=coding target=study:appendix-dec0612e-ml-notes hits=1 leaked_rows=0
+isolation query=chat target=coding:appendix-dec0612e-app hits=2 leaked_rows=0
+isolation query=chat target=study:appendix-dec0612e-ml-notes hits=1 leaked_rows=0
+isolation query=study target=coding:appendix-dec0612e-app hits=2 leaked_rows=0
+isolation query=study target=chat:appendix-dec0612e-daily hits=3 leaked_rows=0
+=== phase 4/4 measure forget effectiveness ===
+forget check: memory_id=69ab9b88173dee6adc23e1d4 deleted_count=0 still_recalled=True

@@ -83,6 +83,7 @@ class SpaceCatalogService:
         self._cache: dict[str, SpaceInfo] = {}
         self._recovered = False
         self._recover_failed_at: float = 0.0
+        self._recover_last_error: dict[str, str | int] | None = None
         self._conversation_meta_locks: dict[str, asyncio.Lock] = {}
         self._known_conversation_meta_spaces: set[str] = set()
         self._conversation_meta_created_at: dict[str, str] = {}
@@ -209,6 +210,24 @@ class SpaceCatalogService:
         spaces.sort(key=lambda s: s.last_used_at or "", reverse=True)
         return spaces[:limit]
 
+    def get_recovery_warning(self) -> dict | None:
+        if self._recover_last_error is None:
+            return None
+
+        warning = {
+            "code": "CATALOG_RECOVERY_FAILED",
+            "message": (
+                "Cloud catalog recovery failed; list_spaces is showing local cache only."
+            ),
+            "details": dict(self._recover_last_error),
+        }
+        if self._recover_last_error.get("code") == "AuthenticationError":
+            warning["hint"] = (
+                "Cloud requests are being rejected by upstream authentication. "
+                "Verify the active EVERMEMOS_API_KEY in the runtime environment."
+            )
+        return warning
+
     # -- persistence (best-effort) --
 
     async def _persist_entry(
@@ -323,6 +342,96 @@ class SpaceCatalogService:
 
         return snapshot
 
+    @staticmethod
+    def _is_group_scene_desc_compat_error(exc: EverMemosError) -> bool:
+        message = str(exc).lower()
+        return "scene_desc" in message and "group-level config" in message
+
+    @staticmethod
+    def _is_group_scene_inherited_error(exc: EverMemosError) -> bool:
+        message = str(exc).lower()
+        return "group-level config" in message and "cannot set 'scene'" in message
+
+    @staticmethod
+    def _requires_group_name_error(exc: EverMemosError) -> bool:
+        message = str(exc).lower()
+        return "group-level config requires 'name' field" in message
+
+    @staticmethod
+    def _conversation_meta_name(space_id: str) -> str:
+        return space_id
+
+    async def _set_conversation_metadata_compat(
+        self,
+        *,
+        group_id: str,
+        space_id: str,
+        scene: str,
+        created_at: str,
+        description: str | None,
+        scene_desc: dict,
+        tags: list[str],
+        user_details: dict | None,
+    ) -> None:
+        payload = {
+            "group_id": group_id,
+            "scene": scene,
+            "created_at": created_at,
+            "description": description,
+            "scene_desc": scene_desc,
+            "tags": tags,
+            "llm_custom_setting": EVERMEMOS_LLM_CUSTOM_SETTING,
+            "user_details": user_details,
+            "default_timezone": EVERMEMOS_DEFAULT_TIMEZONE,
+        }
+
+        try:
+            await self._client.set_conversation_metadata(**payload)
+            return
+        except EverMemosError as exc:
+            needs_group_create_compat = (
+                self._is_group_scene_inherited_error(exc)
+                or self._is_group_scene_desc_compat_error(exc)
+                or self._requires_group_name_error(exc)
+            )
+            if not needs_group_create_compat:
+                raise
+
+        compat_payload = dict(payload)
+        compat_payload.pop("scene", None)
+        compat_payload.pop("scene_desc", None)
+        compat_payload["name"] = self._conversation_meta_name(space_id)
+        await self._client.set_conversation_metadata(**compat_payload)
+
+    async def _update_conversation_metadata_compat(
+        self,
+        *,
+        group_id: str,
+        description: str | None,
+        scene_desc: dict,
+        tags: list[str],
+        user_details: dict | None,
+    ) -> None:
+        payload = {
+            "group_id": group_id,
+            "description": description,
+            "scene_desc": scene_desc,
+            "tags": tags,
+            "llm_custom_setting": EVERMEMOS_LLM_CUSTOM_SETTING,
+            "user_details": user_details,
+            "default_timezone": EVERMEMOS_DEFAULT_TIMEZONE,
+        }
+
+        try:
+            await self._client.update_conversation_metadata(**payload)
+            return
+        except EverMemosError as exc:
+            if not self._is_group_scene_desc_compat_error(exc):
+                raise
+
+        payload.pop("scene_desc", None)
+        await self._client.update_conversation_metadata(**payload)
+
     async def _fetch_conversation_meta_snapshot(self, group_id: str) -> dict | None:
         try:
             existing_response = await self._client.get_conversation_metadata(group_id)
@@ -343,7 +452,7 @@ class SpaceCatalogService:
         user_details = result.get("user_details")
         if isinstance(user_details, dict) and user_details:
             snapshot["user_details"] = user_details
-        return snapshot
+        return snapshot or None
 
     async def _persist_conversation_meta(
         self,
@@ -407,14 +516,12 @@ class SpaceCatalogService:
 
         if known_exists:
             try:
-                await self._client.update_conversation_metadata(
+                await self._update_conversation_metadata_compat(
                     group_id=group_id,
                     description=payload_description or None,
                     scene_desc=scene_desc,
                     tags=tags,
-                    llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                     user_details=user_details,
-                    default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
                 )
             except EverMemosError as exc:
                 logger.warning(
@@ -429,16 +536,15 @@ class SpaceCatalogService:
             return
 
         try:
-            await self._client.set_conversation_metadata(
+            await self._set_conversation_metadata_compat(
                 group_id=group_id,
+                space_id=space_id,
                 scene=scene,
                 created_at=effective_created_at,
                 description=payload_description or None,
                 scene_desc=scene_desc,
                 tags=tags,
-                llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                 user_details=user_details,
-                default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
             )
             self._cache_conversation_meta_snapshot(
                 space_id,
@@ -481,14 +587,12 @@ class SpaceCatalogService:
             )
 
         try:
-            await self._client.update_conversation_metadata(
+            await self._update_conversation_metadata_compat(
                 group_id=group_id,
                 description=payload_description or None,
                 scene_desc=scene_desc,
                 tags=tags,
-                llm_custom_setting=EVERMEMOS_LLM_CUSTOM_SETTING,
                 user_details=user_details,
-                default_timezone=EVERMEMOS_DEFAULT_TIMEZONE,
             )
         except EverMemosError as exc:
             logger.warning(
@@ -623,11 +727,17 @@ class SpaceCatalogService:
             # Mark success — no more retries
             self._recovered = True
             self._recover_failed_at = 0.0
+            self._recover_last_error = None
             if self._cache:
                 logger.info("Recovered %d spaces from catalog", len(self._cache))
-        except EverMemosError:
+        except EverMemosError as exc:
             # Allow retry after cooldown
             self._recover_failed_at = time.monotonic()
+            self._recover_last_error = {
+                "message": str(exc),
+                "code": exc.code,
+                "status_code": exc.status_code or 0,
+            }
             logger.debug(
                 "Catalog recovery failed, will retry after %.0fs",
                 _RECOVER_COOLDOWN_SECS,
@@ -890,9 +1000,18 @@ class SpaceCatalogService:
             parsed_any = True
         return parsed_any
 
+    @staticmethod
+    def _iter_original_data_objects(payload: object) -> list[dict]:
+        if isinstance(payload, dict):
+            return [payload]
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        return []
+
     def _parse_original_content(self, memory: dict, timestamp: str = "") -> bool:
         original_data = memory.get("original_data")
-        if not isinstance(original_data, dict):
+        payloads = self._iter_original_data_objects(original_data)
+        if not payloads:
             return False
 
         parsed_any = False
@@ -902,17 +1021,18 @@ class SpaceCatalogService:
             if isinstance(content, str) and content:
                 parsed_any = self._parse_content(content, timestamp=timestamp) or parsed_any
 
-        _parse_candidate(original_data.get("content"))
+        for payload in payloads:
+            _parse_candidate(payload.get("content"))
 
-        message = original_data.get("message")
-        if isinstance(message, dict):
-            _parse_candidate(message.get("content"))
+            message = payload.get("message")
+            if isinstance(message, dict):
+                _parse_candidate(message.get("content"))
 
-        messages = original_data.get("messages")
-        if isinstance(messages, list):
-            for item in messages:
-                if isinstance(item, dict):
-                    _parse_candidate(item.get("content"))
+            messages = payload.get("messages")
+            if isinstance(messages, list):
+                for item in messages:
+                    if isinstance(item, dict):
+                        _parse_candidate(item.get("content"))
 
         return parsed_any
 

@@ -27,6 +27,33 @@ QUERIES = {
 }
 
 
+async def _pick_forget_memory_id(svc: MemoryService, space_id: str, rows: list[dict]) -> str:
+    target = next(
+        (
+            row
+            for row in rows
+            if isinstance(row, dict) and str(row.get("memory_id", "")).strip()
+        ),
+        None,
+    )
+    if isinstance(target, dict):
+        return str(target.get("memory_id", "")).strip()
+
+    history = await svc.fetch_history(
+        space_id,
+        memory_type="episodic_memory",
+        limit=20,
+        offset=0,
+    )
+    for item in history.get("items", []):
+        if isinstance(item, dict):
+            memory_id = str(item.get("memory_id", "")).strip()
+            if memory_id:
+                return memory_id
+
+    return ""
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Run live memory demo walkthrough")
     parser.add_argument(
@@ -69,9 +96,9 @@ async def main() -> int:
             if not coding_results:
                 print("\nNo recall results found in coding space; skip forget demo.")
             else:
-                memory_id = coding_results[0].get("memory_id", "")
+                memory_id = await _pick_forget_memory_id(svc, ids["coding"], coding_results)
                 if not memory_id:
-                    print("\nFirst recall result has no memory_id; skip forget demo.")
+                    print("\nNo deletable memory_id found in recall/history; skip forget demo.")
                 else:
                     forget_result = await svc.forget(
                         memory_ids=[memory_id],

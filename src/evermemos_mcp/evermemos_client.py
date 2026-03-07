@@ -545,8 +545,9 @@ class EverMemosClient:
         self,
         *,
         group_id: str,
-        scene: str,
+        scene: str | None = None,
         created_at: str,
+        name: str | None = None,
         description: str | None = None,
         scene_desc: dict | None = None,
         tags: list[str] | None = None,
@@ -559,9 +560,12 @@ class EverMemosClient:
 
         payload: dict = {
             "group_id": group_id,
-            "scene": scene,
             "created_at": created_at,
         }
+        if scene is not None:
+            payload["scene"] = scene
+        if name is not None:
+            payload["name"] = name
         if description is not None:
             payload["description"] = description
         if scene_desc is not None:

@@ -98,6 +98,27 @@ async def test_list_spaces_empty():
     assert result["ok"] is True
     assert result["spaces"] == []
     assert "approximate" in result["memory_count_hint"].lower()
+    assert "warnings" not in result
+
+
+@pytest.mark.asyncio
+async def test_list_spaces_surfaces_catalog_recovery_warning():
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(
+        side_effect=EverMemosError(
+            "The API key in the request is missing or invalid.",
+            code="AuthenticationError",
+            status_code=401,
+        )
+    )
+
+    result = await svc.list_spaces()
+
+    assert result["ok"] is True
+    assert result["spaces"] == []
+    assert result["warnings"][0]["code"] == "CATALOG_RECOVERY_FAILED"
+    assert result["warnings"][0]["details"]["code"] == "AuthenticationError"
+    assert "runtime environment" in result["warnings"][0]["hint"]
 
 
 @pytest.mark.asyncio
@@ -1269,6 +1290,27 @@ async def test_forget_reports_unmatched_ids_when_no_memory_matches_scope():
     assert result["unmatched_count"] == 1
     assert result["unmatched_ids"] == ["m1"]
     assert "warnings" in result
+
+
+@pytest.mark.asyncio
+async def test_forget_warns_on_ambiguous_upstream_delete_response():
+    svc, client = _make_svc(
+        delete_rv={
+            "status": "ok",
+            "message": "Delete operation completed, 48 records affected",
+            "result": {"count": 0, "filters": []},
+        }
+    )
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["m1"], "coding:app", user_id="alice")
+
+    assert result["ok"] is True
+    assert result["deleted_count"] == 0
+    assert any(
+        "may not honor targeted memory deletion" in warning
+        for warning in result["warnings"]
+    )
 
 
 @pytest.mark.asyncio

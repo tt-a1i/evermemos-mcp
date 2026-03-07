@@ -76,6 +76,6 @@
 
 ## 11) 已冻结决策（不再讨论）
 1. **`space_id` 命名规范**：`<domain>:<slug>`（如 `coding:my-app`, `chat:daily`, `study:ml`）
-2. **路由策略**：先 `list_spaces`，再基于描述匹配 `space_id`；不依赖 cwd/git 自动推断
+2. **路由策略**：优先显式传入 `space_id` 或先通过 `list_spaces` 发现空间；未提供时允许从 `EVERMEMOS_DEFAULT_SPACE` 或 git remote 自动推断默认空间
 3. **数据落点**：Cloud-only，空间元数据与记忆正文都在 EverMemOS
 4. **来源引用**：V1 必做（至少返回时间 + 上下文片段）

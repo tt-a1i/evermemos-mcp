@@ -76,6 +76,6 @@ Session resets break user experience:
 
 ## 11) Frozen Decisions
 1. **`space_id` naming**: `<domain>:<slug>` (for example: `coding:my-app`, `chat:daily`, `study:ml`)
-2. **Routing**: AI should call `list_spaces` first and match by description; no cwd/git auto-detection
+2. **Routing**: AI should prefer explicit `space_id` or `list_spaces` discovery; when omitted, a default space may be inferred from `EVERMEMOS_DEFAULT_SPACE` or the git remote.
 3. **Data placement**: Cloud-only for both space metadata and memory bodies
 4. **Citations**: required in V1 (at least timestamp + snippet)

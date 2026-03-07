@@ -46,9 +46,10 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 3. Explain layered sources (`profile/episodic/event_log/foresight`)
 
 ### Part E (30-45s): Controlled Forget
-1. Pick a `memory_id` from recall output
+1. Pick a `memory_id` from recall output (or fall back to `fetch_history` if top recall rows are profile-only)
 2. Call `forget(memory_ids=[...])`
-3. Run recall again and confirm the target is gone
+3. If Cloud delete succeeds, run recall again and confirm the target is gone
+4. If Cloud delete returns `ok` but the target remains recallable, present it as a current Cloud limitation rather than an MCP routing failure
 
 ## 5. Demo Command Checklist
 
@@ -65,8 +66,9 @@ uv run python scripts/demo_live_walkthrough.py
 - `remember` returns `request_status` with `found=false`: status may not be indexed yet; queued write is still valid
 - Cloud jitter: rerun recall or show `UPSTREAM_UNAVAILABLE` error semantics in the demo
 - Incomplete `list_spaces`: rerun preload before listing spaces
+- `forget` returns `ok` but the target still recalls: current Cloud targeted delete may not honor the selected memory ID; treat as an upstream limitation and use appendix evidence instead of forcing a live delete pass
 
 ## 7. Scoring Mapping
 - Innovation: universal MCP memory layer + `space_id` routing
-- Technical Depth: 5-tool loop + explicit error semantics + citation fields
+- Technical Depth: 6-tool loop + explicit error semantics + citation fields
 - Consumer Value: continuity across sessions + query/delete/verify controls

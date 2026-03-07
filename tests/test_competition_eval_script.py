@@ -13,9 +13,11 @@ def _repo_root() -> Path:
 
 
 def test_competition_eval_smoke_passes_with_relaxed_thresholds(tmp_path):
-    input_path = tmp_path / "runs.jsonl"
-    output_path = tmp_path / "benchmark_summary.json"
-    report_path = tmp_path / "benchmark_report.md"
+    artifact_dir = tmp_path / "2026-02-26-smoke"
+    artifact_dir.mkdir()
+    input_path = artifact_dir / "runs.jsonl"
+    output_path = artifact_dir / "benchmark_summary.json"
+    report_path = artifact_dir / "benchmark_report.md"
 
     rows = [
         {
@@ -84,6 +86,57 @@ def test_competition_eval_smoke_passes_with_relaxed_thresholds(tmp_path):
     assert summary["gates"]["overall"] == "pass"
     assert summary["with_memory"]["queries"] == 2
     assert summary["without_memory"]["queries"] == 2
+    assert summary["date"] == "2026-02-26"
+
+
+def test_competition_eval_accepts_explicit_run_date(tmp_path):
+    input_path = tmp_path / "runs.jsonl"
+    output_path = tmp_path / "benchmark_summary.json"
+
+    rows = [
+        {
+            "scenario": "coding",
+            "query": "q1",
+            "mode": "with_memory",
+            "latency_ms": 1000,
+            "hit": True,
+            "resolved_rows": 4,
+            "wrong_attributions": 0,
+        },
+        {
+            "scenario": "coding",
+            "query": "q1",
+            "mode": "without_memory",
+            "latency_ms": 900,
+            "hit": False,
+            "resolved_rows": 0,
+            "wrong_attributions": 0,
+        },
+    ]
+    input_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    cmd = [
+        sys.executable,
+        "scripts/competition_eval.py",
+        "--input",
+        str(input_path),
+        "--output",
+        str(output_path),
+        "--run-date",
+        "2026-02-26",
+        "--min-queries",
+        "1",
+        "--min-resolved-rows",
+        "1",
+    ]
+    result = subprocess.run(cmd, cwd=_repo_root(), check=False, capture_output=True)
+
+    assert result.returncode == 0
+    summary = json.loads(output_path.read_text(encoding="utf-8"))
+    assert summary["date"] == "2026-02-26"
 
 
 def test_competition_eval_fails_on_invalid_mode(tmp_path):

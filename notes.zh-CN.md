@@ -4,8 +4,8 @@
 
 ## 比赛背景
 - Hackathon：Memory Genesis 2026（Track 2：Platform Plugin）
-- 截止日期：2026-02-28
-- 评估优先级：Innovation > Technical Depth > Consumer Value
+- 截止日期：2026-03-15
+- 评估优先级：Quality & Execution > Memory Integration > Community Impact
 - 提交物：GitHub 仓库 + README + 3-5 分钟演示视频
 
 ## EverMemOS API 摘要
