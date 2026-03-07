@@ -10,7 +10,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 
 ## Phases
 - [x] Phase 0: Scope freeze and scoring strategy
-- [x] Phase 1: Release readiness (`v0.4.0`)
+- [x] Phase 1: Release readiness (`v0.4.2`)
 - [x] Phase 2: Benchmark evidence and demo automation
 - [ ] Phase 3: Video and submission assets
 - [ ] Phase 4: Community rollout and final submission
@@ -19,7 +19,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 
 | Phase | Owner | Due date | Exit criteria |
 | --- | --- | --- | --- |
-| Phase 1: Release readiness | Project maintainer | 2026-03-02 | `pyproject` bumped to `0.4.0`; `CHANGELOG.md` merged; release gates pass (`ruff`, `pytest`, 3-minute quickstart smoke); tag `v0.4.0` pushed |
+| Phase 1: Release readiness | Project maintainer | 2026-03-06 | `pyproject` bumped to `0.4.2`; `CHANGELOG.md` merged; release gates pass (`ruff`, `pytest`); tag `v0.4.2` pushed |
 | Phase 2: Benchmark + demo | Project maintainer | 2026-03-08 | `docs/06-benchmark.md` complete; benchmark scripts produce reproducible report; `examples/competition-demo` one-command run works |
 | Phase 3: Submission assets | Project maintainer | 2026-03-12 | bilingual video script complete; README competition section merged; submission draft complete with links and metrics |
 | Phase 4: Community + final submit | Project maintainer | 2026-03-15 | 3 community waves posted; outcome metrics recorded; submission package delivered before deadline |
@@ -27,13 +27,13 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 ## Workstreams
 
 ### A) Release Workstream
-- [x] Bump version: `0.1.0 -> 0.4.0` in `pyproject.toml`
+- [x] Bump version through the competition release line to `0.4.2`
 - [x] Create `CHANGELOG.md` from recent shipped fixes
 - [x] Enforce release gates:
   - [x] `uv run ruff check`
   - [x] `uv run pytest`
-  - [x] 3-minute quickstart smoke test
-- [x] Create and push git tag `v0.4.0`
+  - [ ] 3-minute quickstart smoke test
+- [x] Create and push git tag `v0.4.2`
 
 ### B) Evidence Workstream
 - [x] Add `docs/06-benchmark.md`
@@ -45,7 +45,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
   - [x] With memory vs without memory
   - [x] Fixed query set and acceptance threshold
 - [x] Automate result generation from demo runs
-- [ ] Meet metric gates for submission narrative:
+- [x] Meet metric gates for submission narrative:
   - [x] Recall hit rate >= 80% (with memory, query-level, N >= 60)
   - [x] P95 recall latency <= 2000 ms (warm runs)
   - [x] Source attribution error rate <= 2.0% (resolved rows, N >= 200)
@@ -53,22 +53,22 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 ### C) Demo Workstream
 - [x] Create `examples/competition-demo/`
 - [x] Provide one-command entrypoint (`run.sh` or `Makefile`)
-- [ ] Include end-to-end flow:
-  - [ ] remember
-  - [ ] cross-session recall
-  - [ ] action improvement step
-  - [ ] optional briefing/forget
-- [ ] Export machine-readable report for benchmark docs
-  - [x] Output path convention: `artifacts/competition/{date}/`
-  - [x] Summary JSON: `artifacts/competition/{date}/benchmark_summary.json`
-  - [x] Raw runs JSONL: `artifacts/competition/{date}/runs.jsonl`
-  - [x] Rebuild command: `uv run python scripts/competition_eval.py --input artifacts/competition/{date}/runs.jsonl --output artifacts/competition/{date}/benchmark_summary.json`
+- [x] Include end-to-end flow:
+  - [x] remember
+  - [x] cross-session recall
+  - [x] action improvement step
+  - [x] optional briefing/forget
+- [x] Export machine-readable report for benchmark docs
+  - [x] Output path convention: `artifacts/competition/{date}-<run-label>/`
+  - [x] Summary JSON: `artifacts/competition/{date}-<run-label>/benchmark_summary.json`
+  - [x] Raw runs JSONL: `artifacts/competition/{date}-<run-label>/runs.jsonl`
+  - [x] Rebuild command: `uv run python scripts/competition_eval.py --input artifacts/competition/{date}-<run-label>/runs.jsonl --output artifacts/competition/{date}-<run-label>/benchmark_summary.json`
 
 ### D) Submission Workstream
-- [ ] Upgrade `README.md` with competition-focused section
-- [ ] Add bilingual video scripts (EN + ZH)
-- [ ] Add `docs/07-release-checklist.md`
-- [ ] Finalize `docs/04-submission.md` assets checklist
+- [x] Upgrade `README.md` with competition-focused section
+- [x] Add bilingual video scripts (EN + ZH)
+- [x] Add `docs/07-release-checklist.md`
+- [x] Finalize `docs/04-submission.md` assets checklist
 
 ### E) Community Workstream
 - [ ] Define measurable targets:
