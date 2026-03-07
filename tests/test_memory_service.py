@@ -204,6 +204,29 @@ async def test_remember_updates_conversation_meta_with_dynamic_user_identity():
 
 
 @pytest.mark.asyncio
+async def test_remember_chat_identity_mirrors_name_and_preferences_to_metadata():
+    svc, client = _make_svc()
+
+    result = await svc.remember(
+        "chat:preferences",
+        "My name is Tom and I prefer dark mode, vim keybindings, and concise responses.",
+        user_id="alice",
+    )
+
+    assert result["metadata_mirror"]["enabled"] is True
+    client.set_conversation_metadata.assert_called_once()
+    _, kwargs = client.set_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["alice"]["full_name"] == "Tom"
+    assert user_details["alice"]["preferences"] == [
+        "dark mode",
+        "vim keybindings",
+        "concise responses",
+    ]
+    assert user_details["alice"]["preference_notes"]
+
+
+@pytest.mark.asyncio
 async def test_remember_include_status_fetches_request_status():
     svc, client = _make_svc()
     result = await svc.remember("study:ml", "Neural nets", include_status=True)
@@ -212,6 +235,25 @@ async def test_remember_include_status_fetches_request_status():
     assert result["request_id"] == "req-123"
     assert result["request_status"]["success"] is True
     client.get_request_status.assert_called_once_with("req-123")
+
+
+@pytest.mark.asyncio
+async def test_request_status_returns_structured_status_payload():
+    svc, client = _make_svc(
+        status_rv={
+            "success": True,
+            "found": True,
+            "message": "ok",
+            "data": {"request_id": "req-xyz", "status": "queued"},
+        }
+    )
+
+    result = await svc.request_status("req-xyz")
+
+    assert result["ok"] is True
+    assert result["request_id"] == "req-xyz"
+    assert result["status"] == "queued"
+    client.get_request_status.assert_called_once_with("req-xyz")
 
 
 @pytest.mark.asyncio
@@ -411,6 +453,64 @@ async def test_recall_reports_pending():
     result = await svc.recall("anything", "coding:app")
     assert result["pending_count"] == 2
     assert "2 message" in result["pending_hint"]
+
+
+@pytest.mark.asyncio
+async def test_recall_uses_pending_identity_fallback_when_search_is_empty():
+    search_response = {
+        "result": {
+            "memories": [],
+            "pending_messages": [
+                {
+                    "id": "p1",
+                    "content": "My name is Tom and I prefer dark mode.",
+                    "created_at": "2026-02-10T10:00:00Z",
+                }
+            ],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+    svc._catalog.ensure_space("chat:daily")
+
+    result = await svc.recall("what is my name", "chat:daily")
+
+    assert result["ok"] is True
+    assert result["results"][0]["memory_type"] == "pending_message"
+    assert result["results"][0]["stability"] == "provisional"
+    assert "Tom" in result["results"][0]["content"]
+    assert result["warnings"][0]["code"] == "IDENTITY_FALLBACK_APPLIED"
+
+
+@pytest.mark.asyncio
+async def test_recall_does_not_apply_pending_identity_fallback_for_multi_space_scope():
+    search_response = {
+        "result": {
+            "memories": [],
+            "pending_messages": [
+                {
+                    "id": "p1",
+                    "content": "My name is Tom and I prefer dark mode.",
+                    "created_at": "2026-02-10T10:00:00Z",
+                }
+            ],
+        }
+    }
+    svc, _ = _make_svc(search_rv=search_response)
+    svc._catalog.ensure_space("coding:app")
+    svc._catalog.ensure_space("coding:infra")
+
+    result = await svc.recall(
+        "what is my name",
+        space_ids=["coding:app", "coding:infra"],
+    )
+
+    assert result["ok"] is True
+    assert result["results"] == []
+    assert result["pending_count"] == 1
+    assert "warnings" not in result or all(
+        warning.get("code") != "IDENTITY_FALLBACK_APPLIED"
+        for warning in result.get("warnings", [])
+    )
 
 
 @pytest.mark.asyncio
@@ -1127,6 +1227,35 @@ async def test_briefing_empty_space():
     assert result["ok"] is True
     assert "no memories" in result["summary"].lower()
     assert result["highlights"] == []
+
+
+@pytest.mark.asyncio
+async def test_briefing_uses_conversation_meta_fallback_when_profile_is_empty():
+    svc, client = _make_svc()
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2026-02-10T10:00:00Z",
+                "user_details": {
+                    "mcp-user": {
+                        "full_name": "Tom",
+                        "preferences": ["dark mode", "vim keybindings"],
+                        "preference_notes": ["I prefer dark mode and vim keybindings."],
+                    }
+                },
+            },
+        }
+    )
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.briefing("chat:preferences")
+
+    assert result["ok"] is True
+    assert result["highlights"][0]["type"] == "metadata_fallback"
+    assert result["highlights"][0]["stability"] == "fallback"
+    assert "Tom" in result["highlights"][0]["content"]
+    assert "Conversation metadata fallback" in result["summary"]
 
 
 @pytest.mark.asyncio

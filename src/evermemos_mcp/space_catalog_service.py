@@ -98,6 +98,7 @@ class SpaceCatalogService:
         *,
         actor_user_id: str | None = None,
         actor_role: str = "user",
+        actor_profile: dict | None = None,
     ) -> SpaceInfo:
         """Register or update a space. Persists to EverMemOS (best-effort)."""
         now = datetime.now(timezone.utc).isoformat()
@@ -124,6 +125,7 @@ class SpaceCatalogService:
             created_at=info.created_at,
             actor_user_id=actor_user_id,
             actor_role=actor_role,
+            actor_profile=actor_profile,
         )
         return info
 
@@ -170,6 +172,7 @@ class SpaceCatalogService:
         *,
         actor_user_id: str | None = None,
         actor_role: str = "user",
+        actor_profile: dict | None = None,
     ) -> None:
         """Best-effort metadata upsert for a space.
 
@@ -188,7 +191,35 @@ class SpaceCatalogService:
             created_at=created_at,
             actor_user_id=actor_user_id,
             actor_role=actor_role,
+            actor_profile=actor_profile,
         )
+
+    async def get_conversation_meta(
+        self,
+        space_id: str,
+        *,
+        refresh: bool = False,
+    ) -> dict | None:
+        if not EVERMEMOS_ENABLE_CONVERSATION_META:
+            return None
+
+        if not refresh:
+            cached_snapshot = self._get_cached_conversation_meta_snapshot(space_id)
+            if cached_snapshot is not None:
+                return cached_snapshot
+
+        snapshot = await self._fetch_conversation_meta_snapshot(to_group_id(space_id))
+        if isinstance(snapshot, dict):
+            self._cache_conversation_meta_snapshot(
+                space_id,
+                created_at=snapshot.get("created_at"),
+                user_details=snapshot.get("user_details"),
+            )
+            return snapshot
+
+        if not refresh:
+            return self._get_cached_conversation_meta_snapshot(space_id)
+        return None
 
     async def list_spaces(
         self, query: str | None = None, limit: int = 20
@@ -279,6 +310,7 @@ class SpaceCatalogService:
         created_at: str,
         actor_user_id: str | None = None,
         actor_role: str = "user",
+        actor_profile: dict | None = None,
     ) -> None:
         lock = self._get_conversation_meta_lock(space_id)
         async with lock:
@@ -288,6 +320,7 @@ class SpaceCatalogService:
                 created_at=created_at,
                 actor_user_id=actor_user_id,
                 actor_role=actor_role,
+                actor_profile=actor_profile,
             )
 
         waiters = getattr(lock, "_waiters", None)
@@ -462,6 +495,7 @@ class SpaceCatalogService:
         created_at: str,
         actor_user_id: str | None = None,
         actor_role: str = "user",
+        actor_profile: dict | None = None,
     ) -> None:
         if not EVERMEMOS_ENABLE_CONVERSATION_META:
             return
@@ -486,6 +520,7 @@ class SpaceCatalogService:
         base_user_details = self._merge_user_details(
             actor_user_id=actor_user_id,
             actor_role=actor_role,
+            actor_profile=actor_profile,
         )
 
         known_exists = space_id in self._known_conversation_meta_spaces
@@ -610,6 +645,7 @@ class SpaceCatalogService:
         *,
         actor_user_id: str | None,
         actor_role: str,
+        actor_profile: dict | None = None,
     ) -> dict | None:
         merged: dict[str, dict] = {}
 
@@ -625,23 +661,133 @@ class SpaceCatalogService:
         if isinstance(actor_user_id, str) and actor_user_id.strip():
             normalized_actor_user_id = actor_user_id.strip()
             normalized_role = actor_role if actor_role in _VALID_META_ROLES else "user"
-            actor_profile = merged.get(normalized_actor_user_id)
-            if actor_profile is None:
+            existing_actor_profile = merged.get(normalized_actor_user_id)
+            if existing_actor_profile is None:
                 merged[normalized_actor_user_id] = {
                     "full_name": normalized_actor_user_id,
                     "role": normalized_role,
                 }
             else:
                 if not isinstance(
-                    actor_profile.get("role"), str
-                ) or not actor_profile.get("role"):
-                    actor_profile["role"] = normalized_role
+                    existing_actor_profile.get("role"), str
+                ) or not existing_actor_profile.get("role"):
+                    existing_actor_profile["role"] = normalized_role
                 if not isinstance(
-                    actor_profile.get("full_name"), str
-                ) or not actor_profile.get("full_name"):
-                    actor_profile["full_name"] = normalized_actor_user_id
+                    existing_actor_profile.get("full_name"), str
+                ) or not existing_actor_profile.get("full_name"):
+                    existing_actor_profile["full_name"] = normalized_actor_user_id
+
+        if (
+            isinstance(actor_user_id, str)
+            and actor_user_id.strip()
+            and isinstance(actor_profile, dict)
+            and actor_profile
+        ):
+            normalized_actor_user_id = actor_user_id.strip()
+            existing_profile = merged.get(normalized_actor_user_id, {})
+            merged[normalized_actor_user_id] = SpaceCatalogService._merge_profile_payload(
+                existing_profile,
+                actor_profile,
+                user_id=normalized_actor_user_id,
+            )
 
         return merged or None
+
+    @staticmethod
+    def _is_empty_profile_value(value: object) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        if isinstance(value, (list, dict, tuple, set)):
+            return len(value) == 0
+        return False
+
+    @classmethod
+    def _merge_profile_payload(
+        cls,
+        existing_profile: object,
+        incoming_profile: object,
+        *,
+        user_id: str,
+    ) -> dict:
+        existing = (
+            dict(existing_profile) if isinstance(existing_profile, dict) else {}
+        )
+        incoming = (
+            dict(incoming_profile) if isinstance(incoming_profile, dict) else {}
+        )
+
+        merged = dict(existing)
+        for key, value in incoming.items():
+            if cls._is_empty_profile_value(value):
+                continue
+
+            if key == "full_name" and isinstance(value, str):
+                incoming_name = value.strip()
+                if not incoming_name:
+                    continue
+                current_name = merged.get("full_name")
+                normalized_current = (
+                    current_name.strip() if isinstance(current_name, str) else ""
+                )
+                if (
+                    not normalized_current
+                    or normalized_current == user_id
+                    or incoming_name != user_id
+                ):
+                    merged["full_name"] = incoming_name
+                continue
+
+            if key == "role" and isinstance(value, str):
+                incoming_role = value.strip()
+                current_role = merged.get("role")
+                normalized_current = (
+                    current_role.strip() if isinstance(current_role, str) else ""
+                )
+                if not normalized_current or (
+                    normalized_current == "user" and incoming_role != "user"
+                ):
+                    merged["role"] = incoming_role
+                continue
+
+            current_value = merged.get(key)
+            if isinstance(value, list):
+                existing_items = (
+                    list(current_value) if isinstance(current_value, list) else []
+                )
+                seen_items = {
+                    item.strip() if isinstance(item, str) else repr(item)
+                    for item in existing_items
+                }
+                merged_items = list(existing_items)
+                for item in value:
+                    normalized_item = item.strip() if isinstance(item, str) else item
+                    dedupe_key = (
+                        normalized_item if isinstance(normalized_item, str) else repr(item)
+                    )
+                    if dedupe_key in seen_items or cls._is_empty_profile_value(
+                        normalized_item
+                    ):
+                        continue
+                    seen_items.add(dedupe_key)
+                    merged_items.append(normalized_item)
+                if merged_items:
+                    merged[key] = merged_items
+                continue
+
+            if isinstance(value, dict):
+                merged[key] = cls._merge_profile_payload(
+                    current_value,
+                    value,
+                    user_id=user_id,
+                )
+                continue
+
+            if cls._is_empty_profile_value(current_value):
+                merged[key] = value
+
+        return merged
 
     @staticmethod
     def _normalize_user_details(payload: object) -> dict[str, dict]:
@@ -672,17 +818,11 @@ class SpaceCatalogService:
                 merged[user_id] = profile
                 continue
 
-            if not isinstance(current.get("full_name"), str) or not current.get(
-                "full_name"
-            ):
-                current_name = profile.get("full_name")
-                if isinstance(current_name, str) and current_name.strip():
-                    current["full_name"] = current_name.strip()
-
-            if not isinstance(current.get("role"), str) or not current.get("role"):
-                current_role = profile.get("role")
-                if isinstance(current_role, str) and current_role.strip():
-                    current["role"] = current_role.strip()
+            merged[user_id] = cls._merge_profile_payload(
+                profile,
+                current,
+                user_id=user_id,
+            )
 
         return merged or None
 

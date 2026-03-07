@@ -280,6 +280,81 @@ async def test_ensure_conversation_meta_merges_existing_user_details(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_ensure_conversation_meta_preserves_arbitrary_profile_fields():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2024-01-01T00:00:00Z",
+                "user_details": {
+                    "alice": {
+                        "full_name": "alice",
+                        "preferences": ["dark mode"],
+                    }
+                },
+            },
+        }
+    )
+    client.update_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    client.set_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {"id": "meta-1"}}
+    )
+    catalog = SpaceCatalogService(client)
+
+    await catalog.ensure_conversation_meta(
+        "chat:preferences",
+        actor_user_id="alice",
+        actor_profile={
+            "full_name": "Tom",
+            "preferences": ["vim keybindings"],
+            "preference_notes": ["I prefer vim keybindings."],
+        },
+    )
+
+    _, kwargs = client.update_conversation_metadata.call_args
+    user_details = kwargs["user_details"]
+    assert user_details["alice"]["full_name"] == "Tom"
+    assert user_details["alice"]["preferences"] == [
+        "dark mode",
+        "vim keybindings",
+    ]
+    assert user_details["alice"]["preference_notes"] == [
+        "I prefer vim keybindings.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_meta_returns_cached_snapshot_when_available():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {
+                "conversation_created_at": "2024-01-01T00:00:00Z",
+                "user_details": {
+                    "alice": {
+                        "full_name": "Alice",
+                        "role": "user",
+                    }
+                },
+            },
+        }
+    )
+    catalog = SpaceCatalogService(client)
+
+    first = await catalog.get_conversation_meta("coding:app")
+    second = await catalog.get_conversation_meta("coding:app")
+
+    assert first is not None
+    assert first["created_at"] == "2024-01-01T00:00:00Z"
+    assert second == first
+    assert client.get_conversation_metadata.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_ensure_conversation_meta_reuses_cached_snapshot_after_first_get():
     client = AsyncMock(spec=EverMemosClient)
     client.get_conversation_metadata = AsyncMock(
