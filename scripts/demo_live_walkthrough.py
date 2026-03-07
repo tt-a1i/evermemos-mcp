@@ -11,7 +11,23 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from common import add_project_src_to_path, demo_space_ids, pp
+import importlib.util
+from pathlib import Path
+
+SCRIPTS_DIR = Path(__file__).resolve().parent
+_COMMON_SPEC = importlib.util.spec_from_file_location(
+    "evermemos_scripts_common",
+    SCRIPTS_DIR / "common.py",
+)
+if _COMMON_SPEC is None or _COMMON_SPEC.loader is None:
+    raise RuntimeError("Unable to load scripts/common.py")
+common = importlib.util.module_from_spec(_COMMON_SPEC)
+_COMMON_SPEC.loader.exec_module(common)
+
+add_project_src_to_path = common.add_project_src_to_path
+demo_space_ids = common.demo_space_ids
+pp = common.pp
+searchable_result_rows = common.searchable_result_rows
 
 add_project_src_to_path()
 
@@ -27,7 +43,9 @@ QUERIES = {
 }
 
 
-async def _pick_forget_memory_id(svc: MemoryService, space_id: str, rows: list[dict]) -> str:
+async def _pick_forget_memory_id(
+    svc: MemoryService, space_id: str, rows: list[dict]
+) -> str:
     target = next(
         (
             row
@@ -92,13 +110,19 @@ async def main() -> int:
         pp(f"briefing:{ids['coding']}", briefing, max_len=1400)
 
         if args.do_forget:
-            coding_results = recall_results.get("coding", {}).get("results", [])
+            coding_results = searchable_result_rows(recall_results.get("coding", {}))
             if not coding_results:
-                print("\nNo recall results found in coding space; skip forget demo.")
+                print(
+                    "\nNo searchable recall results found in coding space; skip forget demo."
+                )
             else:
-                memory_id = await _pick_forget_memory_id(svc, ids["coding"], coding_results)
+                memory_id = await _pick_forget_memory_id(
+                    svc, ids["coding"], coding_results
+                )
                 if not memory_id:
-                    print("\nNo deletable memory_id found in recall/history; skip forget demo.")
+                    print(
+                        "\nNo deletable memory_id found in recall/history; skip forget demo."
+                    )
                 else:
                     forget_result = await svc.forget(
                         memory_ids=[memory_id],

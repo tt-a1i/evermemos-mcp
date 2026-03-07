@@ -10,9 +10,24 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import time
+from pathlib import Path
 
-from common import add_project_src_to_path, demo_space_ids, pp
+SCRIPTS_DIR = Path(__file__).resolve().parent
+_COMMON_SPEC = importlib.util.spec_from_file_location(
+    "evermemos_scripts_common",
+    SCRIPTS_DIR / "common.py",
+)
+if _COMMON_SPEC is None or _COMMON_SPEC.loader is None:
+    raise RuntimeError("Unable to load scripts/common.py")
+common = importlib.util.module_from_spec(_COMMON_SPEC)
+_COMMON_SPEC.loader.exec_module(common)
+
+add_project_src_to_path = common.add_project_src_to_path
+demo_space_ids = common.demo_space_ids
+has_searchable_rows = common.has_searchable_rows
+pp = common.pp
 
 add_project_src_to_path()
 
@@ -80,9 +95,15 @@ async def preload(
                     if isinstance(rs.get("data"), dict)
                     else ""
                 )
+                lifecycle_state = (
+                    (rs.get("lifecycle") or {}).get("state")
+                    if isinstance(rs.get("lifecycle"), dict)
+                    else ""
+                )
                 print(
                     "    status_check: "
-                    f"success={rs.get('success')} found={rs.get('found')} status={status}"
+                    f"success={rs.get('success')} found={rs.get('found')} "
+                    f"status={status} lifecycle={lifecycle_state}"
                 )
             await asyncio.sleep(0.2)
 
@@ -104,10 +125,19 @@ async def wait_until_ready(
             space_id = ids[domain]
             query = DEMO_DATA[domain]["query"]
             result = await svc.recall(query=query, space_id=space_id, top_k=3)
-            count = len(result.get("results", []))
+            total_count = len(result.get("results", []))
+            searchable_count = len(common.searchable_result_rows(result))
             pending = result.get("pending_count", 0)
-            print(f"{space_id}: results={count} pending={pending}")
-            if count > 0:
+            lifecycle_state = (
+                (result.get("lifecycle") or {}).get("state")
+                if isinstance(result.get("lifecycle"), dict)
+                else ""
+            )
+            print(
+                f"{space_id}: results={total_count} searchable={searchable_count} "
+                f"pending={pending} lifecycle={lifecycle_state}"
+            )
+            if has_searchable_rows(result):
                 pending_domains.remove(domain)
 
         if pending_domains:
