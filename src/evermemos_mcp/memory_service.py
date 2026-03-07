@@ -603,7 +603,7 @@ class MemoryService:
     async def list_spaces(self, query: str | None = None, limit: int = 20) -> dict:
         limit = self._validate_positive_int(limit, "limit")
         spaces = await self._catalog.list_spaces(query, limit)
-        return {
+        output = {
             "ok": True,
             "spaces": [
                 {
@@ -619,6 +619,10 @@ class MemoryService:
                 "and one message can yield zero or multiple memories."
             ),
         }
+        warning = self._catalog.get_recovery_warning()
+        if warning is not None:
+            output["warnings"] = [warning]
+        return output
 
     # -- remember --
 
@@ -1687,7 +1691,7 @@ class MemoryService:
 
         async def _delete_one(
             mid: str,
-        ) -> tuple[str, int, int, EverMemosError | None, bool]:
+        ) -> tuple[str, int, int, EverMemosError | None, bool, dict | None]:
             async with semaphore:
                 retried_without_scope = False
                 try:
@@ -1699,13 +1703,13 @@ class MemoryService:
                         and self._is_user_scope_compat_error(e)
                     )
                     if not should_retry_without_scope:
-                        return mid, 0, 0, e, retried_without_scope
+                        return mid, 0, 0, e, retried_without_scope, None
 
                     retried_without_scope = True
                     try:
                         result = await _delete_with_scope(mid, None)
                     except EverMemosError as fallback_error:
-                        return mid, 0, 0, fallback_error, retried_without_scope
+                        return mid, 0, 0, fallback_error, retried_without_scope, None
                 except Exception as e:  # pragma: no cover - defensive safeguard
                     return (
                         mid,
@@ -1716,6 +1720,7 @@ class MemoryService:
                             code="UPSTREAM_ERROR",
                         ),
                         retried_without_scope,
+                        None,
                     )
 
                 count = result.get("result", {}).get("count", 0)
@@ -1723,14 +1728,39 @@ class MemoryService:
                     count = 0
                 upstream_count = max(0, count)
                 logical_deleted = 1 if upstream_count > 0 else 0
-                return mid, upstream_count, logical_deleted, None, retried_without_scope
+                delete_diagnostics = None
+                if logical_deleted == 0 and isinstance(result, dict):
+                    raw_result = result.get("result")
+                    filters = raw_result.get("filters") if isinstance(raw_result, dict) else None
+                    message = result.get("message")
+                    if isinstance(filters, list) and not filters:
+                        delete_diagnostics = {
+                            "message": message if isinstance(message, str) else "",
+                            "filters": filters,
+                        }
+                return (
+                    mid,
+                    upstream_count,
+                    logical_deleted,
+                    None,
+                    retried_without_scope,
+                    delete_diagnostics,
+                )
 
         delete_results = await asyncio.gather(*(_delete_one(mid) for mid in unique_ids))
 
         deleted = 0
         logical_deleted = 0
         used_scope_fallback = False
-        for mid, count, logical_count, err, retried_without_scope in delete_results:
+        ambiguous_upstream_delete = False
+        for (
+            mid,
+            count,
+            logical_count,
+            err,
+            retried_without_scope,
+            delete_diagnostics,
+        ) in delete_results:
             deleted += count
             logical_deleted += logical_count
             used_scope_fallback = used_scope_fallback or retried_without_scope
@@ -1738,6 +1768,9 @@ class MemoryService:
                 errors.append(f"{mid}: {err}")
             elif logical_count == 0:
                 unmatched_ids.append(mid)
+                ambiguous_upstream_delete = ambiguous_upstream_delete or bool(
+                    delete_diagnostics
+                )
 
         if logical_deleted:
             self._catalog.adjust_memory_count(space_id, -logical_deleted)
@@ -1750,6 +1783,10 @@ class MemoryService:
         if unmatched_ids:
             warnings.append(
                 "Some memory IDs were not matched (already deleted or outside current scope)."
+            )
+        if ambiguous_upstream_delete:
+            warnings.append(
+                "Upstream delete returned ok but reported no applied filters/count; current Cloud deployment may not honor targeted memory deletion for these IDs."
             )
 
         normalized_reason = reason.strip() if isinstance(reason, str) else ""
