@@ -154,7 +154,10 @@ async def test_remember_returns_queued():
     assert result["created_at"]
     assert "queued" in result["processing_hint"].lower()
     assert "flush" in result["processing_hint"].lower()
+    assert "1-2 minute" not in result["processing_hint"].lower()
     assert "approximate" in result["memory_count_hint"].lower()
+    assert result["lifecycle"]["state"] == "queued"
+    assert result["lifecycle"]["searchable"] is False
 
     # Verify Cloud call
     client.add_message.assert_called_once()
@@ -251,6 +254,7 @@ async def test_remember_include_status_fetches_request_status():
     assert result["ok"] is True
     assert result["request_id"] == "req-123"
     assert result["request_status"]["success"] is True
+    assert result["request_status"]["lifecycle"]["state"] == "queued"
     client.get_request_status.assert_called_once_with("req-123")
 
 
@@ -270,7 +274,78 @@ async def test_request_status_returns_structured_status_payload():
     assert result["ok"] is True
     assert result["request_id"] == "req-xyz"
     assert result["status"] == "queued"
+    assert result["lifecycle"]["state"] == "queued"
     client.get_request_status.assert_called_once_with("req-xyz")
+
+
+@pytest.mark.asyncio
+async def test_request_status_marks_completed_requests_as_searchable():
+    svc, _ = _make_svc(
+        status_rv={
+            "success": True,
+            "found": True,
+            "message": "ok",
+            "data": {"request_id": "req-done", "status": "completed"},
+        }
+    )
+
+    result = await svc.request_status("req-done")
+
+    assert result["lifecycle"]["state"] == "searchable"
+    assert result["lifecycle"]["searchable"] is True
+
+
+@pytest.mark.asyncio
+async def test_request_status_found_false_stays_queued():
+    svc, _ = _make_svc(
+        status_rv={
+            "success": True,
+            "found": False,
+            "message": "Request is still being processed in the queue",
+            "data": {"request_id": "req-missing", "status": "queued"},
+        }
+    )
+
+    result = await svc.request_status("req-missing")
+
+    assert result["success"] is True
+    assert result["found"] is False
+    assert result["lifecycle"]["state"] == "queued"
+    assert "still queued" in result["lifecycle"]["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_request_status_upstream_error_returns_structured_payload():
+    svc, client = _make_svc()
+    client.get_request_status = AsyncMock(
+        side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
+    )
+
+    result = await svc.request_status("req-timeout")
+
+    assert result["ok"] is True
+    assert result["success"] is False
+    assert result["found"] is False
+    assert result["error"] == "UPSTREAM_UNAVAILABLE"
+    assert result["lifecycle"]["state"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_request_status_requires_success_and_found_for_searchable_state():
+    svc, _ = _make_svc(
+        status_rv={
+            "success": True,
+            "found": False,
+            "message": "status indexed late",
+            "data": {"request_id": "req-late", "status": "completed"},
+        }
+    )
+
+    result = await svc.request_status("req-late")
+
+    assert result["status"] == "completed"
+    assert result["lifecycle"]["state"] == "queued"
+    assert result["lifecycle"]["searchable"] is False
 
 
 @pytest.mark.asyncio
@@ -364,6 +439,7 @@ async def test_recall_maps_search_results():
     assert "FastAPI" in r0["snippet"]
     assert "FastAPI" in r0["content"]
     assert r0["score"] == 4.5
+    assert r0["stability"] == "searchable"
 
     r1 = result["results"][1]
     assert r1["memory_id"] == "mem-002"
@@ -470,6 +546,7 @@ async def test_recall_reports_pending():
     result = await svc.recall("anything", "coding:app")
     assert result["pending_count"] == 2
     assert "2 message" in result["pending_hint"]
+    assert result["lifecycle"]["state"] == "queued"
 
 
 @pytest.mark.asyncio
@@ -495,6 +572,7 @@ async def test_recall_uses_pending_identity_fallback_when_search_is_empty():
     assert result["results"][0]["memory_type"] == "pending_message"
     assert result["results"][0]["stability"] == "provisional"
     assert "Tom" in result["results"][0]["content"]
+    assert result["lifecycle"]["state"] == "provisional"
     assert result["warnings"][0]["code"] == "IDENTITY_FALLBACK_APPLIED"
 
 
@@ -596,6 +674,7 @@ async def test_recall_no_pending_key_when_empty():
     svc._catalog.ensure_space("coding:app")
     result = await svc.recall("anything", "coding:app")
     assert "pending_count" not in result
+    assert result["lifecycle"]["state"] == "empty"
 
 
 @pytest.mark.asyncio
@@ -739,6 +818,7 @@ async def test_recall_auto_partial_when_one_branch_fails():
     assert result["ok"] is True
     assert result["partial_hint"]
     assert result["partial_errors"][0]["branch"] == "hybrid"
+    assert result["lifecycle"]["partial"] is True
 
 
 @pytest.mark.asyncio
@@ -1273,6 +1353,7 @@ async def test_briefing_uses_conversation_meta_fallback_when_profile_is_empty():
     assert result["highlights"][0]["stability"] == "fallback"
     assert "Tom" in result["highlights"][0]["content"]
     assert "Conversation metadata fallback" in result["summary"]
+    assert result["lifecycle"]["state"] == "fallback"
 
 
 @pytest.mark.asyncio
@@ -1348,6 +1429,8 @@ async def test_briefing_partial_failure_returns_ok_with_warning():
     assert len(result["partial_errors"]) == 1
     assert result["partial_errors"][0]["memory_type"] == "profile"
     assert len(result["highlights"]) >= 1
+    assert result["lifecycle"]["state"] == "searchable"
+    assert result["lifecycle"]["partial"] is True
 
 
 # -- forget --
@@ -2280,3 +2363,4 @@ async def test_recall_includes_partial_hint_when_upstream_partial():
     result = await svc.recall("query", "coding:app")
     assert result["partial_hint"]
     assert result["partial_errors"][0]["message"] == "partial shard failure"
+    assert result["lifecycle"]["partial"] is True

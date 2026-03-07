@@ -89,8 +89,10 @@ TOOLS: list[types.Tool] = [
             "Store information in long-term memory within a specific space. "
             "Use this proactively to save architecture decisions, user preferences, "
             "project conventions, bug solutions, and key context. "
-            "Content is queued for AI extraction and becomes searchable via recall "
-            "after a few minutes. "
+            "Content is queued for AI extraction and becomes searchable only after "
+            "upstream processing completes. "
+            "Use request_status, recall, or briefing to distinguish queued, "
+            "provisional, fallback, and searchable states. "
             "Set flush=true at end of session or topic switch; flush=false during ongoing work. "
             "Provide a description when creating a new space for the first time."
         ),
@@ -163,7 +165,7 @@ TOOLS: list[types.Tool] = [
         description=(
             "Check the async processing status for a prior remember request. "
             "Use this when remember returned a request_id and you need to know "
-            "whether extraction is still queued, processing, or completed."
+            "whether extraction is still queued or has been reported complete by upstream."
         ),
         inputSchema={
             "type": "object",
@@ -184,7 +186,8 @@ TOOLS: list[types.Tool] = [
             "conventions, or anything discussed in previous sessions. "
             "Returns matching memories with traceable citations "
             "(memory_type, snippet, timestamp, relevance score). "
-            "Also reports pending_count — how many messages are still being extracted. "
+            "Also reports whether current results are searchable, provisional, or fallback, "
+            "plus pending_count for queued writes. "
             "If space_id and space_ids are both omitted, auto-detected from git remote (coding:<repo-name>)."
         ),
         inputSchema={
@@ -285,6 +288,8 @@ TOOLS: list[types.Tool] = [
             "Get a structured context briefing for a memory space. "
             "Call this at the start of every new session to restore context. "
             "Returns: user profile, recent episodes, key facts, and foresights. "
+            "When formal profile memories are unavailable, briefing may surface explicit "
+            "fallback metadata and label it as such. "
             "This is the fastest way to catch up on everything stored in a space."
         ),
         inputSchema={

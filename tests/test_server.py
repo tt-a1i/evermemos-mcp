@@ -76,6 +76,7 @@ async def test_dispatch_remember(svc):
     assert data["ok"] is True
     assert data["space_id"] == "coding:app"
     assert data["created_at"]
+    assert data["lifecycle"]["state"] == "queued"
 
 
 @pytest.mark.asyncio
@@ -91,6 +92,7 @@ async def test_dispatch_remember_with_status(svc):
     data = _parse(result)
     assert data["ok"] is True
     assert data["request_status"]["success"] is True
+    assert data["request_status"]["lifecycle"]["state"] == "queued"
 
 
 @pytest.mark.asyncio
@@ -103,6 +105,7 @@ async def test_dispatch_request_status(svc):
     assert data["ok"] is True
     assert data["request_id"] == "req-abc"
     assert data["status"] == "queued"
+    assert data["lifecycle"]["state"] == "queued"
 
 
 @pytest.mark.asyncio
