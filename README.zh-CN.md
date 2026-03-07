@@ -20,9 +20,13 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 
 ## 演示
 
-https://github.com/user-attachments/assets/demo-placeholder
+最终演示视频会在最后一次录制完成后补上。
 
-<!-- TODO: 替换为实际演示视频链接 -->
+当前可直接查看的提交证据：
+- 主 benchmark 汇总：[`artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json)
+- 人类可读 benchmark 报告：[`artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md)
+- Evidence release（含 `runs.jsonl`）：[`competition-evidence-2026-02-26`](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)
+- 最新 lifecycle appendix：[`artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md`](artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md)（`remember/searchable/isolation` 已通过；`forget` 仍属于当前 Cloud 限制）
 
 ## 功能一览
 
@@ -32,7 +36,7 @@ https://github.com/user-attachments/assets/demo-placeholder
 | `remember` | 将信息存入长期记忆（异步提取） |
 | `recall` | 搜索记忆，支持 6 种检索策略（`keyword`、`hybrid`、`vector`、`rrf`、`agentic`、`auto`） |
 | `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测 |
-| `forget` | 按 ID 删除指定记忆（永久删除，幂等） |
+| `forget` | 按 ID 发起定向删除（当前 Cloud 行为可能有差异） |
 | `fetch_history` | 按类型分页浏览记忆时间线 |
 
 ### 核心特性
@@ -225,7 +229,11 @@ CI 在每次 push 和 PR 时自动运行，配置见 [`.github/workflows/ci.yml`
 | [`docs/01-requirements.zh-CN.md`](docs/01-requirements.zh-CN.md) | 需求文档 |
 | [`docs/02-architecture.zh-CN.md`](docs/02-architecture.zh-CN.md) | 架构设计 |
 | [`docs/03-demo-playbook.zh-CN.md`](docs/03-demo-playbook.zh-CN.md) | 演示手册 |
+| [`docs/04-submission.zh-CN.md`](docs/04-submission.zh-CN.md) | 提交清单 |
 | [`docs/05-client-integrations.zh-CN.md`](docs/05-client-integrations.zh-CN.md) | 客户端接入指南 |
+| [`docs/06-benchmark.md`](docs/06-benchmark.md) | Benchmark 协议与门禁 |
+| [`docs/07-release-checklist.md`](docs/07-release-checklist.md) | 发布前核对清单 |
+| [`docs/competition/benchmark_deep_dive.md`](docs/competition/benchmark_deep_dive.md) | 主证据深度说明 |
 | [`docs/auto-memory-prompt.zh-CN.md`](docs/auto-memory-prompt.zh-CN.md) | 自动记忆 Prompt 模板（CLAUDE.md / Cursor / Cline） |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本历史 |
 

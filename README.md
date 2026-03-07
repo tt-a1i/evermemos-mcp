@@ -20,9 +20,13 @@ All memories are organized into isolated **spaces** (e.g. `coding:my-app`, `stud
 
 ## Demo
 
-https://github.com/user-attachments/assets/demo-placeholder
+Final demo video will be added after the last recording pass.
 
-<!-- TODO: Replace with actual demo video link -->
+Current submission-ready evidence:
+- Primary benchmark summary: [`artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json)
+- Human-readable benchmark report: [`artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md)
+- Evidence release (`runs.jsonl`): [`competition-evidence-2026-02-26`](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)
+- Latest lifecycle appendix: [`artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md`](artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md) (`remember/searchable/isolation` pass; `forget` remains a current Cloud limitation)
 
 ## Features
 
@@ -32,7 +36,7 @@ https://github.com/user-attachments/assets/demo-placeholder
 | `remember` | Store information into long-term memory (async extraction) |
 | `recall` | Search memories with 6 retrieval strategies (`keyword`, `hybrid`, `vector`, `rrf`, `agentic`, `auto`) |
 | `briefing` | Get a structured context briefing: profile + episodes + facts + foresights |
-| `forget` | Delete specific memories by ID (permanent, idempotent) |
+| `forget` | Attempt targeted memory deletion by ID (Cloud behavior may vary) |
 | `fetch_history` | Paginate through memory timeline by type |
 
 ### Key Capabilities
@@ -225,7 +229,11 @@ CI runs on every push and PR via [`.github/workflows/ci.yml`](.github/workflows/
 | [`docs/01-requirements.md`](docs/01-requirements.md) | Product requirements |
 | [`docs/02-architecture.md`](docs/02-architecture.md) | Technical architecture |
 | [`docs/03-demo-playbook.md`](docs/03-demo-playbook.md) | Demo walkthrough |
+| [`docs/04-submission.md`](docs/04-submission.md) | Submission checklist |
 | [`docs/05-client-integrations.md`](docs/05-client-integrations.md) | Client setup guides |
+| [`docs/06-benchmark.md`](docs/06-benchmark.md) | Benchmark protocol and acceptance gates |
+| [`docs/07-release-checklist.md`](docs/07-release-checklist.md) | Release readiness checklist |
+| [`docs/competition/benchmark_deep_dive.md`](docs/competition/benchmark_deep_dive.md) | Primary evidence deep dive |
 | [`docs/auto-memory-prompt.md`](docs/auto-memory-prompt.md) | Auto-memory prompt templates for CLAUDE.md / Cursor / Cline |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
 
