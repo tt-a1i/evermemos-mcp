@@ -91,6 +91,8 @@ TOOLS: list[types.Tool] = [
             "project conventions, bug solutions, and key context. "
             "Content is queued for AI extraction and becomes searchable only after "
             "upstream processing completes. "
+            "For important writes, prefer remember(include_status=true) so the write-after "
+            "status check runs immediately. "
             "Use request_status, recall, or briefing to distinguish queued, "
             "provisional, fallback, and searchable states. "
             "Set flush=true at end of session or topic switch; flush=false during ongoing work. "
@@ -152,7 +154,8 @@ TOOLS: list[types.Tool] = [
                     "type": "boolean",
                     "description": (
                         "Whether to also query request status once after queuing "
-                        "the memory write"
+                        "the memory write. Recommended for important writes and write-after "
+                        "checks"
                     ),
                     "default": False,
                 },
@@ -165,7 +168,8 @@ TOOLS: list[types.Tool] = [
         description=(
             "Check the async processing status for a prior remember request. "
             "Use this when remember returned a request_id and you need to know "
-            "whether extraction is still queued or has been reported complete by upstream."
+            "whether extraction is still queued or has been reported complete by upstream. "
+            "Check success/error first, then interpret lifecycle.state."
         ),
         inputSchema={
             "type": "object",

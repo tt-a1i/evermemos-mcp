@@ -1307,6 +1307,19 @@ class MemoryService:
             },
         }
 
+        if request_id:
+            output["status_check"] = {
+                "recommended": True,
+                "tool": "request_status",
+                "request_id": request_id,
+                "checked_now": False,
+                "message": (
+                    "Recommended write-after check: call request_status with this "
+                    "request_id before assuming the write is searchable. For future "
+                    "writes, prefer remember(include_status=true)."
+                ),
+            }
+
         if actor_profile:
             output["metadata_mirror"] = {
                 "enabled": True,
@@ -1323,18 +1336,32 @@ class MemoryService:
                 remember_status = self._build_request_status_output(
                     request_id, status_res
                 )
-                remember_status.pop("ok", None)
-                remember_status.pop("request_id", None)
                 output["request_status"] = remember_status
+                status_check = output.get("status_check")
+                if isinstance(status_check, dict):
+                    status_check["checked_now"] = True
+                    status_check["message"] = (
+                        "Write-after check completed once. Check request_status.success "
+                        "and request_status.error before interpreting lifecycle.state. "
+                        "If lifecycle.state remains queued without an error, keep using "
+                        "request_status with this request_id until upstream confirms "
+                        "searchable completion."
+                    )
             except EverMemosError as exc:
                 remember_status = self._build_request_status_error_output(
                     request_id,
                     error_message=str(exc),
                     error_code=exc.code,
                 )
-                remember_status.pop("ok", None)
-                remember_status.pop("request_id", None)
                 output["request_status"] = remember_status
+                status_check = output.get("status_check")
+                if isinstance(status_check, dict):
+                    status_check["checked_now"] = True
+                    status_check["message"] = (
+                        "Write-after check attempted once but upstream status was not "
+                        "confirmed. Inspect request_status.success / request_status.error, "
+                        "then keep the request_id and retry request_status later."
+                    )
 
         return output
 

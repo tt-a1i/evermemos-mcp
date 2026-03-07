@@ -158,6 +158,11 @@ async def test_remember_returns_queued():
     assert "approximate" in result["memory_count_hint"].lower()
     assert result["lifecycle"]["state"] == "queued"
     assert result["lifecycle"]["searchable"] is False
+    assert result["status_check"]["recommended"] is True
+    assert result["status_check"]["tool"] == "request_status"
+    assert result["status_check"]["request_id"] == result["request_id"]
+    assert result["status_check"]["checked_now"] is False
+    assert "include_status=true" in result["status_check"]["message"]
 
     # Verify Cloud call
     client.add_message.assert_called_once()
@@ -253,9 +258,29 @@ async def test_remember_include_status_fetches_request_status():
 
     assert result["ok"] is True
     assert result["request_id"] == "req-123"
+    assert result["request_status"]["ok"] is True
+    assert result["request_status"]["request_id"] == "req-123"
     assert result["request_status"]["success"] is True
     assert result["request_status"]["lifecycle"]["state"] == "queued"
+    assert result["status_check"]["checked_now"] is True
+    assert "request_status.success" in result["status_check"]["message"]
     client.get_request_status.assert_called_once_with("req-123")
+
+
+@pytest.mark.asyncio
+async def test_remember_include_status_keeps_status_check_when_upstream_fails():
+    svc, client = _make_svc()
+    client.get_request_status = AsyncMock(
+        side_effect=EverMemosError("timeout", code="UPSTREAM_UNAVAILABLE")
+    )
+
+    result = await svc.remember("coding:app", "payload", include_status=True)
+
+    assert result["request_status"]["ok"] is True
+    assert result["request_status"]["request_id"] == "req-123"
+    assert result["request_status"]["success"] is False
+    assert result["status_check"]["checked_now"] is True
+    assert "request_status.error" in result["status_check"]["message"]
 
 
 @pytest.mark.asyncio

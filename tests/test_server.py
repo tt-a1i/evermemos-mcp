@@ -77,6 +77,7 @@ async def test_dispatch_remember(svc):
     assert data["space_id"] == "coding:app"
     assert data["created_at"]
     assert data["lifecycle"]["state"] == "queued"
+    assert data["status_check"]["tool"] == "request_status"
 
 
 @pytest.mark.asyncio
@@ -91,8 +92,11 @@ async def test_dispatch_remember_with_status(svc):
     )
     data = _parse(result)
     assert data["ok"] is True
+    assert data["request_status"]["ok"] is True
+    assert data["request_status"]["request_id"] == "req-abc"
     assert data["request_status"]["success"] is True
     assert data["request_status"]["lifecycle"]["state"] == "queued"
+    assert data["status_check"]["checked_now"] is True
 
 
 @pytest.mark.asyncio
@@ -223,9 +227,7 @@ async def test_dispatch_recall_requires_space_scope(svc):
 async def test_dispatch_recall_auto_detects_space(svc):
     with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", "coding:my-repo"):
         svc._catalog.ensure_space("coding:my-repo")
-        result = await server_mod.handle_call_tool(
-            "recall", {"query": "FastAPI"}
-        )
+        result = await server_mod.handle_call_tool("recall", {"query": "FastAPI"})
     data = _parse(result)
     assert data["ok"] is True
     assert data["space_id"] == "coding:my-repo"
