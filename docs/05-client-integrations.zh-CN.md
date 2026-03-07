@@ -130,6 +130,14 @@ uv cache clean evermemos-mcp
 
 如果你是在本地源码联调，才继续使用 `uv run --directory /ABS/PATH/evermemos-mcp evermemos-mcp`。
 
+### Cherry Studio 写后检查示例
+
+如果这是一次高价值写入：
+1. 调用 `remember(..., include_status=true, flush=true)`。
+2. 确认返回里包含 `status_check`，并保留 `request_id`。
+3. 如果 `request_status.lifecycle.state` 仍是 `queued`，不要误判成“没记住”。
+4. 在把 `recall` 当作正式提取证明之前，先继续调用 `request_status(request_id=...)`。
+
 ## 7) 源码片段
 如果未安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`。
 
@@ -163,6 +171,7 @@ When calling remember:
 1. `list_spaces`（应返回 `ok=true`）
 2. `remember`（建议 `include_status=true`）
    - 应返回 `message_id/request_id/processing_hint/lifecycle`
+   - 应看到 `status_check.tool == request_status`，并且 `status_check.checked_now == true`
    - 若状态查询成功，应看到 `request_status.lifecycle.state` 初始通常为 `queued`
 3. `recall`（同一个 `space_id`）
    - 刚写完可能仍是 `queued`、`provisional` 或 `fallback`
@@ -183,6 +192,18 @@ When calling remember:
 | `provisional` | 当前答案来自 `pending_messages` |
 | `fallback` | 当前答案来自镜像后的 `conversation-meta` |
 | `searchable` | 当前答案来自正式提取后的记忆 |
+
+## 写后检查 Playbook
+
+重要写入后的推荐路径：
+1. 调用 `remember(..., include_status=true)`。
+2. 先看 `status_check`，再检查 `request_status.success` / `request_status.error`。
+3. 只有在状态检查成功后，才去解释 `request_status.lifecycle.state`。
+4. 如果状态仍是 `queued`，不要把空的 `recall` 误判成“没记住”。
+5. `recall` / `briefing` 主要用来确认当前是否只能拿到 provisional/fallback 帮助。
+6. 持续使用 `request_status(request_id=...)`，直到上游确认进入 searchable 状态。
+
+说明：`remember.request_status` 现在与独立 `request_status` 工具保持同构，包含 `ok` 和 `request_id`。
 
 ## 10) 常见问题
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`

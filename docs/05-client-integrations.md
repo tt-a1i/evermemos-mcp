@@ -130,6 +130,14 @@ uv cache clean evermemos-mcp
 
 For local source development, keep using `uv run --directory /ABS/PATH/evermemos-mcp evermemos-mcp`.
 
+### Cherry Studio write-after check example
+
+For a high-value write in Cherry Studio:
+1. Call `remember(..., include_status=true, flush=true)`.
+2. Confirm the response contains `status_check` and keep the returned `request_id`.
+3. If `request_status.lifecycle.state` is still `queued`, do not assume memory loss.
+4. Re-run `request_status(request_id=...)` before relying on `recall` as proof of searchable extraction.
+
 ## 7) Source Snippet Reference
 Use `docs/mcp-config-snippets/from-source.json` when global command install is not available.
 
@@ -162,6 +170,7 @@ In your MCP client:
 1. `list_spaces` (expect `ok=true`)
 2. `remember` with `include_status=true`
    - expect `message_id/request_id/processing_hint/lifecycle`
+   - expect `status_check.tool == request_status` and `status_check.checked_now == true`
    - expect `request_status.lifecycle.state` to start as `queued`
 3. `recall` in the same space
    - immediate recall can still be `queued`, `provisional`, or `fallback`
@@ -182,6 +191,18 @@ In your MCP client:
 | `provisional` | answer comes from `pending_messages` |
 | `fallback` | answer comes from mirrored `conversation-meta` |
 | `searchable` | answer comes from formal extracted memories |
+
+## Write-After Check Playbook
+
+Recommended path after an important write:
+1. Call `remember(..., include_status=true)`.
+2. Read `status_check` first, then check `request_status.success` / `request_status.error`.
+3. Only after the status check succeeds should you interpret `request_status.lifecycle.state`.
+4. If the state is still `queued`, do **not** treat an empty `recall` as memory loss.
+5. Use `recall` or `briefing` only to check whether you have provisional/fallback help while waiting.
+6. Re-run `request_status(request_id=...)` until upstream confirms a searchable state.
+
+Note: the embedded `remember.request_status` now mirrors the standalone `request_status` tool contract, including `ok` and `request_id`.
 
 ## 10) Common Issues
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
