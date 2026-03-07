@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -232,6 +233,23 @@ def _format_ms(value: float | None) -> str:
     return f"{value:.0f} ms"
 
 
+def _display_path(path: Path) -> str:
+    try:
+        return path.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _infer_run_date(*paths: Path) -> str:
+    date_pattern = re.compile(r"(\d{4}-\d{2}-\d{2})")
+    for path in paths:
+        for candidate in (path.parent.name, path.name):
+            match = date_pattern.search(candidate)
+            if match:
+                return match.group(1)
+    return datetime.now(timezone.utc).date().isoformat()
+
+
 def _build_report(summary: dict[str, Any], input_path: Path, output_path: Path) -> str:
     with_memory = summary["with_memory"]
     without_memory = summary["without_memory"]
@@ -241,9 +259,10 @@ def _build_report(summary: dict[str, Any], input_path: Path, output_path: Path) 
     lines = [
         "# Competition Benchmark Report",
         "",
+        f"- Evidence date: {summary['date']}",
         f"- Generated at: {datetime.now(timezone.utc).isoformat()}",
-        f"- Input: `{input_path}`",
-        f"- Summary JSON: `{output_path}`",
+        f"- Input: `{_display_path(input_path)}`",
+        f"- Summary JSON: `{_display_path(output_path)}`",
         "",
         "## Headline",
         (
@@ -276,17 +295,22 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         required=True,
-        help="Input JSONL path (e.g., artifacts/competition/2026-03-08/runs.jsonl)",
+        help="Input JSONL path (e.g., artifacts/competition/2026-03-08-formal-real/runs.jsonl)",
     )
     parser.add_argument(
         "--output",
         required=True,
-        help="Output summary JSON path (e.g., artifacts/competition/2026-03-08/benchmark_summary.json)",
+        help="Output summary JSON path (e.g., artifacts/competition/2026-03-08-formal-real/benchmark_summary.json)",
     )
     parser.add_argument(
         "--report-output",
         default="",
         help="Optional markdown report path (default: <output_dir>/benchmark_report.md)",
+    )
+    parser.add_argument(
+        "--run-date",
+        default="",
+        help="Optional evidence date override (YYYY-MM-DD). Defaults to inferring from artifact paths.",
     )
     parser.add_argument("--target-hit-rate", type=float, default=0.80)
     parser.add_argument("--target-delta-hit-rate", type=float, default=0.40)
@@ -320,6 +344,7 @@ def main() -> int:
     raw_rows = _read_jsonl(input_path)
     rows = _normalize_rows(raw_rows)
     summary = _compute_summary(rows, targets)
+    summary["date"] = args.run_date.strip() or _infer_run_date(input_path, output_path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)

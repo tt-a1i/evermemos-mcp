@@ -1,8 +1,9 @@
 # Competition Benchmark Report
 
+- Evidence date: 2026-02-26
 - Generated at: 2026-02-25T12:41:08.803604+00:00
-- Input: `/Users/tsk/tt-a1i/evermemos-mcp/artifacts/competition/2026-02-26-formal-real-auto-all-v3/runs.jsonl`
-- Summary JSON: `/Users/tsk/tt-a1i/evermemos-mcp/artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json`
+- Input: `artifacts/competition/2026-02-26-formal-real-auto-all-v3/runs.jsonl`
+- Summary JSON: `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json`
 
 ## Headline
 - Overall gate: **PASS** (data_volume=pass, hit_rate=pass, latency=pass, attribution=pass)
