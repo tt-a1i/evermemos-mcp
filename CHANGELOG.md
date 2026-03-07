@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.4] - 2026-03-07
+
+### Added
+- Added `request_status` as a first-class MCP tool so clients can check async write progress explicitly.
+
+### Changed
+- Updated README feature docs to describe metadata-backed identity fallback as best-effort behavior.
+- Surfaced metadata-backed identity and preference fallback results when extracted recall results are unavailable.
+
+### Fixed
+- Mirrored chat identity/preferences into `conversation-meta` for better short-fact recall in EverMemOS Cloud.
+- Restricted pending identity fallback to single `chat:*` recall scopes to avoid leaking chat heuristics into unrelated multi-space searches.
+
 ## [0.4.3] - 2026-03-07
 
 ### Added
