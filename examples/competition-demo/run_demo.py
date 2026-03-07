@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import json
 import re
 import subprocess
@@ -26,10 +27,18 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+_COMMON_SPEC = importlib.util.spec_from_file_location(
+    "evermemos_scripts_common",
+    SCRIPTS_DIR / "common.py",
+)
+if _COMMON_SPEC is None or _COMMON_SPEC.loader is None:
+    raise RuntimeError("Unable to load scripts/common.py")
+common = importlib.util.module_from_spec(_COMMON_SPEC)
+_COMMON_SPEC.loader.exec_module(common)
 
-from common import add_project_src_to_path, demo_space_ids
+add_project_src_to_path = common.add_project_src_to_path
+demo_space_ids = common.demo_space_ids
+searchable_result_rows = common.searchable_result_rows
 
 add_project_src_to_path()
 
@@ -153,8 +162,7 @@ def _build_cases(
 
 
 def _result_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
-    rows = result.get("results", []) if isinstance(result, dict) else []
-    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    return searchable_result_rows(result)
 
 
 def _collect_text_blobs(rows: list[dict[str, Any]]) -> list[str]:
@@ -172,7 +180,9 @@ def _collect_text_blobs(rows: list[dict[str, Any]]) -> list[str]:
     return blobs
 
 
-def _compute_hit(rows: list[dict[str, Any]], signals: tuple[str, ...]) -> tuple[bool, list[str]]:
+def _compute_hit(
+    rows: list[dict[str, Any]], signals: tuple[str, ...]
+) -> tuple[bool, list[str]]:
     if not signals:
         return False, []
 
@@ -185,7 +195,9 @@ def _compute_hit(rows: list[dict[str, Any]], signals: tuple[str, ...]) -> tuple[
     return bool(matched), matched
 
 
-def _compute_attribution(rows: list[dict[str, Any]], expected_space_id: str) -> tuple[int, int]:
+def _compute_attribution(
+    rows: list[dict[str, Any]], expected_space_id: str
+) -> tuple[int, int]:
     resolved = 0
     wrong = 0
     for row in rows:
@@ -240,6 +252,11 @@ async def _run_single_mode(
         "pending_count": int(result.get("pending_count", 0))
         if isinstance(result.get("pending_count"), int)
         else 0,
+        "lifecycle_state": (
+            (result.get("lifecycle") or {}).get("state")
+            if isinstance(result.get("lifecycle"), dict)
+            else None
+        ),
         "warnings_count": len(result.get("warnings", []))
         if isinstance(result.get("warnings"), list)
         else 0,
@@ -297,7 +314,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--queries",
-        default=str(ROOT / "examples" / "competition-demo" / "query_set_real_template.jsonl"),
+        default=str(
+            ROOT / "examples" / "competition-demo" / "query_set_real_template.jsonl"
+        ),
         help="Path to query set (.jsonl or .json)",
     )
     parser.add_argument(
