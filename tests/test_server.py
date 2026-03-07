@@ -50,12 +50,13 @@ def _parse(text_contents) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_list_tools_returns_six():
+async def test_list_tools_returns_seven():
     tools = await server_mod.handle_list_tools()  # type: ignore[call-arg]
     names = {t.name for t in tools}
     assert names == {
         "list_spaces",
         "remember",
+        "request_status",
         "recall",
         "briefing",
         "forget",
@@ -90,6 +91,18 @@ async def test_dispatch_remember_with_status(svc):
     data = _parse(result)
     assert data["ok"] is True
     assert data["request_status"]["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_request_status(svc):
+    result = await server_mod.handle_call_tool(
+        "request_status",
+        {"request_id": "req-abc"},
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert data["request_id"] == "req-abc"
+    assert data["status"] == "queued"
 
 
 @pytest.mark.asyncio
