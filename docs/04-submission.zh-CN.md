@@ -11,6 +11,14 @@
 - [x] 可运行入口：`evermemos-mcp`
 - [x] 测试通过：`uv run pytest`
 
+## 1.1 非视频提交资产
+
+- [x] 最新包元数据已对齐到 `v0.4.2`
+- [x] 最新 release/tag 已可访问：`v0.4.2`
+- [x] Evidence release 已可访问：`competition-evidence-2026-02-26`
+- [x] Benchmark 深度说明：`docs/competition/benchmark_deep_dive.md`
+- [x] Lifecycle appendix 生成脚本：`scripts/competition_lifecycle_appendix.py`
+
 ## 2. 演示视频检查（3-5 分钟）
 
 - [ ] 脚本定稿：`docs/competition/video_script_main.en.md` / `docs/competition/video_script_main.zh-CN.md`
@@ -19,7 +27,7 @@
 - [ ] 展示 `list_spaces` 路由
 - [ ] 展示 `recall` 引用字段（timestamp/snippet/type/score）
 - [ ] 展示 `briefing` 恢复上下文
-- [ ] 展示 `forget` 删除可控
+- [ ] 展示 `forget` 的定向删除（若目标仍可 recall，则说明这是当前 Cloud 限制）
 - [ ] 明确说明 Cloud 异步提取（预加载策略）
 
 ## 3. 提交描述建议结构
@@ -50,7 +58,13 @@ I used Codex to review the changes, sanity-check the implementation against exis
 ## 6. 发布前最终验证
 
 ```bash
+uv run ruff check
 uv run pytest
 uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 uv run python scripts/demo_live_walkthrough.py
+uv run python scripts/competition_lifecycle_appendix.py
 ```
+
+说明：
+- 上面两个 EverMemOS live 命令都依赖有效的 `EVERMEMOS_API_KEY`。
+- `scripts/competition_lifecycle_appendix.py` 在鉴权失败或环境校验失败时，仍会落盘失败产物（`appendix_notes.md`、`appendix_results.json`、`raw_logs.txt`），便于保留可审计的阻塞证据。

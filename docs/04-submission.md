@@ -10,6 +10,14 @@
 - [x] Runnable entrypoint: `evermemos-mcp`
 - [x] Tests passing: `uv run pytest`
 
+## 1.1 Non-video Submission Assets
+- [x] Latest package metadata aligned to `v0.4.2`
+- [x] Latest release/tag available: `v0.4.2`
+- [x] Evidence release available: `competition-evidence-2026-02-26`
+- [x] Benchmark deep dive: `docs/competition/benchmark_deep_dive.md`
+- [x] Lifecycle appendix generator: `scripts/competition_lifecycle_appendix.py`
+- [x] Final handoff checklist: `docs/competition/final_submission_30s_checklist.md`
+
 ## 2. Video Checklist (3-5 min)
 - [ ] Script finalized: `docs/competition/video_script_main.en.md` / `docs/competition/video_script_main.zh-CN.md`
 - [ ] Short clip script finalized: `docs/competition/video_script_short_clip.md`
@@ -17,7 +25,7 @@
 - [ ] Show `list_spaces` routing
 - [ ] Show citation fields in `recall` (`timestamp/snippet/type/score`)
 - [ ] Show context restoration via `briefing`
-- [ ] Show controlled delete via `forget`
+- [ ] Show targeted delete via `forget` (or state current Cloud limitation if delete remains recallable)
 - [ ] Clearly state Cloud async extraction and preload strategy
 
 ## 3. Suggested Submission Structure
@@ -45,7 +53,13 @@ I used Codex to review the changes, sanity-check the implementation against exis
 ## 6. Final Verification Before Release
 
 ```bash
+uv run ruff check
 uv run pytest
 uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 uv run python scripts/demo_live_walkthrough.py
+uv run python scripts/competition_lifecycle_appendix.py
 ```
+
+Notes:
+- The two live EverMemOS commands above require a valid `EVERMEMOS_API_KEY`.
+- `scripts/competition_lifecycle_appendix.py` writes failure artifacts (`appendix_notes.md`, `appendix_results.json`, `raw_logs.txt`) even when auth or environment validation fails, so blocked runs remain auditable.
