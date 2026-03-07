@@ -162,16 +162,27 @@ When calling remember:
 
 1. `list_spaces`（应返回 `ok=true`）
 2. `remember`（建议 `include_status=true`）
-   - 应返回 `message_id/request_id/processing_hint`
-   - 若状态查询成功，应返回 `request_status`
+   - 应返回 `message_id/request_id/processing_hint/lifecycle`
+   - 若状态查询成功，应看到 `request_status.lifecycle.state` 初始通常为 `queued`
 3. `recall`（同一个 `space_id`）
-   - 刚写完可能为空（Cloud 异步提取）
-   - 可观察 `pending_count/pending_hint`
+   - 刚写完可能仍是 `queued`、`provisional` 或 `fallback`
+   - 观察 `lifecycle.state`，以及 `results[].stability` 的逐条标记
+   - `pending_count/pending_hint` 表示相关写入仍在提取队列里
 4. `briefing`（同一个 `space_id`）
-   - 应返回 `summary` 与 `highlights[]`（覆盖 `profile + episodic_memory + event_log + foresight`）
+   - 应返回 `summary`、`highlights[]` 与 `lifecycle`
+   - 若 `highlights[].stability == fallback`，表示当前是 metadata fallback，不是正式提取记忆
 5. `fetch_history`（时间线分页）
    - 示例：`memory_type=event_log`、`limit=20`、`offset=0`
    - 通过 `has_more/next_offset` 继续翻页
+
+### 生命周期速查表
+
+| 状态 | 含义 |
+|------|------|
+| `queued` | 写入已接受，但正式提取结果还没确认可检索 |
+| `provisional` | 当前答案来自 `pending_messages` |
+| `fallback` | 当前答案来自镜像后的 `conversation-meta` |
+| `searchable` | 当前答案来自正式提取后的记忆 |
 
 ## 10) 常见问题
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
@@ -183,8 +194,8 @@ When calling remember:
   - 处理：重启客户端并确认启用的是 `evermemos`
 
 - `remember` 成功但 `recall` 为空
-  - 原因：Cloud 提取是异步
-  - 处理：等待 2-5 分钟后重试
+  - 原因：Cloud 提取是异步，队列时长不固定
+  - 处理：优先看 `request_status.lifecycle`、`recall.lifecycle`、`briefing.lifecycle`，不要假设固定等待时间
 
 - Cherry Studio 发布后仍启动旧版本
   - 原因：`uvx` 可能复用本地缓存

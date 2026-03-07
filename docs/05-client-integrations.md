@@ -161,16 +161,27 @@ When calling remember:
 In your MCP client:
 1. `list_spaces` (expect `ok=true`)
 2. `remember` with `include_status=true`
-   - expect `message_id/request_id/processing_hint`
-   - expect `request_status` when status check succeeds
+   - expect `message_id/request_id/processing_hint/lifecycle`
+   - expect `request_status.lifecycle.state` to start as `queued`
 3. `recall` in the same space
-   - immediate recall can be empty due to async extraction
-   - look for `pending_count` and `pending_hint`
+   - immediate recall can still be `queued`, `provisional`, or `fallback`
+   - inspect `lifecycle.state`, plus `results[].stability` for row-level labels
+   - `pending_count/pending_hint` means relevant writes are still queued
 4. `briefing` in the same space
-   - expect `summary` and `highlights[]` (`profile + episodic_memory + event_log + foresight`)
+   - expect `summary`, `highlights[]`, and `lifecycle`
+   - `highlights[].stability == fallback` means metadata fallback, not formal extracted memory
 5. `fetch_history` with timeline pagination
    - example: `memory_type=event_log`, `limit=20`, `offset=0`
    - use `has_more/next_offset` to continue paging
+
+### Lifecycle quick reference
+
+| State | Meaning |
+|-------|---------|
+| `queued` | write accepted, formal extraction not confirmed searchable |
+| `provisional` | answer comes from `pending_messages` |
+| `fallback` | answer comes from mirrored `conversation-meta` |
+| `searchable` | answer comes from formal extracted memories |
 
 ## 10) Common Issues
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
@@ -178,7 +189,8 @@ In your MCP client:
 - `UNKNOWN_TOOL`
   - restart client and verify the active server is `evermemos`
 - Remember succeeds but recall is empty
-  - Cloud extraction is async (wait 2-5 minutes)
+  - Cloud extraction is async and queue time is variable
+  - inspect `request_status.lifecycle`, `recall.lifecycle`, and `briefing.lifecycle` instead of assuming a fixed delay
 - Cherry Studio still starts an older version after a release
   - `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin `evermemos-mcp@latest`
 - Missing required field errors behind proxy/WAF

@@ -71,7 +71,7 @@ uv run python scripts/demo_live_walkthrough.py
 
 ## 6. 常见故障与处理
 
-- recall 为空但 pending_count > 0：提取还在进行，等待后重试
+- recall 为空但 pending_count > 0：说明提取仍在排队；应查看 `recall.lifecycle`，不要把 provisional/fallback 结果当成 searchable
 - remember 返回了 request_status 但 found=false：状态记录可能还没可查，稍后再试（不影响异步写入已排队）
 - Cloud 网络抖动：重跑 recall，或在视频中展示错误语义（UPSTREAM_UNAVAILABLE）
 - list_spaces 不完整：先执行一次 preload，再 list_spaces

@@ -62,7 +62,7 @@ uv run python scripts/demo_live_walkthrough.py
 ```
 
 ## 6. Common Issues
-- Recall is empty with `pending_count > 0`: extraction is still running, retry later
+- Recall is empty with `pending_count > 0`: extraction is still queued; check `recall.lifecycle` and do not treat provisional/fallback answers as searchable yet
 - `remember` returns `request_status` with `found=false`: status may not be indexed yet; queued write is still valid
 - Cloud jitter: rerun recall or show `UPSTREAM_UNAVAILABLE` error semantics in the demo
 - Incomplete `list_spaces`: rerun preload before listing spaces
