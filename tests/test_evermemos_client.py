@@ -644,6 +644,27 @@ async def test_set_conversation_metadata_payload():
 
 
 @pytest.mark.asyncio
+async def test_set_conversation_metadata_payload_supports_name_and_optional_scene():
+    c = EverMemosClient(api_key="fake", api_version="v0")
+    c._request = AsyncMock(return_value={"status": "ok", "result": {"id": "meta-1"}})
+
+    await c.set_conversation_metadata(
+        group_id="space::coding:app",
+        scene=None,
+        name="coding:app",
+        created_at="2025-01-15T10:00:00+00:00",
+        description="Coding app memory",
+    )
+
+    _, kwargs = c._request.call_args
+    payload = kwargs["json"]
+    assert payload["group_id"] == "space::coding:app"
+    assert payload["name"] == "coding:app"
+    assert payload["created_at"] == "2025-01-15T10:00:00+00:00"
+    assert "scene" not in payload
+
+
+@pytest.mark.asyncio
 async def test_get_conversation_metadata_fallbacks_to_json_body():
     c = EverMemosClient(api_key="fake", api_version="v0")
     c._request = AsyncMock(
