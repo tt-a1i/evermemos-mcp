@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.3] - 2026-03-07
+
+### Added
+- `scripts/competition_lifecycle_appendix.py` to generate live write/read/delete appendix artifacts with searchable latency, isolation checks, and raw logs.
+- `docs/competition/final_submission_30s_checklist.md` for final handoff and submission verification.
+
+### Changed
+- Updated README, submission docs, and demo playbooks to point at the latest competition evidence and to describe the current Cloud `forget` limitation accurately.
+- Refined lifecycle appendix reporting so partial runs show explicit stage logs and `SKIP` semantics instead of ambiguous waits.
+- Updated competition benchmark metadata generation to infer evidence dates from artifact paths and emit cleaner relative paths.
+
+### Fixed
+- Hardened Cloud catalog recovery for `original_data` payloads returned as lists.
+- Added compatibility fallbacks for Cloud conversation metadata create/update behavior when group-level `scene` / `scene_desc` fields are rejected.
+- Improved live walkthrough deletion target selection by falling back to `fetch_history` when recall returns profile-only rows.
+- Surfaced clearer warnings when Cloud delete returns `ok` but does not actually remove the targeted memory.
+
 ## [0.4.2] - 2026-03-07
 
 ### Added
