@@ -127,9 +127,9 @@ Purpose:
 4. `forget` effectiveness (post-delete recall miss for deleted item)
 
 ### 10.2 Minimal execution protocol
-Use a small sample (for example `N=10` writes per scenario) and keep raw logs.
+Use a fresh appendix prefix and keep the generated files under `artifacts/competition/`.
 
-1. Preload baseline spaces:
+1. Preload baseline spaces (manual smoke path):
 ```bash
 uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 ```
@@ -139,18 +139,39 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 uv run python scripts/demo_live_walkthrough.py --do-forget
 ```
 
-3. Record evidence rows in an appendix artifact (example path):
-- `artifacts/competition/2026-02-26-lifecycle/appendix_notes.md`
-- `artifacts/competition/2026-02-26-lifecycle/raw_logs.txt`
+3. Preferred path: generate appendix artifacts directly:
+```bash
+uv run python scripts/competition_lifecycle_appendix.py
+```
+
+Generated files:
+- `artifacts/competition/<date>-lifecycle-<prefix>/appendix_notes.md`
+- `artifacts/competition/<date>-lifecycle-<prefix>/appendix_results.json`
+- `artifacts/competition/<date>-lifecycle-<prefix>/raw_logs.txt`
+
+Current local status:
+- The generator is implemented and now produces stage-by-stage logs plus explicit `SKIP` results when not all spaces become searchable within the wait budget.
+- Latest live rerun artifact:
+  - `artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md`
+  - `artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_results.json`
+- Current live status captured in that run:
+  - remember acknowledgements: `9/9`
+  - searchable sample size: `3/3`
+  - coding searchable after `69.07s`
+  - chat searchable after `37.82s`
+  - study searchable after `91.48s`
+  - isolation correctness: `PASS` (`0/6` leaked rows)
+  - forget effectiveness: `WARN` because the target memory still remained recallable after delete (`1/1`)
+- This means auth and searchability are no longer the main blockers; the remaining appendix gap is upstream targeted delete behavior for `forget`.
 
 ### 10.3 Reporting template (fill after run)
 
 | Check | Definition | Sample size | Result | Status |
 | --- | --- | --- | --- | --- |
-| Remember success rate | successful remember acknowledgements / total remember calls | `TBD` | `TBD` | `TBD` |
-| Time-to-searchable P50/P95 | time from remember ack to first recall hit | `TBD` | `TBD` | `TBD` |
-| Space isolation correctness | cross-space false hits / cross-space queries | `TBD` | `TBD` | `TBD` |
-| Forget effectiveness | deleted item still recalled / delete attempts | `TBD` | `TBD` | `TBD` |
+| Remember success rate | successful remember acknowledgements / total remember calls | from `appendix_results.json` | from `appendix_notes.md` | PASS / WARN |
+| Time-to-searchable P50/P95 | time from first remember ack in each demo space to first recall hit | from `appendix_results.json` | from `appendix_notes.md` | PASS / WARN |
+| Space isolation correctness | cross-space false hits / cross-space queries | from `appendix_results.json` | from `appendix_notes.md` | PASS / WARN |
+| Forget effectiveness | deleted item still recalled / delete attempts | from `appendix_results.json` | from `appendix_notes.md` | PASS / WARN |
 
 Notes:
 - Keep metric formulas explicit when filling this table.

@@ -54,9 +54,10 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 
 ### Part E（30-45 秒）：`forget` 可控删除
 
-1. 从 recall 中拿到某个 `memory_id`
+1. 从 recall 中拿到某个 `memory_id`（如果前几项全是 profile，则回退到 `fetch_history` 取 episodic ID）
 2. 调用 `forget(memory_ids=[...])`
-3. 再次 recall，确认目标不再出现
+3. 如果 Cloud 删除成功，再次 recall，确认目标不再出现
+4. 如果 Cloud 返回 `ok` 但目标仍可 recall，把它表述为当前 Cloud 限制，而不是 MCP 路由失败
 
 ## 5. 演示命令清单
 
@@ -74,9 +75,10 @@ uv run python scripts/demo_live_walkthrough.py
 - remember 返回了 request_status 但 found=false：状态记录可能还没可查，稍后再试（不影响异步写入已排队）
 - Cloud 网络抖动：重跑 recall，或在视频中展示错误语义（UPSTREAM_UNAVAILABLE）
 - list_spaces 不完整：先执行一次 preload，再 list_spaces
+- `forget` 返回 `ok` 但目标仍能被 recall：当前 Cloud 的 targeted delete 可能没有真正作用到选中的 memory ID，应按上游限制处理，并用 appendix 证据替代强行 live 演示成功
 
 ## 7. 评分点映射
 
 - 创新性：MCP 通用记忆层 + `space_id` 路由
-- 技术深度：5 个 tools 闭环 + 错误语义 + 引用字段
+- 技术深度：6 个 tools 闭环 + 错误语义 + 引用字段
 - 用户价值：跨会话连续性、可查可删、可验证

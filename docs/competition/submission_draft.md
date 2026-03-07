@@ -2,7 +2,7 @@
 
 ## Project
 - Name: `evermemos-mcp`
-- Version target: `v0.4.0`
+- Version target: `v0.4.2`
 - Primary track narrative: Platform Plugins
 - Supporting narrative: Agent + Memory (minimal demo)
 
@@ -12,9 +12,10 @@ In multi-topic workflows, missing isolation leads to memory contamination across
 Most demos show retrieval only, but fail to prove decision improvement and controllable deletion.
 
 ## Solution
-`evermemos-mcp` provides a universal MCP memory layer on EverMemOS with explicit `space_id` isolation and production-safe tool contracts.  
+`evermemos-mcp` provides a universal MCP memory layer on EverMemOS with explicit `space_id` isolation, optional default-space auto-detection, and production-safe tool contracts.  
 It delivers a closed loop: `remember -> recall/briefing -> action improvement -> forget`, with traceable evidence fields (`memory_type/snippet/timestamp/score`).  
 The competition demo focuses on reproducible benchmark evidence (hit rate, latency, attribution error), not anecdotal screenshots.
+Current release line also includes `uvx` installation, Smithery registry config, and auto-memory prompt templates for Claude Code / Cursor / Cline.
 
 ## Demo Flow (3-5 minutes)
 1. Setup and preload (off-camera or first 20s)
@@ -51,23 +52,43 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 - Appendix references:
   - synthetic threshold validation (2026-02-25): `PASS`
   - early formal-real attempts (2026-02-25 / 2026-02-26 k12/kall/v2): diagnostics only
+  - current lifecycle appendix generator status (2026-03-07): implementation complete; latest live rerun under `artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/` reached full searchability (`3/3`) and passed isolation (`0/6` leaked rows), while forget remained `WARN` because the target memory still remained recallable after delete
 
 ## Community Impact
 - GitHub: track stars, forks, and issue/PR interactions during sprint window.
 - Discord: publish three waves (launch, technical breakdown, short clip) and capture meaningful discussion count.
 - Demo feedback: collect structured feedback (what was clear, what failed, what improved trust) from at least 15 runs.
 
+## Submission Form Answers
+- Project name: `evermemos-mcp`
+- Primary track: `Track 2: Platform Plugins`
+- One-line summary: `An MCP memory layer on EverMemOS that gives AI coding assistants persistent, isolated, cross-session memory with traceable recall evidence.`
+- Problem statement: `AI assistants lose context between sessions, forcing users to restate architecture decisions, preferences, and prior work; without strict isolation, memories also bleed across topics.`
+- Solution summary: `evermemos-mcp provides six production-oriented MCP tools on top of EverMemOS Cloud: list spaces, remember, recall, briefing, forget, and fetch_history. It restores context across sessions, keeps memories isolated by space_id, and returns traceable evidence fields instead of opaque summaries.`
+- Demo flow: `Preload three spaces, show list_spaces routing, run recall + briefing for context restoration, demonstrate before/after benchmark evidence, then show targeted delete via forget and note the current Cloud limitation if the memory remains recallable.`
+- Why this matters: `It upgrades MCP clients from stateless chat tools into workflows that can preserve project memory safely over time.`
+- Primary evidence: `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` with `100%` with-memory hit rate, `P95=1957.75 ms`, and `0%` attribution error.
+- Supplemental lifecycle evidence status: `scripts/competition_lifecycle_appendix.py` is implemented and now produces live appendix artifacts with stage logs. The latest rerun captured `9/9` remember acknowledgements, `3/3` searchable spaces, and `PASS` isolation evidence; only forget remains `WARN` in the current Cloud deployment.`
+- Repository URL: `https://github.com/tt-a1i/evermemos-mcp`
+- Release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.2`
+- Evidence release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26`
+- PyPI URL: `https://pypi.org/project/evermemos-mcp/`
+
 ## Links
 - Repository: https://github.com/tt-a1i/evermemos-mcp
-- Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.0
+- Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.2
+- PyPI package: https://pypi.org/project/evermemos-mcp/
+- Smithery config: `smithery.yaml`
+- Auto-memory prompts: `docs/auto-memory-prompt.md`
 - Evidence release: https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26
 - Benchmark deep dive: `docs/competition/benchmark_deep_dive.md`
 - Lifecycle appendix (write/read/delete): `docs/competition/benchmark_deep_dive.md` Section 10
+- Latest appendix artifact: `artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md`
 - Main video script (ZH): `docs/competition/video_script_main.zh-CN.md`
 - Main video script (EN): `docs/competition/video_script_main.en.md`
 - Short clip script: `docs/competition/video_script_short_clip.md`
-- Demo video: TBD
-- Short clip: TBD
+- Demo video: pending final recording/upload
+- Short clip: pending final recording/upload
 - Benchmark artifacts (Phase 2):
   - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` (primary evidence)
   - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`
@@ -78,7 +99,7 @@ The competition demo focuses on reproducible benchmark evidence (hit rate, laten
 
 ## Final Checklist
 - [ ] Repo public and up to date
-- [ ] Tag pushed
-- [ ] Changelog updated
+- [x] Tag pushed
+- [x] Changelog updated
 - [ ] Video uploaded
 - [ ] Submission form completed
