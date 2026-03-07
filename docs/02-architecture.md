@@ -93,6 +93,7 @@ EverMemOS API
   - `ok`, `space_id`
   - `message_id` (submitted message id used for write request)
   - `request_id`, `created_at`, `processing_hint`
+  - `lifecycle` (`state`, `state_counts`, `searchable`, `message`)
   - `request_status` (when `include_status=true`)
 
 ### 5.3 `recall`
@@ -116,6 +117,8 @@ EverMemOS API
   - `space_id` is also returned when only one space is used
   - `retrieve_method_actual=auto(hybrid+keyword)` when auto strategy is used
   - `pending_count/pending_hint` when extraction is pending
+  - `lifecycle` (`queued|provisional|fallback|searchable|empty` summary for the current response)
+  - row-level `results[].stability` distinguishes formal extracted rows from provisional/fallback rows
   - optional `warnings[]` includes source-space recovery hints when upstream omits `group_id`
   - `partial_hint/partial_errors` when upstream returns partial results
 
@@ -123,7 +126,8 @@ EverMemOS API
 - Input: `space_id`, `max_items?=8`, `start_time?`, `end_time?`, `user_id?`
 - Behavior: layered fetch and synthesis from `profile + episodic_memory + event_log + foresight`
 - Time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
-- Output: `ok`, `space_id`, `summary`, `highlights[]`
+- Output: `ok`, `space_id`, `summary`, `highlights[]`, `lifecycle`
+- Row-level `highlights[].stability` is `searchable` for formal memories and `fallback` for metadata fallback
 
 ### 5.5 `forget`
 - Input: `memory_ids[]`, `space_id`, `reason?`, `user_id?`

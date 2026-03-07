@@ -109,6 +109,7 @@ EverMemOS API
   - `request_id`
   - `created_at`
   - `processing_hint`（如 "memory extraction may be async"）
+  - `lifecycle`（包含 `state`、`state_counts`、`searchable`、`message`）
   - `request_status`（仅 `include_status=true` 时返回）
 
 ### 5.3 `recall`
@@ -138,6 +139,8 @@ EverMemOS API
   - `results[]`（每项包含 `memory_id`, `memory_type`, `snippet`, `timestamp`, `score`）
   - 使用 `auto` 时会返回 `retrieve_method_actual=auto(hybrid+keyword)`
   - `pending_count/pending_hint`（存在待提取消息时）
+  - `lifecycle`（当前响应级别的 `queued|provisional|fallback|searchable|empty` 摘要）
+  - `results[].stability` 用来区分正式提取结果、provisional 结果、fallback 结果
   - 上游缺少 `group_id` 时，来源恢复相关信息会通过可选 `warnings[]` 返回
 
 ### 5.4 `briefing`
@@ -147,6 +150,8 @@ EverMemOS API
   - `user_id` (optional)
   - `start_time` / `end_time` (optional, ISO 8601 with timezone)
 - 行为：分层抓取后生成上下文简报（profile + episodic + event_log + foresight）
+- 输出：`ok`、`space_id`、`summary`、`highlights[]`、`lifecycle`
+- `highlights[].stability` 在正式记忆上为 `searchable`，在 metadata fallback 上为 `fallback`
   - `start_time/end_time` 作用于 `episodic_memory`、`event_log` 与 `foresight`，不作用于 `profile`
 - 输出：
   - `ok`
