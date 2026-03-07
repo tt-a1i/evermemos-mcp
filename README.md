@@ -34,6 +34,7 @@ Current submission-ready evidence:
 |------|-------------|
 | `list_spaces` | Discover available memory spaces |
 | `remember` | Store information into long-term memory (async extraction) |
+| `request_status` | Check whether a queued write is still pending or already processed |
 | `recall` | Search memories with 6 retrieval strategies (`keyword`, `hybrid`, `vector`, `rrf`, `agentic`, `auto`) |
 | `briefing` | Get a structured context briefing: profile + episodes + facts + foresights |
 | `forget` | Attempt targeted memory deletion by ID (Cloud behavior may vary) |
@@ -46,6 +47,7 @@ Current submission-ready evidence:
 - **Traceable citations** — Every result includes `memory_type`, `snippet`, `timestamp`, `score`, and optional `source_message_id`
 - **Multi-user support** — Optional `user_id` filtering for shared spaces
 - **Conversation metadata sync** — Automatic `conversation-meta` integration with EverMemOS Cloud
+- **Async-friendly identity fallback** — Chat identity/preferences are mirrored into `conversation-meta` and can be surfaced as explicit fallback results when extracted search results are unavailable
 - **Robust error handling** — Retry with backoff (429 / 5xx), GET body fallback for proxy/WAF compatibility, and structured error codes
 
 ## Quick Start
@@ -123,10 +125,10 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
 ┌─────────────────────────────┐
 │     evermemos-mcp server    │
 │  ┌───────────────────────┐  │
-│  │   6 Tool Handlers     │  │
+│  │   7 Tool Handlers     │  │
 │  └──────────┬────────────┘  │
 │  ┌──────────▼────────────┐  │
-│  │   Memory Service      │  │  remember / recall / briefing / forget / fetch_history
+│  │   Memory Service      │  │  remember / request_status / recall / briefing / forget / fetch_history
 │  └──────────┬────────────┘  │
 │  ┌──────────▼────────────┐  │
 │  │ Space Catalog Service │  │  space registry, metadata sync, cross-session recovery

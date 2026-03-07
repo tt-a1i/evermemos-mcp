@@ -34,6 +34,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 |------|------|
 | `list_spaces` | 发现可用的记忆空间 |
 | `remember` | 将信息存入长期记忆（异步提取） |
+| `request_status` | 查询某次 `remember` 写入当前是否仍在排队或已处理完成 |
 | `recall` | 搜索记忆，支持 6 种检索策略（`keyword`、`hybrid`、`vector`、`rrf`、`agentic`、`auto`） |
 | `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测 |
 | `forget` | 按 ID 发起定向删除（当前 Cloud 行为可能有差异） |
@@ -46,6 +47,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 - **可追溯引用** — 每条结果包含 `memory_type`、`snippet`、`timestamp`、`score` 及可选 `source_message_id`
 - **多用户支持** — 可选 `user_id` 过滤，适用于共享空间场景
 - **会话元数据同步** — 自动与 EverMemOS Cloud 的 `conversation-meta` 集成
+- **异步身份兜底** — 聊天身份/偏好会轻量镜像到 `conversation-meta`，并在提取型搜索结果不可用时以显式 fallback 形式返回
 - **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
 
 ## 快速开始
@@ -123,10 +125,10 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
 ┌─────────────────────────────┐
 │     evermemos-mcp 服务器     │
 │  ┌───────────────────────┐  │
-│  │    6 个工具处理器       │  │
+│  │    7 个工具处理器       │  │
 │  └──────────┬────────────┘  │
 │  ┌──────────▼────────────┐  │
-│  │     记忆服务层         │  │  remember / recall / briefing / forget / fetch_history
+│  │     记忆服务层         │  │  remember / request_status / recall / briefing / forget / fetch_history
 │  └──────────┬────────────┘  │
 │  ┌──────────▼────────────┐  │
 │  │   空间目录服务         │  │  空间注册、元数据同步、跨会话恢复
