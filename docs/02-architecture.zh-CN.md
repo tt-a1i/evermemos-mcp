@@ -212,7 +212,7 @@ EverMemOS API
 - `NOT_FOUND`：查询为空或待删除对象不存在
 
 ## 8) 最小测试矩阵（V1）
-- 合同测试：6 个 tools 的输入输出结构
+- 合同测试：7 个 tools 的输入输出结构
 - 隔离测试：不同 `space_id` 互不召回
 - 引用测试：recall/briefing 必须返回时间+片段
 - 安全测试：forget 仅允许显式 id 删除

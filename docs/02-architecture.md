@@ -165,7 +165,7 @@ EverMemOS API
 - `NOT_FOUND`: empty query result or missing target
 
 ## 8) Test Matrix (V1)
-- Contract tests for all 6 tools
+- Contract tests for all 7 tools
 - Isolation tests across different `space_id`
 - Citation field tests for `recall/briefing`
 - Safety tests for explicit-id deletion
