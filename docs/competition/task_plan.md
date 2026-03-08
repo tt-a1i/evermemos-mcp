@@ -10,7 +10,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 
 ## Phases
 - [x] Phase 0: Scope freeze and scoring strategy
-- [x] Phase 1: Release readiness (`v0.4.3`)
+- [x] Phase 1: Release readiness (`v0.4.6`)
 - [x] Phase 2: Benchmark evidence and demo automation
 - [ ] Phase 3: Video and submission assets
 - [ ] Phase 4: Community rollout and final submission
@@ -19,7 +19,7 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 
 | Phase | Owner | Due date | Exit criteria |
 | --- | --- | --- | --- |
-| Phase 1: Release readiness | Project maintainer | 2026-03-06 | `pyproject` bumped to `0.4.3`; `CHANGELOG.md` merged; release gates pass (`ruff`, `pytest`); tag `v0.4.3` pushed |
+| Phase 1: Release readiness | Project maintainer | 2026-03-06 | `pyproject` bumped to `0.4.6`; `CHANGELOG.md` merged; release gates pass (`ruff`, `pytest`); tag `v0.4.6` pushed |
 | Phase 2: Benchmark + demo | Project maintainer | 2026-03-08 | `docs/06-benchmark.md` complete; benchmark scripts produce reproducible report; `examples/competition-demo` one-command run works |
 | Phase 3: Submission assets | Project maintainer | 2026-03-12 | bilingual video script complete; README competition section merged; submission draft complete with links and metrics |
 | Phase 4: Community + final submit | Project maintainer | 2026-03-15 | 3 community waves posted; outcome metrics recorded; submission package delivered before deadline |
@@ -27,13 +27,13 @@ Ship a competition-ready submission package for `evermemos-mcp` by 2026-03-15, o
 ## Workstreams
 
 ### A) Release Workstream
-- [x] Bump version through the competition release line to `0.4.3`
+- [x] Bump version through the competition release line to `0.4.6`
 - [x] Create `CHANGELOG.md` from recent shipped fixes
 - [x] Enforce release gates:
   - [x] `uv run ruff check`
   - [x] `uv run pytest`
   - [ ] 3-minute quickstart smoke test
-- [x] Create and push git tag `v0.4.3`
+- [x] Create and push git tag `v0.4.6`
 
 ### B) Evidence Workstream
 - [x] Add `docs/06-benchmark.md`

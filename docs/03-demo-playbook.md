@@ -71,5 +71,5 @@ uv run python scripts/demo_live_walkthrough.py
 
 ## 7. Scoring Mapping
 - Innovation: universal MCP memory layer + `space_id` routing
-- Technical Depth: 6-tool loop + explicit error semantics + citation fields
+- Technical Depth: 7-tool loop + explicit error semantics + citation fields
 - Consumer Value: continuity across sessions + timeline/retrieval/verify controls

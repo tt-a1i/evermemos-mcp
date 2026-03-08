@@ -11,8 +11,8 @@
 - [x] Tests passing: `uv run pytest`
 
 ## 1.1 Non-video Submission Assets
-- [x] Latest package metadata aligned to `v0.4.3`
-- [x] Latest release/tag available: `v0.4.3`
+- [x] Latest package metadata aligned to `v0.4.6`
+- [x] Latest release/tag available: `v0.4.6`
 - [x] Evidence release available: `competition-evidence-2026-02-26`
 - [x] Benchmark deep dive: `docs/competition/benchmark_deep_dive.md`
 - [x] Lifecycle appendix generator: `scripts/competition_lifecycle_appendix.py`
@@ -34,7 +34,7 @@
 1. Problem
 2. Solution
 3. Why MCP + EverMemOS
-4. Live capabilities (6 tools)
+4. Live capabilities (7 tools)
 5. Demo highlights
 6. Future roadmap
 

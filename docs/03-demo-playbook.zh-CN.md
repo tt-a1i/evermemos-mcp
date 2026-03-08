@@ -81,5 +81,5 @@ uv run python scripts/demo_live_walkthrough.py
 ## 7. 评分点映射
 
 - 创新性：MCP 通用记忆层 + `space_id` 路由
-- 技术深度：6 个 tools 闭环 + 错误语义 + 引用字段
+- 技术深度：7 个 tools 闭环 + 错误语义 + 引用字段
 - 用户价值：跨会话连续性、可查、可复盘、可验证

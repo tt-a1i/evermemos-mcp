@@ -23,7 +23,7 @@ Build an MCP server that provides long-term memory for MCP-compatible AI clients
 ## Decisions
 - Track: Track 2 (Platform Plugin)
 - Product: universal Memory MCP server (`evermemos-mcp`)
-- V1 tool set: `list_spaces`, `remember`, `recall`, `briefing`, `forget`, `fetch_history`
+- V1 tool set: `list_spaces`, `remember`, `request_status`, `recall`, `briefing`, `forget`, `fetch_history`
 - Isolation model: generic `space_id`
 - Positioning: universal platform layer, focused demo (coding/chat/study)
 - Transport: `stdio` by default
@@ -49,7 +49,7 @@ Build an MCP server that provides long-term memory for MCP-compatible AI clients
 - Added tests for auth, response handling, and recovery paths
 
 ### Phase 3.3 Delivery
-- Implemented all 6 MCP tools end-to-end
+- Implemented all 7 MCP tools end-to-end
 - Added structured error semantics and citation fields
 - Added smoke coverage and expanded unit tests
 

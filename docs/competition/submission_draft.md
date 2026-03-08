@@ -2,7 +2,7 @@
 
 ## Project
 - Name: `evermemos-mcp`
-- Version target: `v0.4.3`
+- Version target: `v0.4.6`
 - Primary track narrative: Platform Plugins
 - Supporting narrative: Agent + Memory (minimal demo)
 
@@ -30,7 +30,7 @@ Current release line also includes `uvx` installation, Smithery registry config,
    - Run competition demo script: `examples/competition-demo/run.sh`
    - Or direct command: `uv run python examples/competition-demo/run_demo.py --queries examples/competition-demo/query_set_real_template.jsonl --artifact-dir artifacts/competition/<date>-formal-real`
    - Show before/after comparison (`without memory` vs `with memory`) and benchmark summary.
-   - Use `forget` on one memory ID and re-run recall to show controlled deletion.
+   - Use `fetch_history` to confirm one memory ID, call `forget`, then re-check with `fetch_history` before `recall` to show controlled deletion honestly.
 4. Reliability and delivery
    - Mention async extraction reality and preload strategy.
    - Show test confidence quickly: `uv run pytest -q`.
@@ -64,19 +64,19 @@ Current release line also includes `uvx` installation, Smithery registry config,
 - Primary track: `Track 2: Platform Plugins`
 - One-line summary: `An MCP memory layer on EverMemOS that gives AI coding assistants persistent, isolated, cross-session memory with traceable recall evidence.`
 - Problem statement: `AI assistants lose context between sessions, forcing users to restate architecture decisions, preferences, and prior work; without strict isolation, memories also bleed across topics.`
-- Solution summary: `evermemos-mcp provides six production-oriented MCP tools on top of EverMemOS Cloud: list spaces, remember, recall, briefing, forget, and fetch_history. It restores context across sessions, keeps memories isolated by space_id, and returns traceable evidence fields instead of opaque summaries.`
+- Solution summary: `evermemos-mcp provides seven production-oriented MCP tools on top of EverMemOS Cloud: list_spaces, remember, request_status, recall, briefing, forget, and fetch_history. It restores context across sessions, keeps memories isolated by space_id, and returns traceable evidence fields instead of opaque summaries.`
 - Demo flow: `Preload three spaces, show list_spaces routing, run recall + briefing for context restoration, demonstrate before/after benchmark evidence, then show targeted delete via forget and note the current Cloud limitation if the memory remains recallable.`
 - Why this matters: `It upgrades MCP clients from stateless chat tools into workflows that can preserve project memory safely over time.`
 - Primary evidence: `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` with `100%` with-memory hit rate, `P95=1957.75 ms`, and `0%` attribution error.
 - Supplemental lifecycle evidence status: `scripts/competition_lifecycle_appendix.py` is implemented and now produces live appendix artifacts with stage logs. The latest rerun captured `9/9` remember acknowledgements, `3/3` searchable spaces, and `PASS` isolation evidence; only forget remains `WARN` in the current Cloud deployment.`
 - Repository URL: `https://github.com/tt-a1i/evermemos-mcp`
-- Release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.3`
+- Release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.6`
 - Evidence release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26`
 - PyPI URL: `https://pypi.org/project/evermemos-mcp/`
 
 ## Links
 - Repository: https://github.com/tt-a1i/evermemos-mcp
-- Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.3
+- Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.4.6
 - PyPI package: https://pypi.org/project/evermemos-mcp/
 - Smithery config: `smithery.yaml`
 - Auto-memory prompts: `docs/auto-memory-prompt.md`

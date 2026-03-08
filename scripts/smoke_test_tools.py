@@ -1,4 +1,4 @@
-"""End-to-end smoke test: exercise all 6 tools against Cloud v0."""
+"""End-to-end smoke test: exercise all 7 tools against Cloud v0."""
 
 # ruff: noqa: E402
 

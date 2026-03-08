@@ -23,7 +23,7 @@
 ## 已确认决策
 - 赛道：Track 2（Platform Plugin）
 - 产品：通用 Memory MCP Server（`evermemos-mcp`）
-- V1 工具集：`list_spaces` / `remember` / `recall` / `briefing` / `forget` / `fetch_history`
+- V1 工具集：`list_spaces` / `remember` / `request_status` / `recall` / `briefing` / `forget` / `fetch_history`
 - 隔离模型：使用 `space_id`
 - 路由策略：优先显式 `space_id`，并支持通过 `list_spaces` 发现空间或从 env/git 自动推断默认空间
 - 传输方式：V1 默认 `stdio`
@@ -45,8 +45,8 @@
 - 完成 `group_id <-> space_id` 映射
 - 完成基础恢复与错误语义测试
 
-### Phase 3.3（6 个 tools 闭环）
-- 完成 `list_spaces/remember/recall/briefing/forget/fetch_history`
+### Phase 3.3（7 个 tools 闭环）
+- 完成 `list_spaces/remember/request_status/recall/briefing/forget/fetch_history`
 - 完成引用字段输出与主要错误映射
 - 完成服务层、客户端、服务端多层测试覆盖
 

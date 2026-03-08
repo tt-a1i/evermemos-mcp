@@ -68,7 +68,7 @@ Session resets break user experience:
 
 ## 10) Version Plan
 ### V1 (Hackathon Submission)
-- Six MCP tools + `space_id` isolation + reproducible demo
+- Seven MCP tools (including `request_status`) + `space_id` isolation + reproducible demo
 
 ### V1.1 (Enhancements)
 - Automatic session-summary ingestion

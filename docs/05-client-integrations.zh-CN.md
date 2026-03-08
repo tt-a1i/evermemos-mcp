@@ -7,8 +7,8 @@
 配置片段目录：`docs/mcp-config-snippets/`
 
 ## 1) 前置条件
-1. 已安装本项目，或可从源码运行
-2. 可执行命令可用（`evermemos-mcp` 或 `uv`）
+1. 本机可用 `uv` / `uvx`，或可直接从源码运行本项目
+2. 可执行命令可用（发布版推荐 `uvx`，源码联调使用 `uv`）
 3. 已配置 Cloud API Key：`EVERMEMOS_API_KEY`
 4. （可选）若需要自定义提取模型，可设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 5. （可选）可设置 conversation metadata 时区：`EVERMEMOS_DEFAULT_TIMEZONE`（默认 `UTC`）
@@ -17,12 +17,12 @@
 
 ## 2) 推荐启动方式
 
-### 方式 A：已安装命令（推荐）
+### 方式 A：通过 `uvx` 运行已发布版本（推荐）
 
 ```json
 {
-  "command": "evermemos-mcp",
-  "args": [],
+  "command": "uvx",
+  "args": ["evermemos-mcp@latest"],
   "env": {
     "EVERMEMOS_API_KEY": "YOUR_KEY"
   }
@@ -47,8 +47,8 @@
 {
   "mcpServers": {
     "evermemos": {
-      "command": "evermemos-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY"
       }
@@ -65,8 +65,8 @@
 {
   "mcpServers": {
     "evermemos": {
-      "command": "evermemos-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY"
       }
@@ -83,8 +83,8 @@
 {
   "mcpServers": {
     "evermemos": {
-      "command": "evermemos-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY"
       }
@@ -93,7 +93,7 @@
 }
 ```
 
-若你使用源码启动，请改为“方式 B”。
+如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.6`。若你使用源码启动，请改为“方式 B”。
 
 对应片段：`docs/mcp-config-snippets/claude-code.json`
 
@@ -139,7 +139,7 @@ uv cache clean evermemos-mcp
 4. 在把 `recall` 当作正式提取证明之前，先继续调用 `request_status(request_id=...)`。
 
 ## 7) 源码片段
-如果未安装全局命令，可直接使用：`docs/mcp-config-snippets/from-source.json`。
+如果你不想走已发布的 `uvx` 包，而是本地源码联调，可直接使用：`docs/mcp-config-snippets/from-source.json`。
 
 ## 8) `flush` 边界策略（推荐）
 
@@ -245,7 +245,7 @@ uv cache clean evermemos-mcp
 
 - Cherry Studio 发布后仍启动旧版本
   - 原因：`uvx` 可能复用本地缓存
-  - 处理：执行 `uv cache clean evermemos-mcp`，或直接固定 `evermemos-mcp@latest`
+- 处理：执行 `uv cache clean evermemos-mcp`，或直接固定显式版本，例如 `evermemos-mcp@0.4.6`
 
 - 在代理/WAF 环境出现缺字段错误
   - 原因：中间件可能剥离了 GET 请求体（上游 fetch/search 使用 `GET + JSON body`）
