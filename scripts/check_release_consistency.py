@@ -20,6 +20,14 @@ class ReleaseCheck:
 
 DOC_CHECKS = (
     ReleaseCheck(
+        path=REPO_ROOT / "CHANGELOG.md",
+        required_substrings=(
+            "## [{version}]",
+            "Tightened MCP tool descriptions",
+            "remember.space_id",
+        ),
+    ),
+    ReleaseCheck(
         path=REPO_ROOT / "docs" / "04-submission.md",
         required_substrings=("`v{version}`", "(7 tools)"),
         forbidden_patterns=(r"v0\.4\.3", r"\(6 tools\)"),
@@ -61,7 +69,11 @@ DOC_CHECKS = (
     ),
     ReleaseCheck(
         path=REPO_ROOT / "docs" / "07-release-checklist.md",
-        required_substrings=("v{version}",),
+        required_substrings=(
+            "v{version}",
+            "tool description tightening",
+            "remember.space_id",
+        ),
         forbidden_patterns=(r"v0\.4\.3",),
     ),
     ReleaseCheck(
