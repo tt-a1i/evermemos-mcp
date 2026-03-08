@@ -13,8 +13,8 @@
 
 ## 1.1 非视频提交资产
 
-- [x] 最新包元数据已对齐到 `v0.4.3`
-- [x] 最新 release/tag 已可访问：`v0.4.3`
+- [x] 最新包元数据已对齐到 `v0.4.6`
+- [x] 最新 release/tag 已可访问：`v0.4.6`
 - [x] Evidence release 已可访问：`competition-evidence-2026-02-26`
 - [x] Benchmark 深度说明：`docs/competition/benchmark_deep_dive.md`
 - [x] Lifecycle appendix 生成脚本：`scripts/competition_lifecycle_appendix.py`
@@ -37,7 +37,7 @@
 1. 问题定义
 2. 方案说明
 3. 为什么选择 MCP + EverMemOS
-4. 线上能力展示（6 个 tools）
+4. 线上能力展示（7 个 tools）
 5. 演示亮点（Demo highlights）
 6. 后续路线图
 
