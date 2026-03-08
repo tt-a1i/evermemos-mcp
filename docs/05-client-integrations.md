@@ -120,7 +120,7 @@ Recommended for published releases:
 }
 ```
 
-If you prefer a fixed release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.5`.
+If you prefer a fixed release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.6`.
 
 If Cherry Studio still launches an older cached build after an upgrade, run:
 

@@ -120,7 +120,7 @@
 }
 ```
 
-如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.5`。
+如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.6`。
 
 如果发布后 Cherry Studio 仍启动旧缓存版本，可执行：
 

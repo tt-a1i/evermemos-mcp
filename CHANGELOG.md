@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.6] - 2026-03-08
+
+### Added
+- Added explicit lifecycle-aware guidance for `space_id` templates, `fetch_history` timeline review, and `forget` verification across tool descriptions, README, and client docs.
+- Added runnable and tested demo guidance so live walkthroughs verify delete effects with `fetch_history` before fallback `recall` checks.
+
+### Changed
+- Promoted `request_status` to the standard write-after verification path in prompts, client integrations, and competition/demo narratives.
+- Marked roadmap items 1-6 as completed and kept items 7-8 explicitly deferred pending upstream stability or later product decisions.
+
+### Fixed
+- Aligned requirements and architecture docs with the actual 7-tool contract, including a dedicated `request_status` section.
+
 ## [0.4.5] - 2026-03-07
 
 ### Changed
