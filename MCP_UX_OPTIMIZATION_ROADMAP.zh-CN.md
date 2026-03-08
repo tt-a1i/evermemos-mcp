@@ -1,6 +1,12 @@
 # evermemos-mcp 用户体验优化路线图
 
-> 最后更新：2026-03-07
+> 最后更新：2026-03-08
+
+## 实施状态
+
+- `Now 1-3`：已完成
+- `Next 4-6`：已完成
+- `Later 7-8`：按原路线图继续 defer（依赖上游稳定性或后续产品语义决策，不建议现在提前实施）
 
 ## 目标
 
@@ -70,7 +76,7 @@ Cloud 队列问题的详细证据单独记录在：`EVERMEMOS_CLOUD_QUEUE_ISSUE.
 
 ## Now（现在就值得做）
 
-### 1. 把记忆生命周期讲清楚
+### 1. 把记忆生命周期讲清楚（已完成）
 
 要解决的问题：
 
@@ -100,7 +106,7 @@ Cloud 队列问题的详细证据单独记录在：`EVERMEMOS_CLOUD_QUEUE_ISSUE.
 - `recall` / `briefing` 的输出里能明确区分正式结果与 fallback 结果
 - 用户文档里有一张状态说明表，解释 `queued / provisional / fallback / searchable`
 
-### 2. 把 `request_status` 变成写后主路径
+### 2. 把 `request_status` 变成写后主路径（已完成）
 
 要解决的问题：
 
@@ -123,7 +129,7 @@ Cloud 队列问题的详细证据单独记录在：`EVERMEMOS_CLOUD_QUEUE_ISSUE.
 - 文档中有固定的“写后检查 playbook”
 - 至少一个真实客户端场景（如 Cherry Studio）有可复制的写后检查流程示例
 
-### 3. 做聊天优先客户端的稳态使用规范
+### 3. 做聊天优先客户端的稳态使用规范（已完成）
 
 要解决的问题：
 
@@ -149,7 +155,7 @@ Cloud 队列问题的详细证据单独记录在：`EVERMEMOS_CLOUD_QUEUE_ISSUE.
 
 ## Next（接下来值得做）
 
-### 4. 强化 `space_id` 的产品引导
+### 4. 强化 `space_id` 的产品引导（已完成）
 
 建议方向：
 
@@ -160,7 +166,7 @@ Cloud 队列问题的详细证据单独记录在：`EVERMEMOS_CLOUD_QUEUE_ISSUE.
   - `study:<topic>`
 - 用用户语言解释“为什么要分空间”，而不是只讲参数格式
 
-### 5. 提升 `fetch_history` 的产品地位
+### 5. 提升 `fetch_history` 的产品地位（已完成）
 
 建议方向：
 
@@ -169,7 +175,7 @@ Cloud 队列问题的详细证据单独记录在：`EVERMEMOS_CLOUD_QUEUE_ISSUE.
   - 删除前先看 history
   - 搜索不稳定时先看时间线
 
-### 6. 重新定义 `forget` 的产品承诺
+### 6. 重新定义 `forget` 的产品承诺（已完成）
 
 建议方向：
 

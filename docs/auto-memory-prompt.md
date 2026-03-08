@@ -43,7 +43,10 @@ Automatically call `recall` or `briefing` when:
 Use `<domain>:<project>` format:
 - `coding:<repo-name>` for code projects (e.g. `coding:my-saas`)
 - `study:<topic>` for learning (e.g. `study:rust-lang`)
-- `chat:<scope>` for preferences (e.g. `chat:preferences`)
+- `chat:preferences` for durable personal preferences
+- `chat:daily` for rolling conversation context
+
+If you need a timeline, delete verification, or replay of recent changes, use `fetch_history` instead of relying on `recall` alone.
 
 ## Flush Rules
 
@@ -61,7 +64,7 @@ You have long-term memory via evermemos-mcp. Use it proactively:
 - Auto-remember: architecture decisions, user preferences, project conventions, bug solutions
 - For important writes, prefer remember(..., include_status=true) and inspect request_status.success/error before lifecycle.state
 - Auto-recall: at session start (briefing), when context from past sessions is relevant
-- Space format: coding:<repo>, study:<topic>, chat:<scope>
+- Space format: coding:<repo>, study:<topic>, chat:preferences, chat:daily
 - flush=false during conversation, flush=true at boundaries
 ```
 

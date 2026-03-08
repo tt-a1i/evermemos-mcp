@@ -165,6 +165,19 @@ When calling remember:
 4) If boundary is uncertain, use flush=true as safe fallback.
 ```
 
+## 8.5) Space Templates (Recommended)
+
+Use these defaults unless you have a strong reason not to:
+
+| Space | Recommended usage |
+|-------|-------------------|
+| `chat:preferences` | durable identity, names, preferences, communication style |
+| `chat:daily` | temporary or rolling chat context |
+| `coding:<repo>` | project decisions, bugs, architecture, conventions |
+| `study:<topic>` | notes, topic progress, revision context |
+
+Why this matters: it prevents personal preferences from polluting project memory, and keeps project history from polluting general chat memory.
+
 ## 9) 30-Second Smoke Check
 In your MCP client:
 1. `list_spaces` (expect `ok=true`)
@@ -204,6 +217,18 @@ Recommended path after an important write:
 
 Note: the embedded `remember.request_status` now mirrors the standalone `request_status` tool contract, including `ok` and `request_id`.
 
+## 9.5) Recall vs History vs Forget
+
+- Use `recall` when you want the most relevant answer.
+- Use `fetch_history` when you want a timeline, when recall feels unstable, or before/after deletion.
+- Treat `forget` as best-effort in current Cloud behavior.
+
+Recommended delete flow:
+1. Use `fetch_history(space_id=..., memory_type=...)` to verify the target `memory_id`.
+2. Call `forget(memory_ids=[...], space_id=...)`.
+3. Re-run `fetch_history` first; use `recall` only as a secondary confirmation.
+4. If the target still appears, record it as a Cloud limitation rather than assuming the MCP route failed.
+
 ## 10) Common Issues
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
   - add `EVERMEMOS_API_KEY` in MCP server `env`
@@ -211,7 +236,7 @@ Note: the embedded `remember.request_status` now mirrors the standalone `request
   - restart client and verify the active server is `evermemos`
 - Remember succeeds but recall is empty
   - Cloud extraction is async and queue time is variable
-  - inspect `request_status.lifecycle`, `recall.lifecycle`, and `briefing.lifecycle` instead of assuming a fixed delay
+  - inspect `request_status.success/error` first, then `request_status.lifecycle`, `recall.lifecycle`, and `briefing.lifecycle` instead of assuming a fixed delay
 - Cherry Studio still starts an older version after a release
   - `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin `evermemos-mcp@latest`
 - Missing required field errors behind proxy/WAF

@@ -25,8 +25,10 @@
 - [ ] 短视频脚本定稿：`docs/competition/video_script_short_clip.md`
 - [ ] 介绍痛点：跨 session 丢失上下文
 - [ ] 展示 `list_spaces` 路由
+- [ ] 说明 `request_status` 是写后核验主路径
 - [ ] 展示 `recall` 引用字段（timestamp/snippet/type/score）
 - [ ] 展示 `briefing` 恢复上下文
+- [ ] 展示 `fetch_history` 的时间线/删除核验路径
 - [ ] 展示 `forget` 的定向删除（若目标仍可 recall，则说明这是当前 Cloud 限制）
 - [ ] 明确说明 Cloud 异步提取（预加载策略）
 
@@ -43,6 +45,7 @@
 
 - "We use `space_id` as the primary isolation key to prevent context leakage across tasks."
 - "Writes are queued on Cloud, so we preload memories before live retrieval demos."
+- "`request_status` is the write-after check before we claim a memory is searchable."
 - "Recall and briefing always return traceable evidence fields, not opaque summaries."
 
 ## 5. PR 模板中的 AI Disclosure（按工作区规范）

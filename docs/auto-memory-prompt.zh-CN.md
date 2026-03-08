@@ -43,7 +43,10 @@
 使用 `<领域>:<项目>` 格式：
 - `coding:<仓库名>` 用于代码项目（如 `coding:my-saas`）
 - `study:<主题>` 用于学习（如 `study:rust-lang`）
-- `chat:<范围>` 用于偏好设置（如 `chat:preferences`）
+- `chat:preferences` 用于长期个人偏好
+- `chat:daily` 用于滚动会话上下文
+
+如果你需要时间线、删前删后核验或复盘最近变化，优先使用 `fetch_history`，不要只依赖 `recall`。
 
 ## Flush 规则
 
@@ -61,7 +64,7 @@
 - 自动记忆：架构决策、用户偏好、项目惯例、Bug 解决方案
 - 重要写入优先使用 remember(..., include_status=true)，并先检查 request_status.success/error，再看 lifecycle.state
 - 自动回忆：会话开始时（briefing）、需要历史上下文时
-- 空间格式：coding:<仓库名>, study:<主题>, chat:<范围>
+- 空间格式：coding:<仓库名>, study:<主题>, chat:preferences, chat:daily
 - 对话中 flush=false，边界处 flush=true
 ```
 

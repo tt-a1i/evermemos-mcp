@@ -154,16 +154,29 @@ uv cache clean evermemos-mcp
 建议给 Agent 的提示词片段：
 
 ```text
-When calling remember:
-1) Always pass flush explicitly (never omit).
-2) Use flush=false for intermediate turns in the same ongoing conversation.
-3) Use flush=true when:
-   - providing a final answer/summary,
-   - topic switches,
-   - user says session is done,
-   - app signals conversation close/timeout.
-4) If boundary is uncertain, use flush=true as safe fallback.
+调用 remember 时：
+1) 始终显式传入 flush（不要省略）。
+2) 同一段持续会话中的中间轮次使用 flush=false。
+3) 在以下场景使用 flush=true：
+   - 给出最终答复或总结时
+   - 话题切换时
+   - 用户表示会话结束时
+   - 应用发出会话关闭或超时信号时
+4) 如果边界不确定，兜底使用 flush=true。
 ```
+
+## 8.5) 空间模板（推荐）
+
+除非你有明确理由，否则建议直接按下面用：
+
+| 空间 | 推荐用途 |
+|------|----------|
+| `chat:preferences` | 长期身份信息、名字、偏好、沟通风格 |
+| `chat:daily` | 临时或滚动聊天上下文 |
+| `coding:<repo>` | 项目决策、Bug、架构、项目惯例 |
+| `study:<topic>` | 笔记、学习进度、复盘上下文 |
+
+这样做的好处是：个人偏好不会污染项目记忆，项目历史也不会反过来污染一般聊天上下文。
 
 ## 9) 接入后 30 秒自检
 在客户端里依次调用：
@@ -205,6 +218,18 @@ When calling remember:
 
 说明：`remember.request_status` 现在与独立 `request_status` 工具保持同构，包含 `ok` 和 `request_id`。
 
+## 9.5) `recall` / `fetch_history` / `forget` 怎么选
+
+- 想找“最相关的一条答案”时，用 `recall`
+- 想按时间复盘、搜索不稳定、或删除前后做核验时，用 `fetch_history`
+- `forget` 目前应按 Cloud 下的 best-effort 行为理解
+
+推荐删除流程：
+1. 先用 `fetch_history(space_id=..., memory_type=...)` 确认目标 `memory_id`。
+2. 调用 `forget(memory_ids=[...], space_id=...)`。
+3. 优先重新执行 `fetch_history`；`recall` 只作为补充确认。
+4. 如果目标仍出现，应先按 Cloud 限制记录，而不是立刻判断 MCP 路由失败。
+
 ## 10) 常见问题
 - `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
   - 原因：未配置 API Key
@@ -216,7 +241,7 @@ When calling remember:
 
 - `remember` 成功但 `recall` 为空
   - 原因：Cloud 提取是异步，队列时长不固定
-  - 处理：优先看 `request_status.lifecycle`、`recall.lifecycle`、`briefing.lifecycle`，不要假设固定等待时间
+  - 处理：先检查 `request_status.success/error`，再看 `request_status.lifecycle`、`recall.lifecycle`、`briefing.lifecycle`，不要假设固定等待时间
 
 - Cherry Studio 发布后仍启动旧版本
   - 原因：`uvx` 可能复用本地缓存
