@@ -68,7 +68,7 @@
 
 ## 10) 版本规划
 ### V1（比赛提交版）
-- 六个 MCP tools（含 `list_spaces`）+ `space_id` 隔离 + 可复现实验 Demo
+- 七个 MCP tools（含 `request_status`）+ `space_id` 隔离 + 可复现实验 Demo
 
 ### V1.1（加分项）
 - 自动会话摘要入库
