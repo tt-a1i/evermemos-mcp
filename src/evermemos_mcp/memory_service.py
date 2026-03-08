@@ -35,7 +35,9 @@ _CHAT_SPACE_PREFIX = "chat:"
 _NAME_EXTRACTION_PATTERNS = (
     re.compile(r"\bmy name is\s+([A-Za-z][A-Za-z0-9'\- ]{0,48})", re.IGNORECASE),
     re.compile(r"\bcall me\s+([A-Za-z][A-Za-z0-9'\- ]{0,48})", re.IGNORECASE),
-    re.compile(r"(?:我的?名字(?:叫|是)|用户名叫)\s*([A-Za-z\u4e00-\u9fff·•][A-Za-z0-9\u4e00-\u9fff·•'\- ]{0,48})"),
+    re.compile(
+        r"(?:我的?名字(?:叫|是)|用户名叫)\s*([A-Za-z\u4e00-\u9fff·•][A-Za-z0-9\u4e00-\u9fff·•'\- ]{0,48})"
+    ),
     re.compile(r"我叫\s*([A-Za-z\u4e00-\u9fff·•]{1,20})"),
     re.compile(r"叫我\s*([A-Za-z\u4e00-\u9fff·•]{1,20})"),
 )
@@ -81,6 +83,193 @@ class MemoryService:
     def __init__(self, client: EverMemosClient, catalog: SpaceCatalogService):
         self._client = client
         self._catalog = catalog
+
+    @staticmethod
+    def _canonical_lifecycle_state(value: object) -> str | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+
+        normalized = value.strip().lower()
+        if normalized in {"queued", "pending", "processing", "running", "accepted"}:
+            return "queued"
+        if normalized in {
+            "searchable",
+            "success",
+            "succeeded",
+            "completed",
+            "complete",
+            "done",
+            "processed",
+            "ready",
+        }:
+            return "searchable"
+        if normalized in {"provisional", "fallback", "empty"}:
+            return normalized
+        return None
+
+    @classmethod
+    def _build_collection_lifecycle(
+        cls,
+        *,
+        rows: list[dict],
+        pending_count: int = 0,
+        partial: bool = False,
+        empty_message: str,
+    ) -> dict:
+        counts = {
+            "queued": max(pending_count, 0),
+            "provisional": 0,
+            "fallback": 0,
+            "searchable": 0,
+        }
+
+        for row in rows:
+            state = cls._canonical_lifecycle_state(row.get("stability")) or "searchable"
+            if state in counts:
+                counts[state] += 1
+
+        if counts["searchable"] > 0:
+            primary_state = "searchable"
+            if counts["provisional"] > 0 or counts["fallback"] > 0:
+                message = (
+                    "Searchable memories are available. Some returned items still come from "
+                    "provisional or fallback sources."
+                )
+            else:
+                message = (
+                    "Searchable memories are available from formal extraction results."
+                )
+        elif counts["provisional"] > 0:
+            primary_state = "provisional"
+            message = (
+                "No searchable memories were found yet. Showing provisional results from "
+                "queued pending messages."
+            )
+        elif counts["fallback"] > 0:
+            primary_state = "fallback"
+            message = (
+                "No searchable memories were found yet. Showing conversation metadata "
+                "fallback instead."
+            )
+        elif counts["queued"] > 0:
+            primary_state = "queued"
+            message = (
+                "Relevant writes are still queued for extraction, so searchable results are "
+                "not available yet."
+            )
+        else:
+            primary_state = "empty"
+            message = empty_message
+
+        lifecycle = {
+            "state": primary_state,
+            "state_counts": counts,
+            "searchable": counts["searchable"] > 0,
+            "message": message,
+        }
+        if partial:
+            lifecycle["partial"] = True
+        return lifecycle
+
+    @classmethod
+    def _build_request_status_output(cls, request_id: str, status_res: dict) -> dict:
+        success = (
+            status_res.get("success", False) if isinstance(status_res, dict) else False
+        )
+        found = (
+            status_res.get("found", False) if isinstance(status_res, dict) else False
+        )
+        message = status_res.get("message", "") if isinstance(status_res, dict) else ""
+        data = status_res.get("data") if isinstance(status_res, dict) else None
+        upstream_status = data.get("status") if isinstance(data, dict) else None
+        upstream_state = cls._canonical_lifecycle_state(upstream_status)
+        lifecycle_state = (
+            "searchable"
+            if upstream_state == "searchable" and success and found
+            else "queued"
+        )
+
+        if lifecycle_state == "searchable":
+            lifecycle_message = (
+                "Upstream reports this write as completed. Recall and briefing should now "
+                "prefer searchable memories over provisional or fallback answers."
+            )
+        elif found is False:
+            lifecycle_message = (
+                "Upstream has not confirmed a searchable status record for this request yet. "
+                "Treat the write as still queued."
+            )
+        elif success:
+            lifecycle_message = (
+                "The write has been accepted, but extraction is still queued or not yet "
+                "confirmed searchable. Recall and briefing may still rely on provisional or "
+                "fallback results."
+            )
+        else:
+            lifecycle_message = (
+                "Status check did not confirm whether extraction is searchable yet. Treat the "
+                "write as still queued until recall or briefing shows searchable results."
+            )
+
+        output: dict = {
+            "ok": True,
+            "request_id": request_id,
+            "success": success,
+            "found": found,
+            "message": message,
+            "lifecycle": {
+                "state": lifecycle_state,
+                "searchable": lifecycle_state == "searchable",
+                "status_check_ok": success,
+                "request_found": found,
+                "message": lifecycle_message,
+                "state_counts": {
+                    "queued": 1 if lifecycle_state == "queued" else 0,
+                    "provisional": 0,
+                    "fallback": 0,
+                    "searchable": 1 if lifecycle_state == "searchable" else 0,
+                },
+            },
+        }
+        if isinstance(upstream_status, str) and upstream_status:
+            output["status"] = upstream_status
+            output["lifecycle"]["upstream_status"] = upstream_status
+        if data is not None:
+            output["data"] = data
+        return output
+
+    @classmethod
+    def _build_request_status_error_output(
+        cls,
+        request_id: str,
+        *,
+        error_message: str,
+        error_code: str | None,
+    ) -> dict:
+        return {
+            "ok": True,
+            "request_id": request_id,
+            "success": False,
+            "found": False,
+            "message": error_message,
+            "error": error_code,
+            "lifecycle": {
+                "state": "queued",
+                "searchable": False,
+                "status_check_ok": False,
+                "request_found": False,
+                "state_counts": {
+                    "queued": 1,
+                    "provisional": 0,
+                    "fallback": 0,
+                    "searchable": 0,
+                },
+                "message": (
+                    "Status check failed or is not yet visible upstream. Treat the write as "
+                    "queued until recall or briefing returns searchable results."
+                ),
+            },
+        }
 
     @staticmethod
     def _validate_space_id(space_id: str) -> str:
@@ -403,7 +592,9 @@ class MemoryService:
             if not match:
                 continue
             candidate = cls._normalize_note_text(match.group(1))
-            candidate = re.split(r"\s+(?:and|who|that|with|but)\b|[，。,.；;]", candidate, 1)[0]
+            candidate = re.split(
+                r"\s+(?:and|who|that|with|but)\b|[，。,.；;]", candidate, 1
+            )[0]
             candidate = cls._normalize_note_text(candidate)
             if candidate:
                 return candidate
@@ -465,7 +656,9 @@ class MemoryService:
         if preference_items:
             patch["preferences"] = preference_items
             patch["preference_notes"] = [normalized[:240]]
-        elif any(marker in normalized.lower() for marker in _PREFERENCE_SENTENCE_MARKERS):
+        elif any(
+            marker in normalized.lower() for marker in _PREFERENCE_SENTENCE_MARKERS
+        ):
             patch["preference_notes"] = [normalized[:240]]
 
         return patch or None
@@ -515,9 +708,8 @@ class MemoryService:
         full_name = profile.get("full_name")
         if isinstance(full_name, str) and full_name.strip():
             normalized_name = full_name.strip()
-            if (
-                normalized_name.casefold() != user_id.strip().casefold()
-                and (asks_name or include_all_when_unspecified)
+            if normalized_name.casefold() != user_id.strip().casefold() and (
+                asks_name or include_all_when_unspecified
             ):
                 lines.append(f"Known name: {normalized_name}")
 
@@ -532,7 +724,9 @@ class MemoryService:
                 lines.append(f"Known preferences: {preference_text}")
 
         preference_notes = profile.get("preference_notes")
-        if isinstance(preference_notes, list) and (asks_preferences or include_all_when_unspecified):
+        if isinstance(preference_notes, list) and (
+            asks_preferences or include_all_when_unspecified
+        ):
             for note in preference_notes:
                 if isinstance(note, str) and note.strip():
                     lines.append(note.strip())
@@ -817,6 +1011,7 @@ class MemoryService:
                 or item.get("start_time", "")
                 or item.get("created_at", "")
             ),
+            "stability": "searchable",
         }
 
         source_message_id = MemoryService._extract_source_message_id(item)
@@ -875,6 +1070,7 @@ class MemoryService:
                 "content": snippet_text,
                 "timestamp": item.get("timestamp", "") or item.get("created_at", ""),
                 "score": score,
+                "stability": "searchable",
             }
             source_group_id = item.get("group_id")
             if isinstance(source_group_id, str):
@@ -906,6 +1102,7 @@ class MemoryService:
                     or profile.get("created_at", "")
                 ),
                 "score": profile.get("score"),
+                "stability": "searchable",
             }
             source_group_id = profile.get("group_id")
             if isinstance(source_group_id, str):
@@ -1084,42 +1281,87 @@ class MemoryService:
             "request_id": request_id,
             "created_at": created_at,
             "processing_hint": (
-                "Memory queued for AI extraction. "
-                "Use recall or briefing after 1-2 minutes to verify. "
+                "Memory write accepted and queued for AI extraction. "
+                "Extraction timing depends on EverMemOS Cloud queue progress. "
+                "Use request_status, recall, or briefing to distinguish queued, "
+                "provisional, fallback, and searchable states. "
                 "Tip: use flush=true at session end to finalize extraction."
             ),
             "memory_count_hint": (
                 "Space memory_count is approximate in Cloud mode. "
                 "A queued message can produce zero or multiple memories."
             ),
+            "lifecycle": {
+                "state": "queued",
+                "searchable": False,
+                "state_counts": {
+                    "queued": 1,
+                    "provisional": 0,
+                    "fallback": 0,
+                    "searchable": 0,
+                },
+                "message": (
+                    "The write was accepted and queued. Until extraction completes, recall "
+                    "or briefing may only surface provisional or fallback answers."
+                ),
+            },
         }
+
+        if request_id:
+            output["status_check"] = {
+                "recommended": True,
+                "tool": "request_status",
+                "request_id": request_id,
+                "checked_now": False,
+                "message": (
+                    "Recommended write-after check: call request_status with this "
+                    "request_id before assuming the write is searchable. For future "
+                    "writes, prefer remember(include_status=true)."
+                ),
+            }
 
         if actor_profile:
             output["metadata_mirror"] = {
                 "enabled": True,
                 "message": (
-                    "Detected chat identity/preferences and attempted to mirror them "
-                    "into conversation metadata as a fallback when extracted results "
-                    "are unavailable."
+                    "Detected chat identity/preferences and mirrored them into conversation "
+                    "metadata so recall or briefing can expose a fallback while searchable "
+                    "memories are not ready yet."
                 ),
             }
 
         if include_status and request_id:
             try:
                 status_res = await self._client.get_request_status(request_id)
-                output["request_status"] = {
-                    "success": status_res.get("success", False),
-                    "found": status_res.get("found", False),
-                    "data": status_res.get("data"),
-                    "message": status_res.get("message", ""),
-                }
+                remember_status = self._build_request_status_output(
+                    request_id, status_res
+                )
+                output["request_status"] = remember_status
+                status_check = output.get("status_check")
+                if isinstance(status_check, dict):
+                    status_check["checked_now"] = True
+                    status_check["message"] = (
+                        "Write-after check completed once. Check request_status.success "
+                        "and request_status.error before interpreting lifecycle.state. "
+                        "If lifecycle.state remains queued without an error, keep using "
+                        "request_status with this request_id until upstream confirms "
+                        "searchable completion."
+                    )
             except EverMemosError as exc:
-                output["request_status"] = {
-                    "success": False,
-                    "found": False,
-                    "message": str(exc),
-                    "error": exc.code,
-                }
+                remember_status = self._build_request_status_error_output(
+                    request_id,
+                    error_message=str(exc),
+                    error_code=exc.code,
+                )
+                output["request_status"] = remember_status
+                status_check = output.get("status_check")
+                if isinstance(status_check, dict):
+                    status_check["checked_now"] = True
+                    status_check["message"] = (
+                        "Write-after check attempted once but upstream status was not "
+                        "confirmed. Inspect request_status.success / request_status.error, "
+                        "then keep the request_id and retry request_status later."
+                    )
 
         return output
 
@@ -1130,28 +1372,15 @@ class MemoryService:
             raise EverMemosError("request_id is required", code="INVALID_INPUT")
 
         normalized_request_id = request_id.strip()
-        status_res = await self._client.get_request_status(normalized_request_id)
-        data = status_res.get("data") if isinstance(status_res, dict) else None
-        status = data.get("status") if isinstance(data, dict) else None
-
-        output: dict = {
-            "ok": True,
-            "request_id": normalized_request_id,
-            "success": status_res.get("success", False)
-            if isinstance(status_res, dict)
-            else False,
-            "found": status_res.get("found", False)
-            if isinstance(status_res, dict)
-            else False,
-            "message": status_res.get("message", "")
-            if isinstance(status_res, dict)
-            else "",
-        }
-        if isinstance(status, str) and status:
-            output["status"] = status
-        if data is not None:
-            output["data"] = data
-        return output
+        try:
+            status_res = await self._client.get_request_status(normalized_request_id)
+        except EverMemosError as exc:
+            return self._build_request_status_error_output(
+                normalized_request_id,
+                error_message=str(exc),
+                error_code=exc.code,
+            )
+        return self._build_request_status_output(normalized_request_id, status_res)
 
     async def recall(
         self,
@@ -1441,10 +1670,7 @@ class MemoryService:
             )
 
             probe_errors: list[dict] = []
-            if (
-                probe_signature not in completed_probe_signatures
-                and has_new_probe_keys
-            ):
+            if probe_signature not in completed_probe_signatures and has_new_probe_keys:
                 completed_probe_signatures.add(probe_signature)
                 probed_row_keys.update(unresolved_probe_keys)
 
@@ -1564,8 +1790,8 @@ class MemoryService:
                         {
                             "code": "IDENTITY_FALLBACK_APPLIED",
                             "message": (
-                                "Search returned no extracted results; surfaced pending/messages "
-                                "or conversation metadata as a fallback."
+                                "Search returned no searchable memories; surfaced provisional "
+                                "pending-message or conversation-metadata fallback results instead."
                             ),
                         }
                     )
@@ -1584,14 +1810,14 @@ class MemoryService:
             if pending_count > 0:
                 output["pending_count"] = pending_count
                 output["pending_hint"] = (
-                    f"{pending_count} message(s) are still being processed "
-                    "and may contain relevant information."
+                    f"{pending_count} message(s) are still queued for extraction and may later "
+                    "produce searchable memories."
                 )
 
             has_partial = status == "partial" or bool(partial_errors)
             if has_partial:
                 output["partial_hint"] = (
-                    "Search returned partial results from upstream."
+                    "Search returned partial results from upstream, so lifecycle counts may be incomplete."
                 )
                 if partial_errors:
                     output["partial_errors"] = partial_errors
@@ -1599,6 +1825,12 @@ class MemoryService:
                     output["partial_errors"] = [{"message": message}]
             if warnings:
                 output["warnings"] = warnings
+            output["lifecycle"] = self._build_collection_lifecycle(
+                rows=rows,
+                pending_count=pending_count,
+                partial=has_partial,
+                empty_message="No matching memories were found in the current search scope.",
+            )
             return output
 
         can_run_hybrid_branch = memory_types is None or all(
@@ -1690,8 +1922,8 @@ class MemoryService:
                     {
                         "code": "IDENTITY_FALLBACK_APPLIED",
                         "message": (
-                            "Auto recall returned no extracted results; surfaced pending/messages "
-                            "or conversation metadata as a fallback."
+                            "Auto recall returned no searchable memories; surfaced provisional "
+                            "pending-message or conversation-metadata fallback results instead."
                         ),
                     }
                 )
@@ -1709,16 +1941,24 @@ class MemoryService:
         if pending_count > 0:
             output["pending_count"] = pending_count
             output["pending_hint"] = (
-                f"{pending_count} message(s) are still being processed "
-                "and may contain relevant information."
+                f"{pending_count} message(s) are still queued for extraction and may later "
+                "produce searchable memories."
             )
         if warnings:
             output["warnings"] = warnings
         if failures:
-            output["partial_hint"] = "Search returned partial results from upstream."
+            output["partial_hint"] = (
+                "Search returned partial results from upstream, so lifecycle counts may be incomplete."
+            )
             output["partial_errors"] = [
                 {"branch": method, "message": str(error)} for method, error in failures
             ]
+        output["lifecycle"] = self._build_collection_lifecycle(
+            rows=merged_rows,
+            pending_count=pending_count,
+            partial=bool(failures),
+            empty_message="No matching memories were found in the current search scope.",
+        )
         return output
 
     # -- briefing --
@@ -1835,11 +2075,14 @@ class MemoryService:
                                 or pw.get("created_at", "")
                                 or pw.get("timestamp", "")
                             ),
+                            "stability": "searchable",
                         }
                     )
                     profile_highlight_count += 1
             if highlights:
-                summary_parts.append(f"User profile ({profile_highlight_count} entries)")
+                summary_parts.append(
+                    f"User profile ({profile_highlight_count} entries)"
+                )
 
         # Episodic memory
         if isinstance(episodic_res, dict):
@@ -1855,6 +2098,7 @@ class MemoryService:
                         "snippet": snippet_text,
                         "content": snippet_text,
                         "timestamp": ep.get("timestamp", ""),
+                        "stability": "searchable",
                     }
                     source_message_id = self._extract_source_message_id(ep)
                     if source_message_id:
@@ -1879,6 +2123,7 @@ class MemoryService:
                         "snippet": snippet_text,
                         "content": snippet_text,
                         "timestamp": ev.get("timestamp", ""),
+                        "stability": "searchable",
                     }
                     source_message_id = self._extract_source_message_id(ev)
                     if source_message_id:
@@ -1916,6 +2161,7 @@ class MemoryService:
                             or fo.get("target_time", "")
                             or fo.get("created_at", "")
                         ),
+                        "stability": "searchable",
                     }
                     source_message_id = self._extract_source_message_id(fo)
                     if source_message_id:
@@ -1945,7 +2191,10 @@ class MemoryService:
                             "user_id": row.get("user_id"),
                         },
                     )
-                summary_parts.insert(0, "Conversation metadata fallback (1 entry)")
+                summary_parts.insert(
+                    0,
+                    "Conversation metadata fallback (1 entry; not formally extracted)",
+                )
 
         output: dict = {
             "ok": True,
@@ -1956,15 +2205,22 @@ class MemoryService:
                 else "No memories found in this space yet."
             ),
             "highlights": highlights,
+            "lifecycle": self._build_collection_lifecycle(
+                rows=highlights,
+                empty_message="No searchable or fallback memories were found in this space yet.",
+            ),
         }
 
         # Partial failure — include warning
         if failures:
-            output["partial_hint"] = "Some memory types could not be fetched."
+            output["partial_hint"] = (
+                "Some memory types could not be fetched, so lifecycle counts may be incomplete."
+            )
             output["partial_errors"] = [
                 {"memory_type": memory_type, "message": str(error)}
                 for memory_type, error in failures
             ]
+            output["lifecycle"]["partial"] = True
 
         return output
 
@@ -2190,7 +2446,11 @@ class MemoryService:
                 delete_diagnostics = None
                 if logical_deleted == 0 and isinstance(result, dict):
                     raw_result = result.get("result")
-                    filters = raw_result.get("filters") if isinstance(raw_result, dict) else None
+                    filters = (
+                        raw_result.get("filters")
+                        if isinstance(raw_result, dict)
+                        else None
+                    )
                     message = result.get("message")
                     if isinstance(filters, list) and not filters:
                         delete_diagnostics = {

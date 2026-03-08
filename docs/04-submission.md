@@ -23,8 +23,10 @@
 - [ ] Short clip script finalized: `docs/competition/video_script_short_clip.md`
 - [ ] Explain pain point: context loss across sessions
 - [ ] Show `list_spaces` routing
+- [ ] Explain `request_status` as the write-after verification path
 - [ ] Show citation fields in `recall` (`timestamp/snippet/type/score`)
 - [ ] Show context restoration via `briefing`
+- [ ] Show `fetch_history` for timeline or delete verification
 - [ ] Show targeted delete via `forget` (or state current Cloud limitation if delete remains recallable)
 - [ ] Clearly state Cloud async extraction and preload strategy
 
@@ -39,6 +41,7 @@
 ## 4. Reusable Demo Talking Points
 - "We use `space_id` as the primary isolation key to prevent context leakage across tasks."
 - "Writes are queued on Cloud, so we preload memories before live retrieval demos."
+- "`request_status` is the write-after check before we claim a memory is searchable."
 - "Recall and briefing return traceable evidence fields, not opaque summaries."
 
 ## 5. AI Disclosure for Open Source PRs

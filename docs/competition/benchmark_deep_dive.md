@@ -118,7 +118,7 @@ Scope:
 
 Purpose:
 - Demonstrate that memory lifecycle is operational end-to-end:
-  `remember -> searchable -> isolated recall -> forget`.
+  `remember -> request_status/searchable -> isolated recall -> fetch_history/forget`.
 
 ### 10.1 Suggested minimal checks
 1. `remember` success rate  

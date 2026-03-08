@@ -66,6 +66,8 @@ TOOLS: list[types.Tool] = [
             "which space_id values exist before using other memory tools. "
             "Each space isolates memories by project or topic "
             "(e.g. coding:my-app, study:ml-notes, chat:preferences). "
+            "Use it when you need to decide which space fits a new write or to avoid "
+            "mixing personal preferences with project history. "
             "If no spaces exist yet, create one by calling remember with a new space_id and description."
         ),
         inputSchema={
@@ -89,8 +91,12 @@ TOOLS: list[types.Tool] = [
             "Store information in long-term memory within a specific space. "
             "Use this proactively to save architecture decisions, user preferences, "
             "project conventions, bug solutions, and key context. "
-            "Content is queued for AI extraction and becomes searchable via recall "
-            "after a few minutes. "
+            "Content is queued for AI extraction and becomes searchable only after "
+            "upstream processing completes. "
+            "For important writes, prefer remember(include_status=true) so the write-after "
+            "status check runs immediately. "
+            "Use request_status, recall, or briefing to distinguish queued, "
+            "provisional, fallback, and searchable states. "
             "Set flush=true at end of session or topic switch; flush=false during ongoing work. "
             "Provide a description when creating a new space for the first time."
         ),
@@ -105,7 +111,10 @@ TOOLS: list[types.Tool] = [
                     "type": "string",
                     "description": (
                         "Target memory space in <domain>:<slug> format "
-                        "(e.g. coding:my-app, chat:daily, study:ml). "
+                        "(e.g. coding:my-app, chat:preferences, chat:daily, study:ml). "
+                        "Use chat:preferences for durable personal preferences, "
+                        "chat:daily for ongoing chat context, coding:<repo> for project decisions, "
+                        "and study:<topic> for learning notes. "
                         "If omitted, auto-detected from git remote (coding:<repo-name>)."
                     ),
                 },
@@ -150,7 +159,8 @@ TOOLS: list[types.Tool] = [
                     "type": "boolean",
                     "description": (
                         "Whether to also query request status once after queuing "
-                        "the memory write"
+                        "the memory write. Recommended for important writes and write-after "
+                        "checks"
                     ),
                     "default": False,
                 },
@@ -163,7 +173,8 @@ TOOLS: list[types.Tool] = [
         description=(
             "Check the async processing status for a prior remember request. "
             "Use this when remember returned a request_id and you need to know "
-            "whether extraction is still queued, processing, or completed."
+            "whether extraction is still queued or has been reported complete by upstream. "
+            "Check success/error first, then interpret lifecycle.state."
         ),
         inputSchema={
             "type": "object",
@@ -184,7 +195,10 @@ TOOLS: list[types.Tool] = [
             "conventions, or anything discussed in previous sessions. "
             "Returns matching memories with traceable citations "
             "(memory_type, snippet, timestamp, relevance score). "
-            "Also reports pending_count — how many messages are still being extracted. "
+            "Also reports whether current results are searchable, provisional, or fallback, "
+            "plus pending_count for queued writes. "
+            "If you need chronological review, delete verification, or a complete timeline, "
+            "prefer fetch_history instead of relying on relevance-ranked recall alone. "
             "If space_id and space_ids are both omitted, auto-detected from git remote (coding:<repo-name>)."
         ),
         inputSchema={
@@ -285,6 +299,8 @@ TOOLS: list[types.Tool] = [
             "Get a structured context briefing for a memory space. "
             "Call this at the start of every new session to restore context. "
             "Returns: user profile, recent episodes, key facts, and foresights. "
+            "When formal profile memories are unavailable, briefing may surface explicit "
+            "fallback metadata and label it as such. "
             "This is the fastest way to catch up on everything stored in a space."
         ),
         inputSchema={
@@ -323,8 +339,9 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Delete specific memories by their IDs (permanent). "
-            "Use recall first to find the memory_id values you want to remove. "
+            "Delete specific memories by their IDs (best-effort in current Cloud behavior). "
+            "Use fetch_history or recall to verify the target memory_id before deleting, "
+            "then verify again after deletion instead of assuming immediate removal. "
             "Useful for correcting outdated or incorrect memories."
         ),
         inputSchema={
@@ -359,14 +376,19 @@ TOOLS: list[types.Tool] = [
         description=(
             "Page through historical memories in a space by memory_type. "
             "Useful for chronological timeline review when recall's relevance ranking "
-            "is not sufficient, or when you need to browse all memories of a type."
+            "is not sufficient, or when you need to browse all memories of a type. "
+            "This is the primary tool for timeline review, pre-delete verification, and "
+            "post-delete re-checks."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "space_id": {
                     "type": "string",
-                    "description": "Memory space to fetch",
+                    "description": (
+                        "Memory space to fetch. Use the same space you would brief or recall "
+                        "when reviewing a timeline."
+                    ),
                 },
                 "memory_type": {
                     "type": "string",

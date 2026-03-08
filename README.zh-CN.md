@@ -34,9 +34,9 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 |------|------|
 | `list_spaces` | 发现可用的记忆空间 |
 | `remember` | 将信息存入长期记忆（异步提取） |
-| `request_status` | 查询某次 `remember` 写入当前是否仍在排队或已处理完成 |
-| `recall` | 搜索记忆，支持 6 种检索策略（`keyword`、`hybrid`、`vector`、`rrf`、`agentic`、`auto`） |
-| `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测 |
+| `request_status` | 查询某次 `remember` 写入当前是否仍在排队，或已被上游标记为完成 |
+| `recall` | 搜索记忆，支持 6 种检索策略，并显式标注结果是 `searchable`、`provisional` 还是 `fallback` |
+| `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测，必要时会显式标记 fallback |
 | `forget` | 按 ID 发起定向删除（当前 Cloud 行为可能有差异） |
 | `fetch_history` | 按类型分页浏览记忆时间线 |
 
@@ -48,6 +48,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 - **多用户支持** — 可选 `user_id` 过滤，适用于共享空间场景
 - **会话元数据同步** — 自动与 EverMemOS Cloud 的 `conversation-meta` 集成
 - **异步身份兜底** — 聊天身份/偏好会以 best-effort 方式轻量镜像到 `conversation-meta`，并在提取型搜索结果不可用时以显式 fallback 形式返回
+- **统一生命周期语义** — `remember`、`request_status`、`recall`、`briefing` 都会返回兼容的 `lifecycle` 视图，让客户端可以组合区分 `queued`、`provisional`、`fallback`、`searchable`
 - **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
 
 ## 快速开始
@@ -151,6 +152,51 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
 - **Cloud 优先** — 所有记忆存储在 EverMemOS Cloud，无本地持久化，不会丢失状态
 - **进程内缓存** — 空间目录在内存中缓存，启动时从 Cloud 恢复
 - **异步提取** — `remember` 将内容加入队列，由 AI 提取后变为可检索的记忆
+
+## 记忆生命周期状态
+
+| 状态 | 含义 | 常见体现位置 |
+|------|------|--------------|
+| `queued` | 写入已被接受，但正式提取结果还没有确认可检索 | `remember.lifecycle`、`request_status.lifecycle`、`recall.pending_count` |
+| `provisional` | 当前答案来自 `pending_messages`，说明还在排队阶段 | `recall.results[].stability == provisional` |
+| `fallback` | 当前答案来自镜像后的 `conversation-meta`，不是正式提取记忆 | `recall.results[].stability == fallback`、`briefing.highlights[].stability == fallback` |
+| `searchable` | 当前答案来自正式提取后的记忆结果 | `recall.results[].stability == searchable`、`briefing.highlights[].stability == searchable` |
+
+如果工具能用 `provisional` 或 `fallback` 给出答案，并不代表正式提取已经完成。
+
+## 空间模板
+
+请按“使用目的”来分空间，而不是只把它当参数格式：
+
+| 模板 | 适合存什么 |
+|------|------------|
+| `chat:preferences` | 长期个人偏好、名字、称呼、语气、UI 喜好 |
+| `chat:daily` | 持续聊天上下文，不应混入项目记忆 |
+| `coding:<repo>` | 架构决策、项目惯例、Bug 根因、项目上下文 |
+| `study:<topic>` | 学习笔记、主题进度、复盘上下文 |
+
+为什么要分空间？因为“我是谁”“这个项目怎么做”“我最近在学什么”本来就是三类不同记忆，不应该互相覆盖。
+
+## 工具怎么选
+
+| 目标 | 主工具 | 原因 |
+|------|--------|------|
+| 开始一个新会话 | `briefing` | 一次调用就能恢复整体上下文 |
+| 找最相关的旧信息 | `recall` | 适合按相关性找重点 |
+| 按时间回看发生过什么 | `fetch_history` | 做时间线复盘时，比 relevance 排序更可靠 |
+| 删除前后做核验 | `fetch_history` | 删除核验更适合先看稳定时间线 |
+
+如果 `recall` 看起来不稳定、太挑结果，先切到 `fetch_history`，不要盲目重复同一个搜索。
+
+## Forget 安全说明
+
+`forget` 目前应理解为 Cloud 下的 best-effort 操作，不是“立刻、稳定、必然删除”的强承诺。
+
+推荐删除流程：
+1. 先用 `fetch_history` 或 `recall` 确认目标 `memory_id`。
+2. 调用 `forget(memory_ids=[...], space_id=...)`。
+3. 优先用 `fetch_history` 复查，再按需用 `recall` 做补充确认。
+4. 如果目标仍出现，应先按当前 Cloud 限制理解，而不是立刻怀疑 MCP 路由错误。
 
 ## 使用场景
 

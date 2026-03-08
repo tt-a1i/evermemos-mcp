@@ -27,7 +27,7 @@ Action:
 uv run python scripts/demo_live_walkthrough.py
 ```
 Narration:
-"The product loop is remember -> recall/briefing -> forget. It proves we can store memory, restore context across sessions, and support controlled deletion."
+"The product loop is remember -> request_status -> recall/briefing -> fetch_history/forget. It proves we can store memory, verify lifecycle state, restore context across sessions, and handle deletion honestly under current Cloud limits."
 
 ### 01:20-01:55 (Metric meaning)
 Narration:

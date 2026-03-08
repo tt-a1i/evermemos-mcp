@@ -28,9 +28,9 @@
 
 ## 5) 产品边界
 ### In Scope（V1 必做）
-- MCP 工具集：`list_spaces` / `remember` / `recall` / `briefing` / `forget` / `fetch_history`
+- MCP 工具集：`list_spaces` / `remember` / `request_status` / `recall` / `briefing` / `forget` / `fetch_history`
 - 记忆隔离：以 `space_id` 为主（必须）；`project_id` 只是 coding 场景的一种映射
-- EverMemOS API：完成写入、检索、删除闭环
+- EverMemOS API：完成写入、状态查询、检索、删除闭环
 - 数据策略：Cloud-only（不做本地持久化）
 - 最小安全：支持显式删除（`forget`）
 
@@ -53,13 +53,13 @@
 - `fetch_history` 支持按 `memory_type` 分页翻阅历史
 - 跨 `space_id` 检索不应返回其他空间记忆
 - `briefing` 在空空间和非空空间都返回可解释结果
-- `forget` 生效后，目标记忆在后续检索中不可见
+- `forget` 以 best-effort 删除路径对外暴露，并提供删前/删后核验指引
 
 ## 8) 演示成功标准（比赛导向）
 - 同一问题对照明显成立（无记忆 vs 有记忆）
 - 展示 2-3 个场景切换（coding / daily chat / study）
 - 展示 `space_id` 隔离（Space A 与 Space B 不串）
-- 展示删除可控（删除后检索不到）
+- 展示删除可控，并能诚实表达 Cloud 限制与核验流程
 
 ## 9) 非功能需求
 - 性能：常规检索 < 2 秒（本地目标）

@@ -13,7 +13,7 @@ Most demos show retrieval only, but fail to prove decision improvement and contr
 
 ## Solution
 `evermemos-mcp` provides a universal MCP memory layer on EverMemOS with explicit `space_id` isolation, optional default-space auto-detection, and production-safe tool contracts.  
-It delivers a closed loop: `remember -> recall/briefing -> action improvement -> forget`, with traceable evidence fields (`memory_type/snippet/timestamp/score`).  
+It delivers a closed loop: `remember -> request_status -> recall/briefing -> fetch_history/forget`, with traceable evidence fields (`memory_type/snippet/timestamp/score`).  
 The competition demo focuses on reproducible benchmark evidence (hit rate, latency, attribution error), not anecdotal screenshots.
 Current release line also includes `uvx` installation, Smithery registry config, and auto-memory prompt templates for Claude Code / Cursor / Cline.
 

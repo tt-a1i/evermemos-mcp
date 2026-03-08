@@ -64,6 +64,29 @@ async def test_list_tools_returns_seven():
     }
 
 
+@pytest.mark.asyncio
+async def test_tool_descriptions_cover_client_guidance():
+    tools = await server_mod.handle_list_tools()  # type: ignore[call-arg]
+    tool_map = {tool.name: tool for tool in tools}
+
+    remember_description = tool_map["remember"].description or ""
+    recall_description = tool_map["recall"].description or ""
+    forget_description = tool_map["forget"].description or ""
+    history_description = tool_map["fetch_history"].description or ""
+    remember_space_description = (
+        tool_map["remember"]
+        .inputSchema.get("properties", {})
+        .get("space_id", {})
+        .get("description", "")
+    )
+
+    assert "include_status=true" in remember_description
+    assert "chat:preferences" in remember_space_description
+    assert "fetch_history" in recall_description
+    assert "best-effort" in forget_description
+    assert "timeline" in history_description
+
+
 # -- dispatch --
 
 
@@ -76,6 +99,8 @@ async def test_dispatch_remember(svc):
     assert data["ok"] is True
     assert data["space_id"] == "coding:app"
     assert data["created_at"]
+    assert data["lifecycle"]["state"] == "queued"
+    assert data["status_check"]["tool"] == "request_status"
 
 
 @pytest.mark.asyncio
@@ -90,7 +115,11 @@ async def test_dispatch_remember_with_status(svc):
     )
     data = _parse(result)
     assert data["ok"] is True
+    assert data["request_status"]["ok"] is True
+    assert data["request_status"]["request_id"] == "req-abc"
     assert data["request_status"]["success"] is True
+    assert data["request_status"]["lifecycle"]["state"] == "queued"
+    assert data["status_check"]["checked_now"] is True
 
 
 @pytest.mark.asyncio
@@ -103,6 +132,7 @@ async def test_dispatch_request_status(svc):
     assert data["ok"] is True
     assert data["request_id"] == "req-abc"
     assert data["status"] == "queued"
+    assert data["lifecycle"]["state"] == "queued"
 
 
 @pytest.mark.asyncio
@@ -220,9 +250,7 @@ async def test_dispatch_recall_requires_space_scope(svc):
 async def test_dispatch_recall_auto_detects_space(svc):
     with patch.object(config, "EVERMEMOS_DEFAULT_SPACE", "coding:my-repo"):
         svc._catalog.ensure_space("coding:my-repo")
-        result = await server_mod.handle_call_tool(
-            "recall", {"query": "FastAPI"}
-        )
+        result = await server_mod.handle_call_tool("recall", {"query": "FastAPI"})
     data = _parse(result)
     assert data["ok"] is True
     assert data["space_id"] == "coding:my-repo"

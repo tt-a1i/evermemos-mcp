@@ -9,7 +9,8 @@
 - 展示跨 session 记忆恢复能力
 - 展示 `space_id` 隔离（coding/chat/study 三场景）
 - 展示引用可追溯（timestamp + snippet + type + score）
-- 展示可控删除（`forget`）
+- 展示 `fetch_history` 的时间线核验能力
+- 展示 `forget` 的 best-effort 删除语义
 
 ## 2. 关键原则
 
@@ -54,10 +55,10 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 
 ### Part E（30-45 秒）：`forget` 可控删除
 
-1. 从 recall 中拿到某个 `memory_id`（如果前几项全是 profile，则回退到 `fetch_history` 取 episodic ID）
+1. 先用 `fetch_history` 展示目标 `memory_id` 在时间线里确实存在
 2. 调用 `forget(memory_ids=[...])`
-3. 如果 Cloud 删除成功，再次 recall，确认目标不再出现
-4. 如果 Cloud 返回 `ok` 但目标仍可 recall，把它表述为当前 Cloud 限制，而不是 MCP 路由失败
+3. 优先再次执行 `fetch_history`，再按需用 `recall` 补充确认目标是否消失
+4. 如果 Cloud 返回 `ok` 但目标仍可见，把它表述为当前 Cloud 限制，而不是 MCP 路由失败
 
 ## 5. 演示命令清单
 
@@ -71,7 +72,7 @@ uv run python scripts/demo_live_walkthrough.py
 
 ## 6. 常见故障与处理
 
-- recall 为空但 pending_count > 0：提取还在进行，等待后重试
+- recall 为空但 pending_count > 0：说明提取仍在排队；应查看 `recall.lifecycle`，不要把 provisional/fallback 结果当成 searchable
 - remember 返回了 request_status 但 found=false：状态记录可能还没可查，稍后再试（不影响异步写入已排队）
 - Cloud 网络抖动：重跑 recall，或在视频中展示错误语义（UPSTREAM_UNAVAILABLE）
 - list_spaces 不完整：先执行一次 preload，再 list_spaces
@@ -81,4 +82,4 @@ uv run python scripts/demo_live_walkthrough.py
 
 - 创新性：MCP 通用记忆层 + `space_id` 路由
 - 技术深度：6 个 tools 闭环 + 错误语义 + 引用字段
-- 用户价值：跨会话连续性、可查可删、可验证
+- 用户价值：跨会话连续性、可查、可复盘、可验证

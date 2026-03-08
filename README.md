@@ -34,9 +34,9 @@ Current submission-ready evidence:
 |------|-------------|
 | `list_spaces` | Discover available memory spaces |
 | `remember` | Store information into long-term memory (async extraction) |
-| `request_status` | Check whether a queued write is still pending or already processed |
-| `recall` | Search memories with 6 retrieval strategies (`keyword`, `hybrid`, `vector`, `rrf`, `agentic`, `auto`) |
-| `briefing` | Get a structured context briefing: profile + episodes + facts + foresights |
+| `request_status` | Check whether a queued write is still queued or has been reported completed by upstream |
+| `recall` | Search memories with 6 retrieval strategies and label whether results are `searchable`, `provisional`, or `fallback` |
+| `briefing` | Get a structured context briefing: profile + episodes + facts + foresights, with explicit fallback labeling when needed |
 | `forget` | Attempt targeted memory deletion by ID (Cloud behavior may vary) |
 | `fetch_history` | Paginate through memory timeline by type |
 
@@ -48,6 +48,7 @@ Current submission-ready evidence:
 - **Multi-user support** — Optional `user_id` filtering for shared spaces
 - **Conversation metadata sync** — Automatic `conversation-meta` integration with EverMemOS Cloud
 - **Async-friendly identity fallback** — Chat identity/preferences are best-effort mirrored into `conversation-meta` and can be surfaced as explicit fallback results when extracted search results are unavailable
+- **Unified lifecycle semantics** — `remember`, `request_status`, `recall`, and `briefing` expose compatible `lifecycle` blocks so clients can collectively distinguish `queued`, `provisional`, `fallback`, and `searchable`
 - **Robust error handling** — Retry with backoff (429 / 5xx), GET body fallback for proxy/WAF compatibility, and structured error codes
 
 ## Quick Start
@@ -151,6 +152,51 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
 - **Cloud-first** — All memories live in EverMemOS Cloud. No local persistence, no state to lose.
 - **Process-local cache** — Space catalog is cached in-memory for fast lookups, recovered from Cloud on startup.
 - **Async extraction** — `remember` queues content for AI-powered extraction. Memories become searchable after processing.
+
+## Memory Lifecycle States
+
+| State | Meaning | Typical surface |
+|-------|---------|-----------------|
+| `queued` | The write was accepted, but formal extraction is not confirmed searchable yet | `remember.lifecycle`, `request_status.lifecycle`, `recall.pending_count` |
+| `provisional` | The answer comes from `pending_messages` while extraction is still queued | `recall.results[].stability == provisional` |
+| `fallback` | The answer comes from mirrored `conversation-meta`, not formal extracted memory | `recall.results[].stability == fallback`, `briefing.highlights[].stability == fallback` |
+| `searchable` | The answer comes from formal extracted memories returned by search/fetch APIs | `recall.results[].stability == searchable`, `briefing.highlights[].stability == searchable` |
+
+If a tool can answer using `provisional` or `fallback` data, that does not mean formal extraction has completed.
+
+## Space Templates
+
+Use spaces to separate intent, not just data:
+
+| Template | Use it for |
+|----------|------------|
+| `chat:preferences` | durable personal preferences, names, tone, UI likes/dislikes |
+| `chat:daily` | ongoing chat context that should not leak into project memory |
+| `coding:<repo>` | architecture decisions, conventions, bugs, and project context |
+| `study:<topic>` | learning notes, topic progress, and revision context |
+
+Why split spaces? Because "who I am", "what this repo needs", and "what I'm learning" should not overwrite each other.
+
+## Which Tool To Use
+
+| Goal | Primary tool | Why |
+|------|--------------|-----|
+| Start a new session | `briefing` | fastest way to restore context in one call |
+| Find the most relevant prior fact | `recall` | relevance-ranked lookup across one or more spaces |
+| Review what happened over time | `fetch_history` | chronological timeline beats ranked search for audits and replay |
+| Verify before or after deletion | `fetch_history` | stable timeline check before trusting `forget` |
+
+If `recall` feels unstable or too selective, switch to `fetch_history` instead of retrying the same search blindly.
+
+## Forget Safety
+
+`forget` is currently a best-effort Cloud operation, not a guaranteed instant erase.
+
+Recommended deletion flow:
+1. Use `fetch_history` or `recall` to confirm the target `memory_id`.
+2. Call `forget(memory_ids=[...], space_id=...)`.
+3. Re-check with `fetch_history` first, then `recall` if needed.
+4. If the target still appears, treat it as a current Cloud limitation rather than proof that routing was wrong.
 
 ## Use Cases
 

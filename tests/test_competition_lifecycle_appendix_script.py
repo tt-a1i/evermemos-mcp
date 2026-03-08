@@ -82,3 +82,98 @@ def test_measure_isolation_counts_only_cross_space_leaks():
     assert result["false_hits"] == 0
     assert result["correct"] is True
     assert all(detail["leaked_rows"] == 0 for detail in result["details"])
+
+
+def test_measure_isolation_ignores_non_searchable_rows():
+    module = _load_module()
+
+    class FakeSvc:
+        async def recall(self, *, query, space_id, top_k, retrieve_method):
+            return {
+                "results": [
+                    {
+                        "space_id": "coding:other",
+                        "memory_id": "pending:1",
+                        "stability": "provisional",
+                    },
+                    {
+                        "space_id": "coding:other",
+                        "memory_id": "meta:1",
+                        "stability": "fallback",
+                    },
+                ]
+            }
+
+    result = asyncio.run(
+        module._measure_isolation(
+            FakeSvc(),
+            {"coding": "coding:demo", "chat": "chat:demo", "study": "study:demo"},
+            {"coding": "q1", "chat": "q2", "study": "q3"},
+            [],
+        )
+    )
+
+    assert result["cross_space_queries"] == 6
+    assert result["false_hits"] == 0
+    assert all(detail["hit_count"] == 0 for detail in result["details"])
+
+
+def test_pick_deletable_memory_id_skips_non_searchable_recall_rows():
+    module = _load_module()
+
+    class FakeSvc:
+        async def recall(self, *, query, space_id, top_k, retrieve_method):
+            return {
+                "results": [
+                    {"memory_id": "pending:1", "stability": "provisional"},
+                    {"memory_id": "conversation-meta:1", "stability": "fallback"},
+                ]
+            }
+
+        async def fetch_history(self, space_id, memory_type, limit, offset):
+            return {"items": [{"memory_id": "ep-001"}]}
+
+    memory_id = asyncio.run(
+        module._pick_deletable_memory_id(FakeSvc(), "coding:demo", "architecture")
+    )
+
+    assert memory_id == "ep-001"
+
+
+def test_wait_until_searchable_records_searchable_count_only():
+    module = _load_module()
+
+    class FakeSvc:
+        async def recall(self, *, query, space_id, top_k, retrieve_method):
+            return {
+                "results": [
+                    {"memory_id": "pending:1", "stability": "provisional"},
+                    {"memory_id": "meta:1", "stability": "fallback"},
+                    {"memory_id": "ep-001", "stability": "searchable"},
+                ],
+                "pending_count": 2,
+                "lifecycle": {"state": "searchable"},
+            }
+
+    metrics = {
+        "coding": {
+            "first_ack_monotonic": 1.0,
+            "searchable_after_seconds": None,
+            "first_search_hit_count": 0,
+        }
+    }
+
+    ok = asyncio.run(
+        module._wait_until_searchable(
+            FakeSvc(),
+            {"coding": "coding:demo"},
+            metrics,
+            {"coding": {"query": "architecture"}},
+            [],
+            timeout=1,
+            interval=1,
+        )
+    )
+
+    assert ok is True
+    assert metrics["coding"]["first_search_hit_count"] == 1

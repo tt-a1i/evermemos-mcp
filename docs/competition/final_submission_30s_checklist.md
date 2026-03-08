@@ -14,7 +14,8 @@ Use this right before submitting or recording the final pass.
 
 ## Demo reminders
 - [ ] Explain async extraction and preload before live recall
-- [ ] Show `list_spaces`, `recall`, and `briefing` as the main live path
+- [ ] Show `list_spaces`, then explain `request_status` / `recall` / `briefing` as the lifecycle-aware live path
+- [ ] Use `fetch_history` when demonstrating timeline verification or delete checks
 - [ ] If `forget` returns `ok` but the target still recalls, describe it as a current Cloud limitation
 
 ## Final handoff

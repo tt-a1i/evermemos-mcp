@@ -26,7 +26,7 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 uv run python scripts/demo_live_walkthrough.py
 ```
 口播：
-“产品闭环是 remember -> recall/briefing -> forget。也就是说，不只是能记住，还能跨会话恢复，并且可控删除。”
+“产品闭环是 remember -> request_status -> recall/briefing -> fetch_history/forget。也就是说，不只是能记住，还能核验生命周期、跨会话恢复，并且在当前 Cloud 限制下诚实处理删除能力。”
 
 ### 01:20-01:55（指标意义）
 口播：

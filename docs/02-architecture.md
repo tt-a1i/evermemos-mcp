@@ -29,7 +29,7 @@ EverMemOS API
 ## 3) Core Modules
 
 ### 3.1 `server` (MCP entry)
-- Registers 6 tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`, `fetch_history`
+- Registers 7 tools: `list_spaces`, `remember`, `request_status`, `recall`, `briefing`, `forget`, `fetch_history`
 - Handles input validation, error mapping, and uniform response shape
 
 ### 3.2 `space_router`
@@ -93,9 +93,16 @@ EverMemOS API
   - `ok`, `space_id`
   - `message_id` (submitted message id used for write request)
   - `request_id`, `created_at`, `processing_hint`
+  - `lifecycle` (`state`, `state_counts`, `searchable`, `message`)
   - `request_status` (when `include_status=true`)
 
-### 5.3 `recall`
+### 5.3 `request_status`
+- Input: `request_id` (required)
+- Behavior: checks upstream async write status after `remember`
+- Output: `ok`, `request_id`, `success`, `found`, optional `error`, `lifecycle`
+- Guidance: check `success/error` first, then interpret `lifecycle.state`
+
+### 5.4 `recall`
 - Input:
   - `query` (required)
   - `space_id?` (single-space scope)
@@ -116,26 +123,31 @@ EverMemOS API
   - `space_id` is also returned when only one space is used
   - `retrieve_method_actual=auto(hybrid+keyword)` when auto strategy is used
   - `pending_count/pending_hint` when extraction is pending
+  - `lifecycle` (`queued|provisional|fallback|searchable|empty` summary for the current response)
+  - row-level `results[].stability` distinguishes formal extracted rows from provisional/fallback rows
   - optional `warnings[]` includes source-space recovery hints when upstream omits `group_id`
   - `partial_hint/partial_errors` when upstream returns partial results
 
-### 5.4 `briefing`
+### 5.5 `briefing`
 - Input: `space_id`, `max_items?=8`, `start_time?`, `end_time?`, `user_id?`
 - Behavior: layered fetch and synthesis from `profile + episodic_memory + event_log + foresight`
 - Time filters apply to `episodic_memory`, `event_log`, and `foresight` (not `profile`)
-- Output: `ok`, `space_id`, `summary`, `highlights[]`
+- Output: `ok`, `space_id`, `summary`, `highlights[]`, `lifecycle`
+- Row-level `highlights[].stability` is `searchable` for formal memories and `fallback` for metadata fallback
 
-### 5.5 `forget`
+### 5.6 `forget`
 - Input: `memory_ids[]`, `space_id`, `reason?`, `user_id?`
 - Behavior: explicit-id deletion only; concurrent deletes with partial-failure reporting
 - Behavior: delete defaults to MCP client identity scope when `user_id` is omitted
+- Behavior: current Cloud semantics are best-effort, so callers should verify before and after deletion rather than assuming immediate removal
 - Output: `ok`, `space_id`, `deleted_count`, optional `delete_scope_user_id`, optional `errors[]`
 - Output: idempotent delete; unmatched IDs are reported via optional `unmatched_ids/unmatched_count` and `warnings[]`
 
-### 5.6 `fetch_history`
+### 5.7 `fetch_history`
 - Input: `space_id`, `memory_type?=episodic_memory`, `limit?=50`, `offset?=0`, `user_id?`, `start_time?`, `end_time?`, `include_metadata?=false`
 - Behavior: paginated fetch by memory type for timeline-style review (including `event_log` and `foresight`)
 - Behavior: keeps exact 0-based offset semantics by stitching upstream `page/page_size` responses when needed
+- Behavior: primary review path for timeline audits and pre/post delete verification when recall ranking is not enough
 - Output: `ok`, `space_id`, `memory_type`, `items[]` (`memory_id`, `timestamp`, `snippet` + `content`, optional `source_message_id`), `count`, optional `total_count`, `has_more`, optional `next_offset`
 
 ## 6) Citation Policy (V1)
