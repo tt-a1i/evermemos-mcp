@@ -93,7 +93,7 @@
 }
 ```
 
-如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.6`。若你使用源码启动，请改为“方式 B”。
+如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.7`。若你使用源码启动，请改为“方式 B”。
 
 对应片段：`docs/mcp-config-snippets/claude-code.json`
 
@@ -120,7 +120,7 @@
 }
 ```
 
-如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.6`。
+如果你想固定到某个已发布版本，可把 `evermemos-mcp@latest` 改成显式版本，例如 `evermemos-mcp@0.4.7`。
 
 如果发布后 Cherry Studio 仍启动旧缓存版本，可执行：
 
@@ -245,7 +245,7 @@ uv cache clean evermemos-mcp
 
 - Cherry Studio 发布后仍启动旧版本
   - 原因：`uvx` 可能复用本地缓存
-- 处理：执行 `uv cache clean evermemos-mcp`，或直接固定显式版本，例如 `evermemos-mcp@0.4.6`
+- 处理：执行 `uv cache clean evermemos-mcp`，或直接固定显式版本，例如 `evermemos-mcp@0.4.7`
 
 - 在代理/WAF 环境出现缺字段错误
   - 原因：中间件可能剥离了 GET 请求体（上游 fetch/search 使用 `GET + JSON body`）
