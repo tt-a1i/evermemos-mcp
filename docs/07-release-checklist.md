@@ -38,9 +38,9 @@ uv run python scripts/demo_live_walkthrough.py
 ## 3) Versioning and Changelog
 - [x] Update `pyproject.toml` version to `0.4.7`
 - [x] Create/update `CHANGELOG.md` with key highlights:
-  - source recovery hardening
-  - recall/briefing reliability improvements
-  - competition demo and benchmark assets
+  - tool description tightening for `list_spaces`, `recall`, `briefing`, and `forget`
+  - clearer `remember.space_id` default-space guidance
+  - release-facing docs and pinned examples updated to `0.4.7`
 
 ## 4) Tag and Push
 
