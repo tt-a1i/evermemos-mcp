@@ -7,8 +7,8 @@ This document provides copy-paste MCP server configuration for `evermemos-mcp`.
 Config snippet directory: `docs/mcp-config-snippets/`
 
 ## 1) Prerequisites
-1. Project installed or runnable from source
-2. Executable command available (`evermemos-mcp` or `uv`)
+1. `uv` / `uvx` available locally, or the project runnable from source
+2. Executable command available (`uvx` for releases, `uv` for source)
 3. Cloud key configured: `EVERMEMOS_API_KEY`
 4. Optional custom extraction config: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 5. Optional conversation metadata timezone: `EVERMEMOS_DEFAULT_TIMEZONE` (default `UTC`)
@@ -17,12 +17,12 @@ Config snippet directory: `docs/mcp-config-snippets/`
 
 ## 2) Recommended Startup
 
-### Option A: Installed command (recommended)
+### Option A: Published release via `uvx` (recommended)
 
 ```json
 {
-  "command": "evermemos-mcp",
-  "args": [],
+  "command": "uvx",
+  "args": ["evermemos-mcp@latest"],
   "env": {
     "EVERMEMOS_API_KEY": "YOUR_KEY"
   }
@@ -47,8 +47,8 @@ Config snippet directory: `docs/mcp-config-snippets/`
 {
   "mcpServers": {
     "evermemos": {
-      "command": "evermemos-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY"
       }
@@ -65,8 +65,8 @@ Reference snippet: `docs/mcp-config-snippets/cursor.json`
 {
   "mcpServers": {
     "evermemos": {
-      "command": "evermemos-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY"
       }
@@ -83,8 +83,8 @@ Reference snippet: `docs/mcp-config-snippets/cline.json`
 {
   "mcpServers": {
     "evermemos": {
-      "command": "evermemos-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["evermemos-mcp@latest"],
       "env": {
         "EVERMEMOS_API_KEY": "YOUR_KEY"
       }
@@ -93,7 +93,7 @@ Reference snippet: `docs/mcp-config-snippets/cline.json`
 }
 ```
 
-If running from source, replace with Option B.
+If you need a pinned release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.6`. If running from source, replace with Option B.
 
 Reference snippet: `docs/mcp-config-snippets/claude-code.json`
 
@@ -139,7 +139,7 @@ For a high-value write in Cherry Studio:
 4. Re-run `request_status(request_id=...)` before relying on `recall` as proof of searchable extraction.
 
 ## 7) Source Snippet Reference
-Use `docs/mcp-config-snippets/from-source.json` when global command install is not available.
+Use `docs/mcp-config-snippets/from-source.json` when you prefer a local source checkout instead of the published `uvx` package.
 
 ## 8) `flush` Boundary Strategy (Recommended)
 
@@ -238,6 +238,6 @@ Recommended delete flow:
   - Cloud extraction is async and queue time is variable
   - inspect `request_status.success/error` first, then `request_status.lifecycle`, `recall.lifecycle`, and `briefing.lifecycle` instead of assuming a fixed delay
 - Cherry Studio still starts an older version after a release
-  - `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin `evermemos-mcp@latest`
+- `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin an explicit release such as `evermemos-mcp@0.4.6`
 - Missing required field errors behind proxy/WAF
   - your network may strip GET request bodies used by upstream `fetch/search`
