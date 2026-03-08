@@ -164,6 +164,40 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
 
 If a tool can answer using `provisional` or `fallback` data, that does not mean formal extraction has completed.
 
+## Space Templates
+
+Use spaces to separate intent, not just data:
+
+| Template | Use it for |
+|----------|------------|
+| `chat:preferences` | durable personal preferences, names, tone, UI likes/dislikes |
+| `chat:daily` | ongoing chat context that should not leak into project memory |
+| `coding:<repo>` | architecture decisions, conventions, bugs, and project context |
+| `study:<topic>` | learning notes, topic progress, and revision context |
+
+Why split spaces? Because "who I am", "what this repo needs", and "what I'm learning" should not overwrite each other.
+
+## Which Tool To Use
+
+| Goal | Primary tool | Why |
+|------|--------------|-----|
+| Start a new session | `briefing` | fastest way to restore context in one call |
+| Find the most relevant prior fact | `recall` | relevance-ranked lookup across one or more spaces |
+| Review what happened over time | `fetch_history` | chronological timeline beats ranked search for audits and replay |
+| Verify before or after deletion | `fetch_history` | stable timeline check before trusting `forget` |
+
+If `recall` feels unstable or too selective, switch to `fetch_history` instead of retrying the same search blindly.
+
+## Forget Safety
+
+`forget` is currently a best-effort Cloud operation, not a guaranteed instant erase.
+
+Recommended deletion flow:
+1. Use `fetch_history` or `recall` to confirm the target `memory_id`.
+2. Call `forget(memory_ids=[...], space_id=...)`.
+3. Re-check with `fetch_history` first, then `recall` if needed.
+4. If the target still appears, treat it as a current Cloud limitation rather than proof that routing was wrong.
+
 ## Use Cases
 
 ### Coding: Persistent Architecture Context

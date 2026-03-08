@@ -28,9 +28,9 @@ Session resets break user experience:
 
 ## 5) Scope
 ### In Scope (V1)
-- MCP tools: `list_spaces`, `remember`, `recall`, `briefing`, `forget`, `fetch_history`
+- MCP tools: `list_spaces`, `remember`, `request_status`, `recall`, `briefing`, `forget`, `fetch_history`
 - Memory scope isolation by `space_id` (required); `project_id` is only one mapping for coding scenarios
-- EverMemOS API integration for store/search/delete
+- EverMemOS API integration for store/status/search/delete
 - Cloud-only data strategy (no local persistence)
 - Minimal safety via explicit deletion (`forget`)
 
@@ -53,13 +53,13 @@ Session resets break user experience:
 - `fetch_history` supports paginated timeline retrieval by `memory_type`
 - Cross-space retrieval does not leak memory across `space_id`
 - `briefing` returns explainable output for both empty and non-empty spaces
-- `forget` hides target memory from subsequent retrieval
+- `forget` is exposed as a best-effort delete path with explicit pre/post verification guidance
 
 ## 8) Demo Success Criteria
 - Clear comparison: without memory vs with memory
 - Show 2-3 scenario switches (coding / daily chat / study)
 - Show isolation between Space A and Space B
-- Show controlled deletion and post-delete non-retrievability
+- Show controlled deletion with timeline verification and an honest Cloud-limit fallback narrative
 
 ## 9) Non-Functional Requirements
 - Performance target: typical retrieval under 2 seconds (local benchmark target)

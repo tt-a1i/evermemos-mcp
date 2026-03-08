@@ -29,7 +29,7 @@ EverMemOS API
 ## 3) 核心模块
 
 ### 3.1 `server`（MCP 入口）
-- 注册 6 个 tools：`list_spaces` / `remember` / `recall` / `briefing` / `forget` / `fetch_history`
+- 注册 7 个 tools：`list_spaces` / `remember` / `request_status` / `recall` / `briefing` / `forget` / `fetch_history`
 - 做输入校验、错误映射、统一响应格式
 
 ### 3.2 `space_router`（空间路由）
@@ -112,7 +112,13 @@ EverMemOS API
   - `lifecycle`（包含 `state`、`state_counts`、`searchable`、`message`）
   - `request_status`（仅 `include_status=true` 时返回）
 
-### 5.3 `recall`
+### 5.3 `request_status`
+- 输入：`request_id` (required)
+- 行为：在 `remember` 之后查询上游异步写入状态
+- 输出：`ok`、`request_id`、`success`、`found`、可选 `error`、`lifecycle`
+- 使用说明：先看 `success/error`，再解释 `lifecycle.state`
+
+### 5.4 `recall`
 - 输入：
   - `query` (required)
   - `space_id` (optional，单空间检索)
@@ -143,7 +149,7 @@ EverMemOS API
   - `results[].stability` 用来区分正式提取结果、provisional 结果、fallback 结果
   - 上游缺少 `group_id` 时，来源恢复相关信息会通过可选 `warnings[]` 返回
 
-### 5.4 `briefing`
+### 5.5 `briefing`
 - 输入：
   - `space_id` (required)
   - `max_items` (optional, default: 8)
@@ -159,7 +165,7 @@ EverMemOS API
   - `summary`
   - `highlights[]`（带引用）
 
-### 5.5 `forget`
+### 5.6 `forget`
 - 输入：
   - `memory_ids` (required, array)
   - `space_id` (required)
@@ -167,6 +173,7 @@ EverMemOS API
   - `user_id` (optional)
 - 行为：删除指定记忆（V1 只支持显式 id，避免误删）
 - 行为：未传 `user_id` 时默认使用 MCP 客户端身份做删除范围约束
+- 行为：当前 Cloud 删除语义应按 best-effort 理解，调用方需要删前删后都做核验，不能假设立即消失
 - 输出：
   - `ok`
   - `space_id`
@@ -175,7 +182,7 @@ EverMemOS API
   - 可选 `errors[]`
   - 删除保持幂等：未命中 ID 通过可选 `unmatched_ids/unmatched_count` 与 `warnings[]` 返回
 
-### 5.6 `fetch_history`
+### 5.7 `fetch_history`
 - 输入：
   - `space_id` (required)
   - `memory_type` (optional, default: `episodic_memory`，可选 `profile|episodic_memory|foresight|event_log`)
@@ -186,6 +193,7 @@ EverMemOS API
   - `include_metadata` (optional, default: false)
 - 行为：按 memory type 分页读取历史，适合时间线浏览/批量复盘
 - 行为：当上游只支持 `page/page_size` 时，服务层会做拼接，保证 0-based `offset` 语义精确
+- 行为：当 `recall` 排序不稳定，或需要做删前/删后核验时，`fetch_history` 是首选时间线路径
 - 输出：`ok`、`space_id`、`memory_type`、`items[]`（含 `memory_id`、`timestamp`、`snippet` + `content`、可选 `source_message_id`）、`count`、可选 `total_count`、`has_more`、可选 `next_offset`
 
 ## 6) 来源引用策略（V1 必做）
