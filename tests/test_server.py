@@ -64,6 +64,29 @@ async def test_list_tools_returns_seven():
     }
 
 
+@pytest.mark.asyncio
+async def test_tool_descriptions_cover_client_guidance():
+    tools = await server_mod.handle_list_tools()  # type: ignore[call-arg]
+    tool_map = {tool.name: tool for tool in tools}
+
+    remember_description = tool_map["remember"].description or ""
+    recall_description = tool_map["recall"].description or ""
+    forget_description = tool_map["forget"].description or ""
+    history_description = tool_map["fetch_history"].description or ""
+    remember_space_description = (
+        tool_map["remember"]
+        .inputSchema.get("properties", {})
+        .get("space_id", {})
+        .get("description", "")
+    )
+
+    assert "include_status=true" in remember_description
+    assert "chat:preferences" in remember_space_description
+    assert "fetch_history" in recall_description
+    assert "best-effort" in forget_description
+    assert "timeline" in history_description
+
+
 # -- dispatch --
 
 

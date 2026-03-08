@@ -66,6 +66,8 @@ TOOLS: list[types.Tool] = [
             "which space_id values exist before using other memory tools. "
             "Each space isolates memories by project or topic "
             "(e.g. coding:my-app, study:ml-notes, chat:preferences). "
+            "Use it when you need to decide which space fits a new write or to avoid "
+            "mixing personal preferences with project history. "
             "If no spaces exist yet, create one by calling remember with a new space_id and description."
         ),
         inputSchema={
@@ -109,7 +111,10 @@ TOOLS: list[types.Tool] = [
                     "type": "string",
                     "description": (
                         "Target memory space in <domain>:<slug> format "
-                        "(e.g. coding:my-app, chat:daily, study:ml). "
+                        "(e.g. coding:my-app, chat:preferences, chat:daily, study:ml). "
+                        "Use chat:preferences for durable personal preferences, "
+                        "chat:daily for ongoing chat context, coding:<repo> for project decisions, "
+                        "and study:<topic> for learning notes. "
                         "If omitted, auto-detected from git remote (coding:<repo-name>)."
                     ),
                 },
@@ -192,6 +197,8 @@ TOOLS: list[types.Tool] = [
             "(memory_type, snippet, timestamp, relevance score). "
             "Also reports whether current results are searchable, provisional, or fallback, "
             "plus pending_count for queued writes. "
+            "If you need chronological review, delete verification, or a complete timeline, "
+            "prefer fetch_history instead of relying on relevance-ranked recall alone. "
             "If space_id and space_ids are both omitted, auto-detected from git remote (coding:<repo-name>)."
         ),
         inputSchema={
@@ -332,8 +339,9 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Delete specific memories by their IDs (permanent). "
-            "Use recall first to find the memory_id values you want to remove. "
+            "Delete specific memories by their IDs (best-effort in current Cloud behavior). "
+            "Use fetch_history or recall to verify the target memory_id before deleting, "
+            "then verify again after deletion instead of assuming immediate removal. "
             "Useful for correcting outdated or incorrect memories."
         ),
         inputSchema={
@@ -368,14 +376,19 @@ TOOLS: list[types.Tool] = [
         description=(
             "Page through historical memories in a space by memory_type. "
             "Useful for chronological timeline review when recall's relevance ranking "
-            "is not sufficient, or when you need to browse all memories of a type."
+            "is not sufficient, or when you need to browse all memories of a type. "
+            "This is the primary tool for timeline review, pre-delete verification, and "
+            "post-delete re-checks."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "space_id": {
                     "type": "string",
-                    "description": "Memory space to fetch",
+                    "description": (
+                        "Memory space to fetch. Use the same space you would brief or recall "
+                        "when reviewing a timeline."
+                    ),
                 },
                 "memory_type": {
                     "type": "string",
