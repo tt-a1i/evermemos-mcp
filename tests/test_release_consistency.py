@@ -26,3 +26,11 @@ def test_project_versions_match_repo_files():
 def test_server_tool_count_is_seven():
     repo_root = Path(__file__).resolve().parents[1]
     assert read_tool_count(repo_root / "src" / "evermemos_mcp" / "server.py") == 7
+
+
+def test_changelog_tracks_current_release_highlights():
+    repo_root = Path(__file__).resolve().parents[1]
+    changelog = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## [0.4.7]" in changelog
+    assert "Tightened MCP tool descriptions" in changelog
+    assert "remember.space_id" in changelog
