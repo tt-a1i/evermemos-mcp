@@ -130,6 +130,13 @@ async def main() -> int:
                         reason="demo cleanup",
                     )
                     pp("forget", forget_result, max_len=1400)
+                    verify_history = await svc.fetch_history(
+                        space_id=ids["coding"],
+                        memory_type="episodic_memory",
+                        limit=10,
+                        offset=0,
+                    )
+                    pp("history_after_forget", verify_history, max_len=1400)
                     verify = await svc.recall(
                         query=QUERIES["coding"],
                         space_id=ids["coding"],

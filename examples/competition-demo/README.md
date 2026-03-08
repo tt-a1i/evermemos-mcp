@@ -9,17 +9,23 @@ This folder provides a one-command benchmark collection flow for Memory Genesis 
 
 ## Quick Start
 1. Configure `.env` with `EVERMEMOS_API_KEY`
-2. Preload demo data and wait until searchable:
+2. Use the standard demo spaces: `coding:demo-app`, `chat:daily`, and `study:ml-notes`
+3. Preload demo data and wait until searchable:
 
 ```bash
 uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --interval 20
 ```
 
-3. Run formal real benchmark:
+4. Run formal real benchmark:
 
 ```bash
 examples/competition-demo/run.sh
 ```
+
+## Notes
+- `recall` is the benchmark path for relevance scoring.
+- `fetch_history` is the better path when you need a timeline or want to verify a target memory before/after deletion.
+- `forget` should be treated as best-effort under current Cloud behavior.
 
 Output directory defaults to:
 - `artifacts/competition/<YYYY-MM-DD>-formal-real/`

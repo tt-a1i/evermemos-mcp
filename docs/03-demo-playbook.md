@@ -8,7 +8,8 @@ This guide is for the 3-5 minute Memory Genesis 2026 submission demo video.
 - Show cross-session memory restoration
 - Show `space_id` isolation across coding/chat/study
 - Show traceable citations (`timestamp + snippet + type + score`)
-- Show controlled deletion via `forget`
+- Show timeline verification via `fetch_history`
+- Show best-effort deletion via `forget`
 
 ## 2. Core Principles
 - EverMemOS Cloud v0 writes are async (`202 queued`) before retrieval becomes available
@@ -46,10 +47,10 @@ uv run python scripts/demo_preload.py --wait --check-status --timeout 480 --inte
 3. Explain layered sources (`profile/episodic/event_log/foresight`)
 
 ### Part E (30-45s): Controlled Forget
-1. Pick a `memory_id` from recall output (or fall back to `fetch_history` if top recall rows are profile-only)
+1. Use `fetch_history` first to show the target `memory_id` in a stable timeline view
 2. Call `forget(memory_ids=[...])`
-3. If Cloud delete succeeds, run recall again and confirm the target is gone
-4. If Cloud delete returns `ok` but the target remains recallable, present it as a current Cloud limitation rather than an MCP routing failure
+3. Re-run `fetch_history` before `recall` to verify whether the target disappeared
+4. If Cloud delete returns `ok` but the target remains visible, present it as a current Cloud limitation rather than an MCP routing failure
 
 ## 5. Demo Command Checklist
 
@@ -71,4 +72,4 @@ uv run python scripts/demo_live_walkthrough.py
 ## 7. Scoring Mapping
 - Innovation: universal MCP memory layer + `space_id` routing
 - Technical Depth: 6-tool loop + explicit error semantics + citation fields
-- Consumer Value: continuity across sessions + query/delete/verify controls
+- Consumer Value: continuity across sessions + timeline/retrieval/verify controls
