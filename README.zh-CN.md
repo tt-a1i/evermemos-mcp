@@ -6,15 +6,37 @@
 
 > 参赛项目：[Memory Genesis Competition 2026](https://luma.com/n88icl03) — Track 2: Platform Plugins
 
+---
+
+你花了半小时给 Claude Code 讲项目架构、命名规范、为什么放弃了 MongoDB。第二天开新会话——它什么都不记得。你只好再讲一遍。
+
+evermemos-mcp 把这些上下文写入 EverMemOS 长期记忆。下次只需一个 `briefing` 调用，它就知道你是谁、项目到哪了、上次做了什么决定。**Benchmark：有记忆 60/60 命中 vs 无记忆基线 0/60——236 条归因行零错误（p95 1958 ms）。**
+
+---
+
 evermemos-mcp 是一个 MCP（Model Context Protocol）服务器，可以让 Claude Code、Cursor、Cline、Cherry Studio 等任意兼容客户端拥有持久化的跨会话记忆。它填补了 AI 对话"无状态"与真实工作流"需要上下文"之间的鸿沟。
 
 ## 为什么需要它
 
-AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个人偏好、项目上下文——下一次对话，全部归零。evermemos-mcp 通过 **记忆 → 推理 → 行动** 闭环解决这个问题：
+AI 编程助手在会话之间会遗忘一切。这不是 Bug，而是架构层面的必然：每次会话都是全新的无状态实例。这意味着：
+
+- 你解释过的架构决策，每次都要重新解释
+- 你的命名偏好和工作惯例永远不会被"学会"
+- 多个项目并行推进，却没有上下文隔离，也没有跨项目的记忆共享
+
+evermemos-mcp 通过 **记忆 → 推理 → 行动** 闭环解决这个问题：
+
+```
+  remember ──▶ EverMemOS Cloud ──▶ recall / briefing ──▶ Agent 带着上下文行动
+     ▲                                                          │
+     └──────────────── 新的决策反馈回来 ◀───────────────────────┘
+```
 
 1. **Remember（记住）** — 工作中随时存储决策、偏好和上下文
 2. **Recall（回忆）** — 通过混合检索（关键词 + 向量 + 语义）找回相关记忆
 3. **Briefing（简报）** — 新会话开始时一键恢复完整上下文
+
+这不是概念图，而是 benchmark 中被自动化验证过的工作流：**有记忆 60/60，无记忆 0/60**，4 项门禁全部通过（[benchmark 汇总](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json) | [runs.jsonl](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)）。
 
 所有记忆按 **空间（space）** 隔离（如 `coding:my-app`、`study:ml-notes`、`chat:daily`），不同项目和工作流互不干扰。
 
@@ -37,7 +59,7 @@ AI 编程助手在会话之间会遗忘一切。你解释了架构决策、个�
 | `request_status` | 查询某次 `remember` 写入当前是否仍在排队，或已被上游标记为完成 |
 | `recall` | 搜索记忆，支持 6 种检索策略，并显式标注结果是 `searchable`、`provisional` 还是 `fallback` |
 | `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测，必要时会显式标记 fallback |
-| `forget` | 按 ID 发起定向删除（当前 Cloud 行为可能有差异） |
+| `forget` | 按 ID 发起定向删除（验证优先，当前 Cloud 语义下为 best-effort） |
 | `fetch_history` | 按类型分页浏览记忆时间线 |
 
 ### 核心特性
@@ -153,6 +175,21 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
 - **进程内缓存** — 空间目录在内存中缓存，启动时从 Cloud 恢复
 - **异步提取** — `remember` 将内容加入队列，由 AI 提取后变为可检索的记忆
 
+## EverMemOS 集成深度
+
+evermemos-mcp 不是简单的 API 薄封装，每个工具都对应 EverMemOS 的具体能力：
+
+| 工具 | EverMemOS 概念 | 做了什么 |
+|------|---------------|---------|
+| `remember` | 基于 MemCell 的摄入路径 | 将原始上下文送入 Cloud 提取管线 |
+| `request_status` | 上游处理状态追踪 | 查询上游提取是否已完成 |
+| `recall` | Hierarchical Memory 检索 | 在关键词、向量、语义三层进行混合搜索 |
+| `briefing` | Reconstructive Recollection 产品化接口 | 将用户画像 + 情景 + 事实 + 前瞻重组为会话启动上下文包 |
+| `fetch_history` | Episodic Trace + 事件日志 | 按时间线访问选定的记忆类型 |
+| `forget` | 验证优先的定向删除 | 在当前 Cloud 语义下发起删除，附带复查指引 |
+
+四种生命周期/结果状态（`queued`、`provisional`、`fallback`、`searchable`）在所有工具输出中统一暴露，让 Agent 无论调用哪个工具都能获得一致的记忆成熟度视图。
+
 ## 记忆生命周期状态
 
 | 状态 | 含义 | 常见体现位置 |
@@ -190,13 +227,14 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
 
 ## Forget 安全说明
 
-`forget` 目前应理解为 Cloud 下的 best-effort 操作，不是“立刻、稳定、必然删除”的强承诺。
+Cloud 端删除是异步的 best-effort 操作。evermemos-mcp 没有掩盖这一点，而是提供了验证优先的工作流：
 
-推荐删除流程：
-1. 先用 `fetch_history` 或 `recall` 确认目标 `memory_id`。
+1. 通过 `fetch_history` 或 `recall` 确认目标 `memory_id`。
 2. 调用 `forget(memory_ids=[...], space_id=...)`。
-3. 优先用 `fetch_history` 复查，再按需用 `recall` 做补充确认。
-4. 如果目标仍出现，应先按当前 Cloud 限制理解，而不是立刻怀疑 MCP 路由错误。
+3. 用 `fetch_history` 复查，再按需用 `recall` 补充确认。
+4. 如果目标仍存在，生命周期模型会透明地呈现这一状态——Agent 不会静默地假设删除已成功。
+
+这是有意为之的设计：把真实状态暴露给 Agent，而不是假装删除是即时的。
 
 ## 使用场景
 
@@ -290,6 +328,10 @@ CI 在每次 push 和 PR 时自动运行，配置见 [`.github/workflows/ci.yml`
 | [`docs/competition/benchmark_deep_dive.md`](docs/competition/benchmark_deep_dive.md) | 主证据深度说明 |
 | [`docs/auto-memory-prompt.zh-CN.md`](docs/auto-memory-prompt.zh-CN.md) | 自动记忆 Prompt 模板（CLAUDE.md / Cursor / Cline） |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本历史 |
+
+## 支持
+
+如果 evermemos-mcp 对你有用，请在 [GitHub](https://github.com/tt-a1i/evermemos-mcp) 上点个 Star——帮助更多人发现这个项目。
 
 ## License
 

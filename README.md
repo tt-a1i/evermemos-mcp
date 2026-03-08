@@ -6,15 +6,37 @@
 
 > Built for the [Memory Genesis Competition 2026](https://luma.com/n88icl03) — Track 2: Platform Plugins
 
+---
+
+You spent thirty minutes explaining your project architecture, naming conventions, and why you abandoned MongoDB to Claude Code. Next day, new session — it remembers nothing. You explain it all over again.
+
+evermemos-mcp writes that context into EverMemOS long-term memory. Next time, one `briefing` call and it knows who you are, where the project stands, and what was decided last time. **Benchmark: 60/60 successful memory-backed recall vs 0/60 in the no-memory baseline — zero wrong attributions across 236 resolved rows (p95 1958 ms).**
+
+---
+
 evermemos-mcp is an MCP (Model Context Protocol) server that gives any compatible AI client — Claude Code, Cursor, Cline, Cherry Studio, and more — persistent, cross-session memory. It bridges the gap between stateless AI conversations and the contextual awareness that real-world workflows demand.
 
 ## Why This Exists
 
-AI coding assistants forget everything between sessions. You explain your architecture, your preferences, your project context — and next session, it's all gone. evermemos-mcp solves this by providing a **Memory → Reasoning → Action** loop:
+AI coding assistants forget everything between sessions. This is not a bug — it is an architectural consequence: every session starts as a fresh, stateless instance. This means:
+
+- Architecture decisions you explained need to be re-explained every time
+- Your naming preferences and work conventions are never "learned"
+- Multiple projects run in parallel with no context isolation and no cross-project memory sharing
+
+evermemos-mcp solves this by providing a **Memory → Reasoning → Action** loop:
+
+```
+  remember ──▶ EverMemOS Cloud ──▶ recall / briefing ──▶ Agent acts with context
+     ▲                                                          │
+     └──────────────── new decisions fed back ◀─────────────────┘
+```
 
 1. **Remember** — Store decisions, preferences, and context as you work
 2. **Recall** — Retrieve relevant memories using hybrid search (keyword + vector + semantic)
 3. **Brief** — Get a full context restoration at the start of any new session
+
+This is not a concept diagram — it is the workflow verified in automated benchmarks: **60/60 successful memory-backed recall vs 0/60 in the no-memory baseline**, all 4 gates passed ([benchmark summary](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json) | [runs.jsonl](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)).
 
 All memories are organized into isolated **spaces** (e.g. `coding:my-app`, `study:ml-notes`, `chat:daily`), so different projects and workflows never bleed into each other.
 
@@ -37,7 +59,7 @@ Current submission-ready evidence:
 | `request_status` | Check whether a queued write is still queued or has been reported completed by upstream |
 | `recall` | Search memories with 6 retrieval strategies and label whether results are `searchable`, `provisional`, or `fallback` |
 | `briefing` | Get a structured context briefing: profile + episodes + facts + foresights, with explicit fallback labeling when needed |
-| `forget` | Attempt targeted memory deletion by ID (Cloud behavior may vary) |
+| `forget` | Targeted memory deletion by ID (verification-first under current Cloud semantics) |
 | `fetch_history` | Paginate through memory timeline by type |
 
 ### Key Capabilities
@@ -153,6 +175,21 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
 - **Process-local cache** — Space catalog is cached in-memory for fast lookups, recovered from Cloud on startup.
 - **Async extraction** — `remember` queues content for AI-powered extraction. Memories become searchable after processing.
 
+## EverMemOS Integration Depth
+
+evermemos-mcp is not a thin API wrapper. Each tool maps to a specific EverMemOS capability:
+
+| Tool | EverMemOS Concept | What it does |
+|------|-------------------|--------------|
+| `remember` | MemCell-backed ingestion path | Feeds raw context into Cloud extraction pipeline |
+| `request_status` | Processing status tracking | Checks whether upstream extraction has completed |
+| `recall` | Hierarchical Memory retrieval | Hybrid search across keyword, vector, and semantic layers |
+| `briefing` | Reconstructive Recollection | Reassembles profile + episodes + facts + foresights into a session-start context packet |
+| `fetch_history` | Episodic Trace + event log | Timeline access over selected memory types |
+| `forget` | Verification-first targeted delete | Issues delete against current Cloud semantics with re-check guidance |
+
+The four surfaced lifecycle/result states (`queued`, `provisional`, `fallback`, `searchable`) are unified across all tool outputs, giving agents a consistent view of memory maturity regardless of which tool they call.
+
 ## Memory Lifecycle States
 
 | State | Meaning | Typical surface |
@@ -190,13 +227,14 @@ If `recall` feels unstable or too selective, switch to `fetch_history` instead o
 
 ## Forget Safety
 
-`forget` is currently a best-effort Cloud operation, not a guaranteed instant erase.
+Cloud-side deletion is asynchronous and best-effort. Rather than hiding this, evermemos-mcp provides a verification-first workflow:
 
-Recommended deletion flow:
-1. Use `fetch_history` or `recall` to confirm the target `memory_id`.
+1. Confirm the target `memory_id` via `fetch_history` or `recall`.
 2. Call `forget(memory_ids=[...], space_id=...)`.
-3. Re-check with `fetch_history` first, then `recall` if needed.
-4. If the target still appears, treat it as a current Cloud limitation rather than proof that routing was wrong.
+3. Verify with `fetch_history`, then `recall` if needed.
+4. If the target persists, the lifecycle model surfaces this transparently — so agents do not silently assume deletion succeeded.
+
+This is a deliberate design choice: expose the real state to the agent rather than pretend deletion is instant.
 
 ## Use Cases
 
@@ -290,6 +328,10 @@ CI runs on every push and PR via [`.github/workflows/ci.yml`](.github/workflows/
 | [`docs/competition/benchmark_deep_dive.md`](docs/competition/benchmark_deep_dive.md) | Primary evidence deep dive |
 | [`docs/auto-memory-prompt.md`](docs/auto-memory-prompt.md) | Auto-memory prompt templates for CLAUDE.md / Cursor / Cline |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
+
+## Support
+
+If evermemos-mcp is useful to you, give it a [star on GitHub](https://github.com/tt-a1i/evermemos-mcp) — it helps others discover the project.
 
 ## License
 
