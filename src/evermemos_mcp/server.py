@@ -62,12 +62,12 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="list_spaces",
         description=(
-            "List available memory spaces. Call this first to discover "
-            "which space_id values exist before using other memory tools. "
-            "Each space isolates memories by project or topic "
+            "List MCP-visible memory spaces that this server can route and recover. "
+            "Call this first to discover which space_id values are available before using other "
+            "memory tools. Each space isolates memories by project or topic "
             "(e.g. coding:my-app, study:ml-notes, chat:preferences). "
-            "Use it when you need to decide which space fits a new write or to avoid "
-            "mixing personal preferences with project history. "
+            "Note: some native EverMemOS Cloud spaces created outside the MCP naming and catalog "
+            "flow may not appear here. "
             "If no spaces exist yet, create one by calling remember with a new space_id and description."
         ),
         inputSchema={
@@ -79,7 +79,7 @@ TOOLS: list[types.Tool] = [
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max number of spaces to return",
+                    "description": "Maximum number of MCP-visible spaces to return",
                     "default": 20,
                 },
             },
@@ -115,7 +115,8 @@ TOOLS: list[types.Tool] = [
                         "Use chat:preferences for durable personal preferences, "
                         "chat:daily for ongoing chat context, coding:<repo> for project decisions, "
                         "and study:<topic> for learning notes. "
-                        "If omitted, auto-detected from git remote (coding:<repo-name>)."
+                        "If omitted, the server may use EVERMEMOS_DEFAULT_SPACE or auto-detect "
+                        "from the current git remote (coding:<repo-name>)."
                     ),
                 },
                 "description": {
@@ -195,8 +196,9 @@ TOOLS: list[types.Tool] = [
             "conventions, or anything discussed in previous sessions. "
             "Returns matching memories with traceable citations "
             "(memory_type, snippet, timestamp, relevance score). "
-            "Also reports whether current results are searchable, provisional, or fallback, "
-            "plus pending_count for queued writes. "
+            "Also reports whether current results are searchable, provisional, or fallback. "
+            "Pending signals depend on upstream pending_messages support and may be absent even "
+            "while extraction is still in progress. "
             "If you need chronological review, delete verification, or a complete timeline, "
             "prefer fetch_history instead of relying on relevance-ranked recall alone. "
             "If space_id and space_ids are both omitted, auto-detected from git remote (coding:<repo-name>)."
@@ -297,11 +299,11 @@ TOOLS: list[types.Tool] = [
         name="briefing",
         description=(
             "Get a structured context briefing for a memory space. "
-            "Call this at the start of every new session to restore context. "
+            "Call this at the start of a new session to restore high-value context quickly. "
             "Returns: user profile, recent episodes, key facts, and foresights. "
             "When formal profile memories are unavailable, briefing may surface explicit "
             "fallback metadata and label it as such. "
-            "This is the fastest way to catch up on everything stored in a space."
+            "This is the fastest way to catch up on the most important currently available context in a space."
         ),
         inputSchema={
             "type": "object",
@@ -339,10 +341,11 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Delete specific memories by their IDs (best-effort in current Cloud behavior). "
-            "Use fetch_history or recall to verify the target memory_id before deleting, "
-            "then verify again after deletion instead of assuming immediate removal. "
-            "Useful for correcting outdated or incorrect memories."
+            "Attempt best-effort deletion of specific memories in current EverMemOS Cloud behavior. "
+            "Use fetch_history or recall to identify a target first, then verify again after "
+            "deletion instead of assuming immediate removal. "
+            "This is useful for correcting outdated or incorrect memories, but current Cloud "
+            "delete semantics may not always map directly from returned memory IDs."
         ),
         inputSchema={
             "type": "object",
@@ -350,7 +353,11 @@ TOOLS: list[types.Tool] = [
                 "memory_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "IDs of memories to delete (from recall results)",
+                    "description": (
+                        "Memory identifiers to target for best-effort deletion. Prefer IDs "
+                        "verified from fetch_history or recall, then re-check after deletion "
+                        "because current Cloud behavior may not remove every returned memory_id directly."
+                    ),
                 },
                 "space_id": {
                     "type": "string",

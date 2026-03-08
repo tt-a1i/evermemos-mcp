@@ -69,21 +69,44 @@ async def test_tool_descriptions_cover_client_guidance():
     tools = await server_mod.handle_list_tools()  # type: ignore[call-arg]
     tool_map = {tool.name: tool for tool in tools}
 
+    list_spaces_description = tool_map["list_spaces"].description or ""
     remember_description = tool_map["remember"].description or ""
     recall_description = tool_map["recall"].description or ""
+    briefing_description = tool_map["briefing"].description or ""
     forget_description = tool_map["forget"].description or ""
     history_description = tool_map["fetch_history"].description or ""
+    list_spaces_limit_description = (
+        tool_map["list_spaces"]
+        .inputSchema.get("properties", {})
+        .get("limit", {})
+        .get("description", "")
+    )
     remember_space_description = (
         tool_map["remember"]
         .inputSchema.get("properties", {})
         .get("space_id", {})
         .get("description", "")
     )
+    forget_memory_ids_description = (
+        tool_map["forget"]
+        .inputSchema.get("properties", {})
+        .get("memory_ids", {})
+        .get("description", "")
+    )
 
+    assert "MCP-visible" in list_spaces_description
+    assert "native EverMemOS Cloud space" in list_spaces_description
+    assert "MCP-visible spaces" in list_spaces_limit_description
     assert "include_status=true" in remember_description
     assert "chat:preferences" in remember_space_description
+    assert "EVERMEMOS_DEFAULT_SPACE" in remember_space_description
     assert "fetch_history" in recall_description
+    assert "pending_messages" in recall_description
+    assert "high-value context quickly" in briefing_description
+    assert "currently available context" in briefing_description
     assert "best-effort" in forget_description
+    assert "best-effort deletion" in forget_memory_ids_description
+    assert "fetch_history or recall" in forget_memory_ids_description
     assert "timeline" in history_description
 
 

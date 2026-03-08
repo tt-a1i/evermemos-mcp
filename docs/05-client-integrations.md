@@ -93,7 +93,7 @@ Reference snippet: `docs/mcp-config-snippets/cline.json`
 }
 ```
 
-If you need a pinned release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.6`. If running from source, replace with Option B.
+If you need a pinned release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.7`. If running from source, replace with Option B.
 
 Reference snippet: `docs/mcp-config-snippets/claude-code.json`
 
@@ -120,7 +120,7 @@ Recommended for published releases:
 }
 ```
 
-If you prefer a fixed release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.6`.
+If you prefer a fixed release, replace `evermemos-mcp@latest` with an explicit version such as `evermemos-mcp@0.4.7`.
 
 If Cherry Studio still launches an older cached build after an upgrade, run:
 
@@ -238,6 +238,6 @@ Recommended delete flow:
   - Cloud extraction is async and queue time is variable
   - inspect `request_status.success/error` first, then `request_status.lifecycle`, `recall.lifecycle`, and `briefing.lifecycle` instead of assuming a fixed delay
 - Cherry Studio still starts an older version after a release
-- `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin an explicit release such as `evermemos-mcp@0.4.6`
+- `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin an explicit release such as `evermemos-mcp@0.4.7`
 - Missing required field errors behind proxy/WAF
   - your network may strip GET request bodies used by upstream `fetch/search`

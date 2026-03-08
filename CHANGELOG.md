@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.7] - 2026-03-08
+
+### Changed
+- Tightened MCP tool descriptions for `list_spaces`, `recall`, `briefing`, and `forget` so agents make fewer optimistic assumptions under current EverMemOS Cloud behavior.
+- Clarified `remember.space_id` defaulting to mention both `EVERMEMOS_DEFAULT_SPACE` and git-remote auto-detection.
+- Updated release-facing docs and explicit pinned-version examples from `0.4.6` to `0.4.7`.
+
 ## [0.4.6] - 2026-03-08
 
 ### Added
