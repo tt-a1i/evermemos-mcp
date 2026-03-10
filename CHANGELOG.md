@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.8] - 2026-03-10
+
+### Fixed
+- Fixed `forget` tool: now resolves memcell `parent_id` before calling Cloud DELETE API, which previously returned 0 affected records when using derived record IDs.
+- Fixed delete count parsing: Cloud DELETE always returns `result.count=0` but the real count is in the `message` string; now parsed correctly via regex.
+- Removed `user_id` from Cloud DELETE calls — upstream returns 0 affected when `user_id` is included alongside `memory_id`.
+
+### Added
+- `_extract_parent_id()` helper extracts memcell parent_id from API responses.
+- `parent_id` field now exposed in `fetch_history` and `recall` row outputs (when available).
+- `_resolve_parent_ids()` scans recent memories (100 per type) to map derived record IDs to their memcell parent_id before deletion.
+- `deleted_count_note` field in forget output explains that the count reflects total upstream records affected (may exceed input count).
+- Warning when parent_id resolution fails for some IDs (e.g. older memories beyond the 100-item scan window).
+
+### Changed
+- Updated `forget` tool description to reflect honest boundaries: parent_id is optional, 100-item scan window, user_id not sent to DELETE, some IDs may remain unmatched.
+
 ## [0.4.7] - 2026-03-08
 
 ### Changed

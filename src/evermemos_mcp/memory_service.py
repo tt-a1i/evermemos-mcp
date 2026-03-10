@@ -27,6 +27,7 @@ _VALID_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
 _HYBRID_ALLOWED_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
+_DELETE_AFFECTED_RE = re.compile(r"(\d+)\s+records?\s+affected")
 _FORGET_DELETE_CONCURRENCY = 8
 _MAX_FETCH_HISTORY_LIMIT = 100
 _SOURCE_RECOVERY_PROBE_TOP_K = config.EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K
@@ -551,6 +552,32 @@ class MemoryService:
         return ""
 
     @staticmethod
+    def _extract_parent_id(item: dict) -> str | None:
+        """Extract memcell parent_id — the ID that Cloud DELETE API expects."""
+        direct = MemoryService._pick_non_empty_string(item, "parent_id")
+        if direct:
+            return direct
+        metadata = item.get("metadata")
+        return MemoryService._pick_non_empty_string(metadata, "parent_id")
+
+    @staticmethod
+    def _parse_delete_affected_count(result: dict) -> int:
+        """Parse actual affected count from Cloud DELETE response.
+
+        Cloud v0 always returns result.count=0 but puts the real count
+        in the message string like "Delete operation completed, 17 records affected".
+        """
+        message = result.get("message", "")
+        if isinstance(message, str):
+            match = _DELETE_AFFECTED_RE.search(message)
+            if match:
+                parsed = int(match.group(1))
+                if parsed > 0:
+                    return parsed
+        count = result.get("result", {}).get("count", 0)
+        return max(0, count) if isinstance(count, int) else 0
+
+    @staticmethod
     def _pending_message_key(item: object, fallback_index: int) -> str:
         if isinstance(item, dict):
             for key in ("id", "request_id", "message_id", "source_message_id"):
@@ -1017,6 +1044,9 @@ class MemoryService:
         source_message_id = MemoryService._extract_source_message_id(item)
         if source_message_id:
             row["source_message_id"] = source_message_id
+        parent_id = MemoryService._extract_parent_id(item)
+        if parent_id:
+            row["parent_id"] = parent_id
 
         if include_metadata and "metadata" in item:
             row["metadata"] = item.get("metadata")
@@ -1080,6 +1110,9 @@ class MemoryService:
             source_message_id = MemoryService._extract_source_message_id(item)
             if source_message_id:
                 row["source_message_id"] = source_message_id
+            parent_id = MemoryService._extract_parent_id(item)
+            if parent_id:
+                row["parent_id"] = parent_id
             if include_metadata and "metadata" in item:
                 row["metadata"] = item.get("metadata")
             results.append(row)
@@ -1112,6 +1145,9 @@ class MemoryService:
             source_message_id = MemoryService._extract_source_message_id(profile)
             if source_message_id:
                 row["source_message_id"] = source_message_id
+            parent_id = MemoryService._extract_parent_id(profile)
+            if parent_id:
+                row["parent_id"] = parent_id
             if include_metadata and "metadata" in profile:
                 row["metadata"] = profile.get("metadata")
             results.append(row)
@@ -2349,6 +2385,52 @@ class MemoryService:
 
     # -- forget --
 
+    async def _resolve_parent_ids(
+        self,
+        group_id: str,
+        memory_ids: list[str],
+    ) -> dict[str, str]:
+        """Look up memcell parent_id for each memory_id by scanning recent memories."""
+        target_set = set(memory_ids)
+        id_to_parent: dict[str, str] = {}
+
+        fetch_types = ("episodic_memory", "event_log", "profile", "foresight")
+        fetch_results = await asyncio.gather(
+            *(
+                self._client.fetch_memories(
+                    group_id, memory_type=mt, limit=100, offset=0
+                )
+                for mt in fetch_types
+            ),
+            return_exceptions=True,
+        )
+
+        known_parent_ids: set[str] = set()
+        for fetch_result in fetch_results:
+            if isinstance(fetch_result, BaseException):
+                continue
+            if not isinstance(fetch_result, dict):
+                continue
+            memories = fetch_result.get("result", {}).get("memories", [])
+            if not isinstance(memories, list):
+                continue
+            for item in memories:
+                if not isinstance(item, dict):
+                    continue
+                item_id = self._extract_memory_id(item)
+                parent_id = self._extract_parent_id(item)
+                if parent_id:
+                    known_parent_ids.add(parent_id)
+                if item_id and item_id in target_set and parent_id:
+                    id_to_parent[item_id] = parent_id
+
+        # If an input id is itself a known parent_id, map it to itself
+        for mid in memory_ids:
+            if mid in known_parent_ids and mid not in id_to_parent:
+                id_to_parent[mid] = mid
+
+        return id_to_parent
+
     async def forget(
         self,
         memory_ids: list[str],
@@ -2385,127 +2467,67 @@ class MemoryService:
             unique_ids.append(mid)
 
         group_id = to_group_id(space_id)
-        user_scope_explicit = user_id is not None
-        effective_user_id = user_id
-        if effective_user_id is None:
-            default_user_id = getattr(self._client, "user_id", None)
-            if isinstance(default_user_id, str) and default_user_id.strip():
-                effective_user_id = default_user_id.strip()
+
+        # Resolve parent_ids (memcell IDs) for deletion
+        id_to_parent = await self._resolve_parent_ids(group_id, unique_ids)
+
+        unresolved = [mid for mid in unique_ids if mid not in id_to_parent]
+
         errors: list[str] = []
         unmatched_ids: list[str] = []
         warnings: list[str] = []
 
         semaphore = asyncio.Semaphore(_FORGET_DELETE_CONCURRENCY)
 
-        async def _delete_with_scope(mid: str, scoped_user_id: str | None) -> dict:
-            return await self._client.delete_memories(
-                memory_id=mid,
-                group_id=group_id,
-                user_id=scoped_user_id,
-            )
-
         async def _delete_one(
             mid: str,
-        ) -> tuple[str, int, int, EverMemosError | None, bool, dict | None]:
+        ) -> tuple[str, int, EverMemosError | None]:
             async with semaphore:
-                retried_without_scope = False
+                # Prefer parent_id (memcell ID) — the key Cloud DELETE actually uses
+                delete_key = id_to_parent.get(mid, mid)
                 try:
-                    result = await _delete_with_scope(mid, effective_user_id)
+                    result = await self._client.delete_memories(
+                        memory_id=delete_key,
+                        group_id=group_id,
+                    )
                 except EverMemosError as e:
-                    should_retry_without_scope = (
-                        effective_user_id is not None
-                        and not user_scope_explicit
-                        and self._is_user_scope_compat_error(e)
-                    )
-                    if not should_retry_without_scope:
-                        return mid, 0, 0, e, retried_without_scope, None
-
-                    retried_without_scope = True
-                    try:
-                        result = await _delete_with_scope(mid, None)
-                    except EverMemosError as fallback_error:
-                        return mid, 0, 0, fallback_error, retried_without_scope, None
-                except Exception as e:  # pragma: no cover - defensive safeguard
-                    return (
-                        mid,
-                        0,
-                        0,
-                        EverMemosError(
-                            f"unexpected delete error: {e}",
-                            code="UPSTREAM_ERROR",
-                        ),
-                        retried_without_scope,
-                        None,
+                    return mid, 0, e
+                except Exception as e:  # pragma: no cover
+                    return mid, 0, EverMemosError(
+                        f"unexpected delete error: {e}",
+                        code="UPSTREAM_ERROR",
                     )
 
-                count = result.get("result", {}).get("count", 0)
-                if not isinstance(count, int):
-                    count = 0
-                upstream_count = max(0, count)
-                logical_deleted = 1 if upstream_count > 0 else 0
-                delete_diagnostics = None
-                if logical_deleted == 0 and isinstance(result, dict):
-                    raw_result = result.get("result")
-                    filters = (
-                        raw_result.get("filters")
-                        if isinstance(raw_result, dict)
-                        else None
-                    )
-                    message = result.get("message")
-                    if isinstance(filters, list) and not filters:
-                        delete_diagnostics = {
-                            "message": message if isinstance(message, str) else "",
-                            "filters": filters,
-                        }
-                return (
-                    mid,
-                    upstream_count,
-                    logical_deleted,
-                    None,
-                    retried_without_scope,
-                    delete_diagnostics,
-                )
+                affected = self._parse_delete_affected_count(result)
+                return mid, affected, None
 
-        delete_results = await asyncio.gather(*(_delete_one(mid) for mid in unique_ids))
+        delete_results = await asyncio.gather(
+            *(_delete_one(mid) for mid in unique_ids)
+        )
 
-        deleted = 0
+        total_affected = 0
         logical_deleted = 0
-        used_scope_fallback = False
-        ambiguous_upstream_delete = False
-        for (
-            mid,
-            count,
-            logical_count,
-            err,
-            retried_without_scope,
-            delete_diagnostics,
-        ) in delete_results:
-            deleted += count
-            logical_deleted += logical_count
-            used_scope_fallback = used_scope_fallback or retried_without_scope
+        for mid, affected, err in delete_results:
+            total_affected += affected
             if err is not None:
                 errors.append(f"{mid}: {err}")
-            elif logical_count == 0:
+            elif affected > 0:
+                logical_deleted += 1
+            else:
                 unmatched_ids.append(mid)
-                ambiguous_upstream_delete = ambiguous_upstream_delete or bool(
-                    delete_diagnostics
-                )
 
         if logical_deleted:
             self._catalog.adjust_memory_count(space_id, -logical_deleted)
 
-        if used_scope_fallback:
+        if unresolved:
             warnings.append(
-                "Delete retried without user_id scope for compatibility with upstream."
+                f"parent_id could not be resolved for {len(unresolved)} ID(s) "
+                f"(beyond 100-item scan window or missing); "
+                f"original id was sent as-is: {', '.join(unresolved[:5])}"
             )
-
         if unmatched_ids:
             warnings.append(
-                "Some memory IDs were not matched (already deleted or outside current scope)."
-            )
-        if ambiguous_upstream_delete:
-            warnings.append(
-                "Upstream delete returned ok but reported no applied filters/count; current Cloud deployment may not honor targeted memory deletion for these IDs."
+                "Some memory IDs were not matched by upstream delete."
             )
 
         normalized_reason = reason.strip() if isinstance(reason, str) else ""
@@ -2519,10 +2541,12 @@ class MemoryService:
         output: dict = {
             "ok": len(errors) == 0,
             "space_id": space_id,
-            "deleted_count": deleted,
+            "deleted_count": total_affected,
+            "deleted_count_note": (
+                "Total upstream records affected (may exceed input count "
+                "because one memcell can have multiple derived records)."
+            ),
         }
-        if effective_user_id is not None and not used_scope_fallback:
-            output["delete_scope_user_id"] = effective_user_id
         if unmatched_ids:
             output["unmatched_ids"] = unmatched_ids
             output["unmatched_count"] = len(unmatched_ids)

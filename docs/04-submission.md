@@ -11,8 +11,8 @@
 - [x] Tests passing: `uv run pytest`
 
 ## 1.1 Non-video Submission Assets
-- [x] Latest package metadata aligned to `v0.4.7`
-- [x] Latest release/tag available: `v0.4.7`
+- [x] Latest package metadata aligned to `v0.4.8`
+- [x] Latest release/tag available: `v0.4.8`
 - [x] Evidence release available: `competition-evidence-2026-02-26`
 - [x] Benchmark deep dive: `docs/competition/benchmark_deep_dive.md`
 - [x] Lifecycle appendix generator: `scripts/competition_lifecycle_appendix.py`

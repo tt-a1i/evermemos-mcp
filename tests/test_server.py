@@ -104,9 +104,10 @@ async def test_tool_descriptions_cover_client_guidance():
     assert "pending_messages" in recall_description
     assert "high-value context quickly" in briefing_description
     assert "currently available context" in briefing_description
-    assert "best-effort" in forget_description
-    assert "best-effort deletion" in forget_memory_ids_description
-    assert "fetch_history or recall" in forget_memory_ids_description
+    assert "parent_id" in forget_description
+    assert "may remain unmatched" in forget_description
+    assert "memcell ID" in forget_memory_ids_description
+    assert "100-item scan window" in forget_memory_ids_description
     assert "timeline" in history_description
 
 
@@ -325,7 +326,6 @@ async def test_dispatch_forget(svc):
     svc._client.delete_memories.assert_called_with(
         memory_id="m1",
         group_id="space::coding:app",
-        user_id="mcp-user",
     )
 
 
@@ -343,10 +343,10 @@ async def test_dispatch_forget_with_user_id_scope(svc):
     data = _parse(result)
     assert data["ok"] is True
 
+    # user_id is no longer sent to Cloud DELETE
     svc._client.delete_memories.assert_called_with(
         memory_id="m1",
         group_id="space::coding:app",
-        user_id="alice",
     )
 
 

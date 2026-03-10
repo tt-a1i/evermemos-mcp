@@ -341,11 +341,12 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Attempt best-effort deletion of specific memories in current EverMemOS Cloud behavior. "
-            "Use fetch_history or recall to identify a target first, then verify again after "
-            "deletion instead of assuming immediate removal. "
-            "This is useful for correcting outdated or incorrect memories, but current Cloud "
-            "delete semantics may not always map directly from returned memory IDs."
+            "Request deletion of specific memories from a space. "
+            "Use fetch_history or recall to identify targets first — results may include "
+            "a parent_id (memcell ID) which is the effective delete key used by EverMemOS Cloud. "
+            "The server resolves parent_id automatically when available (recent 100 items per type). "
+            "Verify deletion afterwards with fetch_history; some IDs may remain unmatched "
+            "if the memory was already deleted or outside the resolution window."
         ),
         inputSchema={
             "type": "object",
@@ -354,9 +355,11 @@ TOOLS: list[types.Tool] = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Memory identifiers to target for best-effort deletion. Prefer IDs "
-                        "verified from fetch_history or recall, then re-check after deletion "
-                        "because current Cloud behavior may not remove every returned memory_id directly."
+                        "Memory identifiers to delete. Can be either the memory id or "
+                        "the parent_id (memcell ID) from fetch_history/recall results. "
+                        "The server attempts to resolve to the correct memcell ID for deletion; "
+                        "if resolution fails (e.g. old memory beyond the 100-item scan window), "
+                        "the original id is sent as-is."
                     ),
                 },
                 "space_id": {
@@ -370,8 +373,8 @@ TOOLS: list[types.Tool] = [
                 "user_id": {
                     "type": "string",
                     "description": (
-                        "Optional user ID scope for delete. "
-                        "Defaults to the MCP client's identity."
+                        "Optional user ID for input validation. "
+                        "Note: not sent to Cloud DELETE due to upstream compatibility."
                     ),
                 },
             },

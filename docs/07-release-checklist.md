@@ -1,7 +1,7 @@
-# Release Checklist (Competition v0.4.7)
+# Release Checklist (Competition v0.4.8)
 
 ## 1) Goal
-Ship a stable competition release (`v0.4.7`) and ensure all submission assets are complete and verifiable.
+Ship a stable competition release (`v0.4.8`) and ensure all submission assets are complete and verifiable.
 
 ## 2) Release Gate (Must Pass Before Tag)
 
@@ -36,24 +36,24 @@ uv run python scripts/demo_live_walkthrough.py
 - [x] Benchmark artifacts generated under `artifacts/competition/{date}-<run-label>/`
 
 ## 3) Versioning and Changelog
-- [x] Update `pyproject.toml` version to `0.4.7`
+- [x] Update `pyproject.toml` version to `0.4.8`
 - [x] Create/update `CHANGELOG.md` with key highlights:
   - tool description tightening for `list_spaces`, `recall`, `briefing`, and `forget`
   - clearer `remember.space_id` default-space guidance
-  - release-facing docs and pinned examples updated to `0.4.7`
+  - release-facing docs and pinned examples updated to `0.4.8`
 
 ## 4) Tag and Push
 
 ```bash
 git add .
-git commit -m "release: prepare v0.4.7 competition package"
-git tag v0.4.7
+git commit -m "release: prepare v0.4.8 competition package"
+git tag v0.4.8
 git push origin main
-git push origin v0.4.7
+git push origin v0.4.8
 ```
 
 ## 5) GitHub Release
-- [x] Create GitHub release for `v0.4.7`
+- [x] Create GitHub release for `v0.4.8`
 - [x] Attach changelog summary
 - [x] Include benchmark artifact links (or report snapshots)
 - [x] Verify release page is publicly accessible
@@ -61,7 +61,7 @@ git push origin v0.4.7
 Recommended command:
 
 ```bash
-gh release create v0.4.7 --title "v0.4.7" --notes-file CHANGELOG.md
+gh release create v0.4.8 --title "v0.4.8" --notes-file CHANGELOG.md
 ```
 
 ## 6) Submission Asset Checklist

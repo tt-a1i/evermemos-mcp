@@ -84,6 +84,37 @@ def test_extract_memory_id_fallback_order():
     )
 
 
+# -- _extract_parent_id --
+
+
+def test_extract_parent_id_from_top_level():
+    assert MemoryService._extract_parent_id({"parent_id": "mc-001"}) == "mc-001"
+
+
+def test_extract_parent_id_from_metadata():
+    assert (
+        MemoryService._extract_parent_id(
+            {"metadata": {"parent_id": "mc-002"}}
+        )
+        == "mc-002"
+    )
+
+
+def test_extract_parent_id_prefers_top_level():
+    assert (
+        MemoryService._extract_parent_id(
+            {"parent_id": "mc-top", "metadata": {"parent_id": "mc-meta"}}
+        )
+        == "mc-top"
+    )
+
+
+def test_extract_parent_id_returns_none_when_missing():
+    assert MemoryService._extract_parent_id({}) is None
+    assert MemoryService._extract_parent_id({"parent_id": ""}) is None
+    assert MemoryService._extract_parent_id({"parent_id": "  "}) is None
+
+
 # -- list_spaces --
 
 
@@ -1030,6 +1061,31 @@ async def test_recall_agentic_rejects_non_profile_or_episodic_memory_types():
     assert exc_info.value.code == "INVALID_INPUT"
 
 
+# -- parent_id in row outputs --
+
+
+def test_fetch_history_row_includes_parent_id():
+    item = {
+        "id": "ep-001",
+        "parent_type": "memcell",
+        "parent_id": "mc-001",
+        "summary": "test memory",
+        "timestamp": "2026-01-01T00:00:00Z",
+    }
+    row = MemoryService._map_fetch_memory_item_to_row(
+        item, memory_type="episodic_memory", include_metadata=False
+    )
+    assert row["parent_id"] == "mc-001"
+
+
+def test_fetch_history_row_omits_parent_id_when_absent():
+    item = {"id": "ep-002", "summary": "no parent", "timestamp": ""}
+    row = MemoryService._map_fetch_memory_item_to_row(
+        item, memory_type="episodic_memory", include_metadata=False
+    )
+    assert "parent_id" not in row
+
+
 # -- fetch_history --
 
 
@@ -1458,7 +1514,73 @@ async def test_briefing_partial_failure_returns_ok_with_warning():
     assert result["lifecycle"]["partial"] is True
 
 
+# -- _parse_delete_affected_count --
+
+
+def test_parse_delete_affected_count_from_message():
+    assert MemoryService._parse_delete_affected_count(
+        {"message": "Delete operation completed, 17 records affected", "result": {"count": 0}}
+    ) == 17
+
+
+def test_parse_delete_affected_count_falls_back_to_result_count():
+    assert MemoryService._parse_delete_affected_count(
+        {"message": "ok", "result": {"count": 3}}
+    ) == 3
+
+
+def test_parse_delete_affected_count_zero_when_unparseable():
+    assert MemoryService._parse_delete_affected_count({}) == 0
+    assert MemoryService._parse_delete_affected_count(
+        {"message": "no match here", "result": {"count": 0}}
+    ) == 0
+
+
 # -- forget --
+
+
+@pytest.mark.asyncio
+async def test_forget_resolves_parent_id_for_deletion():
+    """When agent passes a memory id, forget should look up parent_id and use it."""
+    fetch_response = {
+        "result": {
+            "memories": [
+                {"id": "ep-001", "parent_type": "memcell", "parent_id": "mc-001", "summary": "test"},
+            ]
+        }
+    }
+
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(return_value=fetch_response)
+    client.delete_memories = AsyncMock(
+        return_value={"message": "Delete operation completed, 5 records affected", "result": {"count": 0}}
+    )
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["ep-001"], "coding:app")
+
+    assert result["ok"] is True
+    assert result["deleted_count"] == 5
+    _, kwargs = client.delete_memories.call_args
+    assert kwargs["memory_id"] == "mc-001"
+
+
+@pytest.mark.asyncio
+async def test_forget_falls_back_to_original_id_when_no_parent():
+    """If parent_id is not found, use the original memory_id."""
+    fetch_response = {"result": {"memories": []}}
+
+    svc, client = _make_svc()
+    client.fetch_memories = AsyncMock(return_value=fetch_response)
+    client.delete_memories = AsyncMock(
+        return_value={"message": "Delete operation completed, 1 records affected", "result": {"count": 0}}
+    )
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.forget(["orphan-id"], "coding:app")
+    assert result["ok"] is True
+    _, kwargs = client.delete_memories.call_args
+    assert kwargs["memory_id"] == "orphan-id"
 
 
 @pytest.mark.asyncio
@@ -1469,13 +1591,11 @@ async def test_forget_deletes_by_id():
     result = await svc.forget(["mem-001", "mem-002"], "coding:app")
     assert result["ok"] is True
     assert result["deleted_count"] == 2
-    assert result["delete_scope_user_id"] == "mcp-user"
     assert client.delete_memories.call_count == 2
 
     for call in client.delete_memories.call_args_list:
         _, kwargs = call
         assert kwargs["group_id"] == "space::coding:app"
-        assert kwargs["user_id"] == "mcp-user"
 
 
 @pytest.mark.asyncio
@@ -1545,16 +1665,18 @@ async def test_forget_deduplicates_ids_before_delete_calls():
 
 
 @pytest.mark.asyncio
-async def test_forget_uses_explicit_user_id_when_provided():
+async def test_forget_uses_explicit_user_id_without_sending_to_delete():
     svc, client = _make_svc()
     svc._catalog.ensure_space("coding:app")
 
-    await svc.forget(["m1"], "coding:app", user_id="alice")
+    result = await svc.forget(["m1"], "coding:app", user_id="alice")
 
+    assert result["ok"] is True
     _, kwargs = client.delete_memories.call_args
     assert kwargs["memory_id"] == "m1"
     assert kwargs["group_id"] == "space::coding:app"
-    assert kwargs["user_id"] == "alice"
+    # user_id is no longer sent to Cloud DELETE (causes 0 affected)
+    assert "user_id" not in kwargs
 
 
 @pytest.mark.asyncio
@@ -1566,14 +1688,13 @@ async def test_forget_reports_unmatched_ids_when_no_memory_matches_scope():
 
     assert result["ok"] is True
     assert result["deleted_count"] == 0
-    assert result["delete_scope_user_id"] == "alice"
     assert result["unmatched_count"] == 1
     assert result["unmatched_ids"] == ["m1"]
     assert "warnings" in result
 
 
 @pytest.mark.asyncio
-async def test_forget_warns_on_ambiguous_upstream_delete_response():
+async def test_forget_parses_count_from_message_when_result_count_is_zero():
     svc, client = _make_svc(
         delete_rv={
             "status": "ok",
@@ -1586,58 +1707,38 @@ async def test_forget_warns_on_ambiguous_upstream_delete_response():
     result = await svc.forget(["m1"], "coding:app", user_id="alice")
 
     assert result["ok"] is True
-    assert result["deleted_count"] == 0
-    assert any(
-        "may not honor targeted memory deletion" in warning
-        for warning in result["warnings"]
-    )
+    # Message-based count parsing now works — 48 was the real count
+    assert result["deleted_count"] == 48
 
 
 @pytest.mark.asyncio
-async def test_forget_retries_without_user_scope_for_compatibility():
-    async def mock_delete(*, memory_id=None, group_id=None, user_id=None, **kw):
-        if user_id == "mcp-user":
-            raise EverMemosError(
-                "unknown field user_id",
-                code="INVALID_PARAMETER",
-                status_code=400,
-            )
-        return {"result": {"count": 1}}
-
+async def test_forget_does_not_send_user_id_to_cloud_delete():
     svc, client = _make_svc()
-    client.delete_memories = AsyncMock(side_effect=mock_delete)
     svc._catalog.ensure_space("coding:app")
 
     result = await svc.forget(["m1"], "coding:app")
 
     assert result["ok"] is True
-    assert result["deleted_count"] == 1
-    assert "delete_scope_user_id" not in result
-    assert any(
-        "retried without user_id scope" in warning for warning in result["warnings"]
-    )
-
-    assert client.delete_memories.call_count == 2
-    first_call_kwargs = client.delete_memories.call_args_list[0].kwargs
-    second_call_kwargs = client.delete_memories.call_args_list[1].kwargs
-    assert first_call_kwargs["user_id"] == "mcp-user"
-    assert second_call_kwargs["user_id"] is None
+    assert client.delete_memories.call_count == 1
+    _, kwargs = client.delete_memories.call_args
+    # user_id should not be sent to Cloud DELETE (causes 0 affected)
+    assert "user_id" not in kwargs
 
 
 @pytest.mark.asyncio
-async def test_forget_does_not_retry_without_scope_when_user_id_is_explicit():
-    async def mock_delete(*, memory_id=None, group_id=None, user_id=None, **kw):
+async def test_forget_captures_delete_error_as_partial_error():
+    async def mock_delete(*, memory_id=None, group_id=None, **kw):
         raise EverMemosError(
-            "unknown field user_id",
-            code="INVALID_PARAMETER",
-            status_code=400,
+            "upstream error",
+            code="UPSTREAM_ERROR",
+            status_code=500,
         )
 
     svc, client = _make_svc()
     client.delete_memories = AsyncMock(side_effect=mock_delete)
     svc._catalog.ensure_space("coding:app")
 
-    result = await svc.forget(["m1"], "coding:app", user_id="alice")
+    result = await svc.forget(["m1"], "coding:app")
 
     assert result["ok"] is False
     assert len(result["errors"]) == 1
