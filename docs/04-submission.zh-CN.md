@@ -13,8 +13,8 @@
 
 ## 1.1 非视频提交资产
 
-- [x] 最新包元数据已对齐到 `v0.4.7`
-- [x] 最新 release/tag 已可访问：`v0.4.7`
+- [x] 最新包元数据已对齐到 `v0.4.8`
+- [x] 最新 release/tag 已可访问：`v0.4.8`
 - [x] Evidence release 已可访问：`competition-evidence-2026-02-26`
 - [x] Benchmark 深度说明：`docs/competition/benchmark_deep_dive.md`
 - [x] Lifecycle appendix 生成脚本：`scripts/competition_lifecycle_appendix.py`
