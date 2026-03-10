@@ -325,7 +325,6 @@ async def test_dispatch_forget(svc):
     svc._client.delete_memories.assert_called_with(
         memory_id="m1",
         group_id="space::coding:app",
-        user_id="mcp-user",
     )
 
 
@@ -343,10 +342,10 @@ async def test_dispatch_forget_with_user_id_scope(svc):
     data = _parse(result)
     assert data["ok"] is True
 
+    # user_id is no longer sent to Cloud DELETE
     svc._client.delete_memories.assert_called_with(
         memory_id="m1",
         group_id="space::coding:app",
-        user_id="alice",
     )
 
 
