@@ -551,6 +551,15 @@ class MemoryService:
         return ""
 
     @staticmethod
+    def _extract_parent_id(item: dict) -> str | None:
+        """Extract memcell parent_id — the ID that Cloud DELETE API expects."""
+        direct = MemoryService._pick_non_empty_string(item, "parent_id")
+        if direct:
+            return direct
+        metadata = item.get("metadata")
+        return MemoryService._pick_non_empty_string(metadata, "parent_id")
+
+    @staticmethod
     def _pending_message_key(item: object, fallback_index: int) -> str:
         if isinstance(item, dict):
             for key in ("id", "request_id", "message_id", "source_message_id"):
@@ -1017,6 +1026,9 @@ class MemoryService:
         source_message_id = MemoryService._extract_source_message_id(item)
         if source_message_id:
             row["source_message_id"] = source_message_id
+        parent_id = MemoryService._extract_parent_id(item)
+        if parent_id:
+            row["parent_id"] = parent_id
 
         if include_metadata and "metadata" in item:
             row["metadata"] = item.get("metadata")
@@ -1080,6 +1092,9 @@ class MemoryService:
             source_message_id = MemoryService._extract_source_message_id(item)
             if source_message_id:
                 row["source_message_id"] = source_message_id
+            parent_id = MemoryService._extract_parent_id(item)
+            if parent_id:
+                row["parent_id"] = parent_id
             if include_metadata and "metadata" in item:
                 row["metadata"] = item.get("metadata")
             results.append(row)
@@ -1112,6 +1127,9 @@ class MemoryService:
             source_message_id = MemoryService._extract_source_message_id(profile)
             if source_message_id:
                 row["source_message_id"] = source_message_id
+            parent_id = MemoryService._extract_parent_id(profile)
+            if parent_id:
+                row["parent_id"] = parent_id
             if include_metadata and "metadata" in profile:
                 row["metadata"] = profile.get("metadata")
             results.append(row)

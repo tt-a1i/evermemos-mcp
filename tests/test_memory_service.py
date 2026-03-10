@@ -84,6 +84,37 @@ def test_extract_memory_id_fallback_order():
     )
 
 
+# -- _extract_parent_id --
+
+
+def test_extract_parent_id_from_top_level():
+    assert MemoryService._extract_parent_id({"parent_id": "mc-001"}) == "mc-001"
+
+
+def test_extract_parent_id_from_metadata():
+    assert (
+        MemoryService._extract_parent_id(
+            {"metadata": {"parent_id": "mc-002"}}
+        )
+        == "mc-002"
+    )
+
+
+def test_extract_parent_id_prefers_top_level():
+    assert (
+        MemoryService._extract_parent_id(
+            {"parent_id": "mc-top", "metadata": {"parent_id": "mc-meta"}}
+        )
+        == "mc-top"
+    )
+
+
+def test_extract_parent_id_returns_none_when_missing():
+    assert MemoryService._extract_parent_id({}) is None
+    assert MemoryService._extract_parent_id({"parent_id": ""}) is None
+    assert MemoryService._extract_parent_id({"parent_id": "  "}) is None
+
+
 # -- list_spaces --
 
 
@@ -1028,6 +1059,31 @@ async def test_recall_agentic_rejects_non_profile_or_episodic_memory_types():
             memory_types=["foresight"],
         )
     assert exc_info.value.code == "INVALID_INPUT"
+
+
+# -- parent_id in row outputs --
+
+
+def test_fetch_history_row_includes_parent_id():
+    item = {
+        "id": "ep-001",
+        "parent_type": "memcell",
+        "parent_id": "mc-001",
+        "summary": "test memory",
+        "timestamp": "2026-01-01T00:00:00Z",
+    }
+    row = MemoryService._map_fetch_memory_item_to_row(
+        item, memory_type="episodic_memory", include_metadata=False
+    )
+    assert row["parent_id"] == "mc-001"
+
+
+def test_fetch_history_row_omits_parent_id_when_absent():
+    item = {"id": "ep-002", "summary": "no parent", "timestamp": ""}
+    row = MemoryService._map_fetch_memory_item_to_row(
+        item, memory_type="episodic_memory", include_metadata=False
+    )
+    assert "parent_id" not in row
 
 
 # -- fetch_history --
