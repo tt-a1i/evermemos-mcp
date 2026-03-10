@@ -104,9 +104,9 @@ async def test_tool_descriptions_cover_client_guidance():
     assert "pending_messages" in recall_description
     assert "high-value context quickly" in briefing_description
     assert "currently available context" in briefing_description
-    assert "best-effort" in forget_description
-    assert "best-effort deletion" in forget_memory_ids_description
-    assert "fetch_history or recall" in forget_memory_ids_description
+    assert "parent_id" in forget_description
+    assert "memcell ID" in forget_memory_ids_description
+    assert "fetch_history" in forget_memory_ids_description
     assert "timeline" in history_description
 
 

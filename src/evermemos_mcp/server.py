@@ -341,11 +341,12 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Attempt best-effort deletion of specific memories in current EverMemOS Cloud behavior. "
-            "Use fetch_history or recall to identify a target first, then verify again after "
-            "deletion instead of assuming immediate removal. "
-            "This is useful for correcting outdated or incorrect memories, but current Cloud "
-            "delete semantics may not always map directly from returned memory IDs."
+            "Delete specific memories from a space. "
+            "Use fetch_history or recall to identify targets first — each result includes "
+            "a parent_id (memcell ID) which is the effective delete key used by EverMemOS Cloud. "
+            "Verify deletion afterwards with fetch_history. "
+            "Deleting by parent_id removes all derived records (episodes, events, profile entries) "
+            "from that memcell."
         ),
         inputSchema={
             "type": "object",
@@ -354,9 +355,9 @@ TOOLS: list[types.Tool] = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Memory identifiers to target for best-effort deletion. Prefer IDs "
-                        "verified from fetch_history or recall, then re-check after deletion "
-                        "because current Cloud behavior may not remove every returned memory_id directly."
+                        "Memory identifiers to delete. Can be either the memory id or "
+                        "the parent_id (memcell ID) from fetch_history/recall results. "
+                        "The server automatically resolves to the correct memcell ID for deletion."
                     ),
                 },
                 "space_id": {
