@@ -2471,6 +2471,8 @@ class MemoryService:
         # Resolve parent_ids (memcell IDs) for deletion
         id_to_parent = await self._resolve_parent_ids(group_id, unique_ids)
 
+        unresolved = [mid for mid in unique_ids if mid not in id_to_parent]
+
         errors: list[str] = []
         unmatched_ids: list[str] = []
         warnings: list[str] = []
@@ -2517,6 +2519,12 @@ class MemoryService:
         if logical_deleted:
             self._catalog.adjust_memory_count(space_id, -logical_deleted)
 
+        if unresolved:
+            warnings.append(
+                f"parent_id could not be resolved for {len(unresolved)} ID(s) "
+                f"(beyond 100-item scan window or missing); "
+                f"original id was sent as-is: {', '.join(unresolved[:5])}"
+            )
         if unmatched_ids:
             warnings.append(
                 "Some memory IDs were not matched by upstream delete."
@@ -2534,6 +2542,10 @@ class MemoryService:
             "ok": len(errors) == 0,
             "space_id": space_id,
             "deleted_count": total_affected,
+            "deleted_count_note": (
+                "Total upstream records affected (may exceed input count "
+                "because one memcell can have multiple derived records)."
+            ),
         }
         if unmatched_ids:
             output["unmatched_ids"] = unmatched_ids

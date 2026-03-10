@@ -341,12 +341,12 @@ TOOLS: list[types.Tool] = [
     types.Tool(
         name="forget",
         description=(
-            "Delete specific memories from a space. "
-            "Use fetch_history or recall to identify targets first — each result includes "
+            "Request deletion of specific memories from a space. "
+            "Use fetch_history or recall to identify targets first — results may include "
             "a parent_id (memcell ID) which is the effective delete key used by EverMemOS Cloud. "
-            "Verify deletion afterwards with fetch_history. "
-            "Deleting by parent_id removes all derived records (episodes, events, profile entries) "
-            "from that memcell."
+            "The server resolves parent_id automatically when available (recent 100 items per type). "
+            "Verify deletion afterwards with fetch_history; some IDs may remain unmatched "
+            "if the memory was already deleted or outside the resolution window."
         ),
         inputSchema={
             "type": "object",
@@ -357,7 +357,9 @@ TOOLS: list[types.Tool] = [
                     "description": (
                         "Memory identifiers to delete. Can be either the memory id or "
                         "the parent_id (memcell ID) from fetch_history/recall results. "
-                        "The server automatically resolves to the correct memcell ID for deletion."
+                        "The server attempts to resolve to the correct memcell ID for deletion; "
+                        "if resolution fails (e.g. old memory beyond the 100-item scan window), "
+                        "the original id is sent as-is."
                     ),
                 },
                 "space_id": {
@@ -371,8 +373,8 @@ TOOLS: list[types.Tool] = [
                 "user_id": {
                     "type": "string",
                     "description": (
-                        "Optional user ID scope for delete. "
-                        "Defaults to the MCP client's identity."
+                        "Optional user ID for input validation. "
+                        "Note: not sent to Cloud DELETE due to upstream compatibility."
                     ),
                 },
             },

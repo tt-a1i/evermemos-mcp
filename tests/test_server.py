@@ -105,8 +105,9 @@ async def test_tool_descriptions_cover_client_guidance():
     assert "high-value context quickly" in briefing_description
     assert "currently available context" in briefing_description
     assert "parent_id" in forget_description
+    assert "may remain unmatched" in forget_description
     assert "memcell ID" in forget_memory_ids_description
-    assert "fetch_history" in forget_memory_ids_description
+    assert "100-item scan window" in forget_memory_ids_description
     assert "timeline" in history_description
 
 
