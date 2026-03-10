@@ -1523,6 +1523,15 @@ def test_parse_delete_affected_count_from_message():
     ) == 17
 
 
+def test_parse_delete_affected_count_from_official_format():
+    assert MemoryService._parse_delete_affected_count(
+        {"message": "Successfully deleted 1 memory", "result": {"count": 1}}
+    ) == 1
+    assert MemoryService._parse_delete_affected_count(
+        {"message": "Successfully deleted 25 memories", "result": {"count": 25}}
+    ) == 25
+
+
 def test_parse_delete_affected_count_falls_back_to_result_count():
     assert MemoryService._parse_delete_affected_count(
         {"message": "ok", "result": {"count": 3}}

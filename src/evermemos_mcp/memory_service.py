@@ -27,7 +27,9 @@ _VALID_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
 _HYBRID_ALLOWED_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _SPACE_ID_RE = re.compile(r"^[^\s:]+:[^\s:]+$")
-_DELETE_AFFECTED_RE = re.compile(r"(\d+)\s+records?\s+affected")
+_DELETE_AFFECTED_RE = re.compile(
+    r"(\d+)\s+(?:records?\s+affected|memor(?:y|ies))"
+)
 _FORGET_DELETE_CONCURRENCY = 8
 _MAX_FETCH_HISTORY_LIMIT = 100
 _SOURCE_RECOVERY_PROBE_TOP_K = config.EVERMEMOS_SOURCE_RECOVERY_PROBE_TOP_K
@@ -564,8 +566,11 @@ class MemoryService:
     def _parse_delete_affected_count(result: dict) -> int:
         """Parse actual affected count from Cloud DELETE response.
 
-        Cloud v0 always returns result.count=0 but puts the real count
-        in the message string like "Delete operation completed, 17 records affected".
+        Cloud v0 may return result.count=0 but puts the real count in the
+        message string.  Two known formats:
+          - "Delete operation completed, 17 records affected"
+          - "Successfully deleted 25 memories"
+        Falls back to result.count when message parsing fails.
         """
         message = result.get("message", "")
         if isinstance(message, str):
