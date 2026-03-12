@@ -1,5 +1,7 @@
 # evermemos-mcp
 
+[![Smithery](https://smithery.ai/badge/@tt-a1i/evermemos-mcp)](https://smithery.ai/server/@tt-a1i/evermemos-mcp)
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 **Universal long-term memory layer for AI coding assistants, powered by [EverMemOS](https://evermind.ai/).**
@@ -55,7 +57,7 @@ Current submission-ready evidence:
 | Tool | Description |
 |------|-------------|
 | `list_spaces` | Discover available memory spaces |
-| `remember` | Store information into long-term memory (async extraction) |
+| `remember` | Store information into long-term memory (async extraction). Scans for sensitive content and checks for conflicting memories in chat spaces |
 | `request_status` | Check whether a queued write is still queued or has been reported completed by upstream |
 | `recall` | Search memories with 6 retrieval strategies and label whether results are `searchable`, `provisional`, or `fallback` |
 | `briefing` | Get a structured context briefing: profile + episodes + facts + foresights, with explicit fallback labeling when needed |
@@ -71,6 +73,8 @@ Current submission-ready evidence:
 - **Conversation metadata sync** — Automatic `conversation-meta` integration with EverMemOS Cloud
 - **Async-friendly identity fallback** — Chat identity/preferences are best-effort mirrored into `conversation-meta` and can be surfaced as explicit fallback results when extracted search results are unavailable
 - **Unified lifecycle semantics** — `remember`, `request_status`, `recall`, and `briefing` expose compatible `lifecycle` blocks so clients can collectively distinguish `queued`, `provisional`, `fallback`, and `searchable`
+- **Sensitive content guard** — Detects API keys, passwords, tokens, and private keys before storing. Blocks the write and asks the user to confirm
+- **Memory conflict detection** — Automatically checks for similar existing memories in `chat:*` spaces and surfaces conflicts so the agent can decide whether to update or append
 - **Robust error handling** — Retry with backoff (429 / 5xx), GET body fallback for proxy/WAF compatibility, and structured error codes
 
 ## Quick Start

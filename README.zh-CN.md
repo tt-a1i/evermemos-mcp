@@ -1,5 +1,7 @@
 # evermemos-mcp
 
+[![Smithery](https://smithery.ai/badge/@tt-a1i/evermemos-mcp)](https://smithery.ai/server/@tt-a1i/evermemos-mcp)
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 **基于 [EverMemOS](https://evermind.ai/) 的通用 AI 长期记忆层，通过 MCP 协议为任意 AI 编程助手赋予跨会话记忆能力。**
@@ -55,7 +57,7 @@ evermemos-mcp 通过 **记忆 → 推理 → 行动** 闭环解决这个问题�
 | 工具 | 说明 |
 |------|------|
 | `list_spaces` | 发现可用的记忆空间 |
-| `remember` | 将信息存入长期记忆（异步提取） |
+| `remember` | 将信息存入长期记忆（异步提取）。自动检测敏感内容，对 chat 空间检查记忆冲突 |
 | `request_status` | 查询某次 `remember` 写入当前是否仍在排队，或已被上游标记为完成 |
 | `recall` | 搜索记忆，支持 6 种检索策略，并显式标注结果是 `searchable`、`provisional` 还是 `fallback` |
 | `briefing` | 获取结构化上下文简报：用户画像 + 情景记忆 + 关键事实 + 前瞻预测，必要时会显式标记 fallback |
@@ -71,6 +73,8 @@ evermemos-mcp 通过 **记忆 → 推理 → 行动** 闭环解决这个问题�
 - **会话元数据同步** — 自动与 EverMemOS Cloud 的 `conversation-meta` 集成
 - **异步身份兜底** — 聊天身份/偏好会以 best-effort 方式轻量镜像到 `conversation-meta`，并在提取型搜索结果不可用时以显式 fallback 形式返回
 - **统一生命周期语义** — `remember`、`request_status`、`recall`、`briefing` 都会返回兼容的 `lifecycle` 视图，让客户端可以组合区分 `queued`、`provisional`、`fallback`、`searchable`
+- **敏感内容守卫** — 存储前自动检测 API 密钥、密码、Token、私钥等敏感信息，阻止写入并提示用户确认
+- **记忆冲突检测** — 对 `chat:*` 空间自动检查是否存在相似记忆，将冲突项返回给 Agent 决定是更新还是追加
 - **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
 
 ## 快速开始
