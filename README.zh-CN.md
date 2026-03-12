@@ -155,6 +155,23 @@ uv run evermemos-mcp
 
 ---
 
+## Benchmark
+
+基于固定 60 条查询集，覆盖 coding、chat、study 三类空间。
+
+| 指标 | 有记忆 | 无记忆 |
+|------|--------|--------|
+| 命中率 | 60/60 (100%) | 0/60 (0%) |
+| 归因错误 | 0 | — |
+| P95 延迟 | 1958 ms | — |
+
+证据：
+- [`benchmark_summary.json`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json)
+- [`benchmark_report.md`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md)
+- [`runs.jsonl` (release)](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)
+
+---
+
 ## 架构
 
 ```

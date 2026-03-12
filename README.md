@@ -155,6 +155,23 @@ There are other memory MCP servers. Here's what makes this one different:
 
 ---
 
+## Benchmark
+
+Tested on a fixed 60-query set across coding, chat, and study spaces.
+
+| Metric | With memory | Without memory |
+|--------|-------------|----------------|
+| Hit rate | 60/60 (100%) | 0/60 (0%) |
+| Attribution errors | 0 | — |
+| P95 latency | 1958 ms | — |
+
+Evidence:
+- [`benchmark_summary.json`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json)
+- [`benchmark_report.md`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md)
+- [`runs.jsonl` (release)](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)
+
+---
+
 ## How It Works
 
 ```
