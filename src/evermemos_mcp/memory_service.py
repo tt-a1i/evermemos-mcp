@@ -1306,7 +1306,7 @@ class MemoryService:
         # Skip conflict check when sensitive content is being force-stored:
         # the search query would leak sensitive text to the search API.
         should_check_conflicts = check_conflicts
-        if allow_sensitive and should_check_conflicts is None:
+        if allow_sensitive:
             should_check_conflicts = False
         if should_check_conflicts is None:
             should_check_conflicts = space_id.startswith(_CHAT_SPACE_PREFIX)

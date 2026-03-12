@@ -233,6 +233,23 @@ async def test_remember_skips_conflict_check_when_allow_sensitive():
 
 
 @pytest.mark.asyncio
+async def test_remember_skips_conflict_even_when_explicitly_requested_with_allow_sensitive():
+    """allow_sensitive=True overrides check_conflicts=True to prevent leaking secrets."""
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="my api key is sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+        allow_sensitive=True,
+        check_conflicts=True,
+    )
+
+    assert result["ok"] is True
+    client.search_memories.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_remember_detects_conflicts_for_chat_space():
     search_rv = {
         "result": {
