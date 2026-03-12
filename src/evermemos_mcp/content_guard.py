@@ -18,12 +18,20 @@ class SensitiveMatch:
     matched_text: str
 
 
+def _mask(text: str) -> str:
+    """Return a masked version that shows pattern type but hides the secret."""
+    if len(text) <= 8:
+        return text[:3] + "****"
+    return text[:8] + "****"
+
+
 # (compiled_regex, category, description)
 # Order: most specific first to reduce false positives.
 _PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     # -- API keys with known prefixes --
+    # (?!-) prevents matching sk-learn-xxx style identifiers.
     (
-        re.compile(r"\bsk-(?:proj-|ant-api\d{2}-)?[A-Za-z0-9_\-]{20,}"),
+        re.compile(r"\bsk-(?:proj-|ant-api\d{2}-)?(?!-)[A-Za-z0-9_]{20,}"),
         "api_key",
         "OpenAI/Anthropic API key",
     ),
@@ -32,19 +40,27 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "aws_key",
         "AWS Access Key ID",
     ),
+    # Classic tokens (ghp_, gho_, ghs_, ghr_, ghu_) + fine-grained PAT.
     (
         re.compile(r"\bgh[psortu]_[A-Za-z0-9]{36,}\b"),
         "github_token",
         "GitHub token",
     ),
     (
+        re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+        "github_token",
+        "GitHub fine-grained PAT",
+    ),
+    (
         re.compile(r"\bxox[bp]-[A-Za-z0-9\-]{20,}\b"),
         "slack_token",
         "Slack token",
     ),
-    # -- Private keys --
+    # -- Private keys (including OPENSSH format) --
     (
-        re.compile(r"-----BEGIN (?:RSA |EC |DSA |ED25519 )?PRIVATE KEY-----"),
+        re.compile(
+            r"-----BEGIN (?:RSA |EC |DSA |ED25519 |OPENSSH )?PRIVATE KEY-----"
+        ),
         "private_key",
         "Private key block",
     ),
@@ -77,8 +93,6 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     ),
 ]
 
-_SK_MIN_LENGTH = 20
-
 
 def scan_sensitive_content(text: str) -> list[SensitiveMatch]:
     """Scan text for sensitive patterns. Returns empty list if clean."""
@@ -91,20 +105,17 @@ def scan_sensitive_content(text: str) -> list[SensitiveMatch]:
     for pattern, category, description in _PATTERNS:
         for m in pattern.finditer(text):
             span = (m.start(), m.end())
-            if any(
-                s[0] <= span[0] < s[1] or s[0] < span[1] <= s[1]
-                for s in seen_spans
-            ):
+            # Standard interval overlap: two intervals overlap iff
+            # each one starts before the other ends.
+            if any(s[0] < span[1] and span[0] < s[1] for s in seen_spans):
                 continue
             matched = m.group(0)
-            if category == "api_key" and len(matched) < _SK_MIN_LENGTH:
-                continue
             seen_spans.add(span)
             matches.append(
                 SensitiveMatch(
                     category=category,
                     description=description,
-                    matched_text=matched,
+                    matched_text=_mask(matched),
                 )
             )
 

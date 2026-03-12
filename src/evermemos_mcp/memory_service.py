@@ -1267,6 +1267,16 @@ class MemoryService:
                 "include_status must be a boolean",
                 code="INVALID_INPUT",
             )
+        if not isinstance(allow_sensitive, bool):
+            raise EverMemosError(
+                "allow_sensitive must be a boolean",
+                code="INVALID_INPUT",
+            )
+        if check_conflicts is not None and not isinstance(check_conflicts, bool):
+            raise EverMemosError(
+                "check_conflicts must be a boolean or null",
+                code="INVALID_INPUT",
+            )
 
         # -- sensitive content guard --
         if not allow_sensitive:
@@ -1281,11 +1291,7 @@ class MemoryService:
                         {
                             "category": m.category,
                             "description": m.description,
-                            "matched_text": (
-                                m.matched_text[:20] + "..."
-                                if len(m.matched_text) > 20
-                                else m.matched_text
-                            ),
+                            "matched_text": m.matched_text,
                         }
                         for m in sensitive_matches
                     ],

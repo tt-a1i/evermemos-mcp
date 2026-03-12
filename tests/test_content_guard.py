@@ -10,6 +10,8 @@ def test_detects_openai_api_key():
     matches = scan_sensitive_content(text)
     assert len(matches) >= 1
     assert matches[0].category == "api_key"
+    # matched_text should be masked, not the full key
+    assert "****" in matches[0].matched_text
     assert "sk-proj-" in matches[0].matched_text
 
 
@@ -18,6 +20,7 @@ def test_detects_anthropic_api_key():
     matches = scan_sensitive_content(text)
     assert len(matches) >= 1
     assert matches[0].category == "api_key"
+    assert "****" in matches[0].matched_text
 
 
 def test_detects_aws_access_key():
@@ -34,6 +37,14 @@ def test_detects_github_token():
     assert matches[0].category == "github_token"
 
 
+def test_detects_github_fine_grained_pat():
+    text = "Token: github_pat_abc123def456ghi789jkl012"
+    matches = scan_sensitive_content(text)
+    assert len(matches) >= 1
+    assert matches[0].category == "github_token"
+    assert "github_p" in matches[0].matched_text
+
+
 def test_detects_private_key_block():
     text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpQIBAAK..."
     matches = scan_sensitive_content(text)
@@ -43,6 +54,13 @@ def test_detects_private_key_block():
 
 def test_detects_generic_private_key():
     text = "-----BEGIN PRIVATE KEY-----\ndata..."
+    matches = scan_sensitive_content(text)
+    assert len(matches) >= 1
+    assert matches[0].category == "private_key"
+
+
+def test_detects_openssh_private_key():
+    text = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnN..."
     matches = scan_sensitive_content(text)
     assert len(matches) >= 1
     assert matches[0].category == "private_key"
@@ -94,6 +112,12 @@ def test_no_false_positive_on_short_sk_prefix():
     assert matches == []
 
 
+def test_no_false_positive_on_sklearn_style():
+    text = "Using sk-learn-pipeline for preprocessing."
+    matches = scan_sensitive_content(text)
+    assert matches == []
+
+
 def test_detects_multiple_sensitive_items():
     text = (
         "Key: sk-proj-abc123def456ghi789jkl012mno345pqr678stu\n"
@@ -110,3 +134,21 @@ def test_match_has_description():
     text = "Token: ghp_ABCDEFabcdef1234567890abcdef1234567890"
     matches = scan_sensitive_content(text)
     assert matches[0].description  # non-empty string
+
+
+def test_masked_text_hides_full_secret():
+    text = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef"
+    matches = scan_sensitive_content(text)
+    assert len(matches) == 1
+    # Must be masked — never expose the full key
+    assert matches[0].matched_text.endswith("****")
+    assert len(matches[0].matched_text) <= 12
+
+
+def test_overlap_dedup_containment():
+    """Ensure a span fully containing another is still deduped."""
+    # password= pattern and secret/token= pattern could overlap.
+    text = "password=sk-proj-abcdefghijklmnopqrstuvwxyz1234"
+    matches = scan_sensitive_content(text)
+    # Should not produce duplicate findings for the same region.
+    assert len(matches) <= 2

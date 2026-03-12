@@ -32,5 +32,5 @@ def test_changelog_tracks_current_release_highlights():
     repo_root = Path(__file__).resolve().parents[1]
     changelog = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "## [0.5.0]" in changelog
-    assert "Tightened MCP tool descriptions" in changelog
-    assert "remember.space_id" in changelog
+    assert "Sensitive content detection" in changelog
+    assert "conflict detection" in changelog

@@ -175,7 +175,8 @@ async def test_dispatch_remember_allow_sensitive_bypasses_guard(svc):
 
 
 @pytest.mark.asyncio
-async def test_dispatch_remember_check_conflicts_surfaces_matches(svc):
+async def test_dispatch_remember_check_conflicts_no_matches(svc):
+    """check_conflicts=True with empty search results produces no conflicts key."""
     result = await server_mod.handle_call_tool(
         "remember",
         {
@@ -186,8 +187,42 @@ async def test_dispatch_remember_check_conflicts_surfaces_matches(svc):
     )
     data = _parse(result)
     assert data["ok"] is True
-    # search_memories returns empty by default, so no conflicts key
     assert "conflicts" not in data
+
+
+@pytest.mark.asyncio
+async def test_dispatch_remember_check_conflicts_with_matches(svc):
+    """check_conflicts=True with existing memories surfaces conflicts."""
+    # Override search_memories to return a match.
+    svc._client.search_memories = AsyncMock(
+        return_value={
+            "result": {
+                "memories": [
+                    {
+                        "id": "mem-old",
+                        "memory_type": "profile",
+                        "content": "User prefers vim",
+                        "score": 0.88,
+                        "timestamp": "2026-03-01T00:00:00Z",
+                    }
+                ],
+                "pending_messages": [],
+            }
+        }
+    )
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "I prefer vscode now",
+            "space_id": "chat:test",
+            "check_conflicts": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert "conflicts" in data
+    assert data["conflicts"]["found"] == 1
+    assert data["conflicts"]["items"][0]["memory_id"] == "mem-old"
 
 
 @pytest.mark.asyncio

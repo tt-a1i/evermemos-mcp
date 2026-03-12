@@ -260,7 +260,29 @@ async def test_remember_detects_conflicts_for_chat_space():
     client.add_message.assert_called_once()
     assert "conflicts" in result
     assert result["conflicts"]["found"] >= 1
-    assert result["conflicts"]["items"][0]["memory_id"] == "mem-old"
+    item = result["conflicts"]["items"][0]
+    assert item["memory_id"] == "mem-old"
+    assert item["memory_type"] == "profile"
+    assert "vim" in item["snippet"]
+    assert item["score"] == 0.88
+    assert item["timestamp"] == "2026-03-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_remember_check_conflicts_false_skips_on_chat_space():
+    """check_conflicts=False explicitly disables on chat:* spaces."""
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="I like dark themes",
+        check_conflicts=False,
+    )
+
+    assert result["ok"] is True
+    client.search_memories.assert_not_called()
+    assert "conflicts" not in result
 
 
 @pytest.mark.asyncio
