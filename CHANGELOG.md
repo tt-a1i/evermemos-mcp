@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-03-12
+
+### Fixed
+- Added Python version classifiers to PyPI metadata (fixes "python missing" badge).
+
 ## [0.5.0] - 2026-03-12
 
 ### Added
