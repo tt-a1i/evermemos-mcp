@@ -147,6 +147,50 @@ async def test_dispatch_remember_with_status(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_remember_blocks_sensitive_content(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+            "space_id": "chat:test",
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["blocked_reason"] == "sensitive_content_detected"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_remember_allow_sensitive_bypasses_guard(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+            "space_id": "chat:test",
+            "allow_sensitive": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_remember_check_conflicts_surfaces_matches(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "test",
+            "space_id": "chat:test",
+            "check_conflicts": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    # search_memories returns empty by default, so no conflicts key
+    assert "conflicts" not in data
+
+
+@pytest.mark.asyncio
 async def test_dispatch_request_status(svc):
     result = await server_mod.handle_call_tool(
         "request_status",

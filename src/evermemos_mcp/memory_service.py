@@ -1210,6 +1210,8 @@ class MemoryService:
         flush: bool = False,
         refer_list: list[str] | None = None,
         include_status: bool = False,
+        allow_sensitive: bool = False,
+        check_conflicts: bool | None = None,
     ) -> dict:
         space_id = self._validate_space_id(space_id)
         content = self._validate_text(content, "content")
@@ -1265,6 +1267,85 @@ class MemoryService:
                 "include_status must be a boolean",
                 code="INVALID_INPUT",
             )
+
+        # -- sensitive content guard --
+        if not allow_sensitive:
+            from .content_guard import scan_sensitive_content
+
+            sensitive_matches = scan_sensitive_content(content)
+            if sensitive_matches:
+                return {
+                    "ok": False,
+                    "blocked_reason": "sensitive_content_detected",
+                    "sensitive_matches": [
+                        {
+                            "category": m.category,
+                            "description": m.description,
+                            "matched_text": (
+                                m.matched_text[:20] + "..."
+                                if len(m.matched_text) > 20
+                                else m.matched_text
+                            ),
+                        }
+                        for m in sensitive_matches
+                    ],
+                    "hint": (
+                        "Sensitive content detected (API keys, passwords, tokens). "
+                        "Ask the user whether to proceed. "
+                        "If confirmed, retry with allow_sensitive=true."
+                    ),
+                }
+
+        # -- conflict detection --
+        should_check_conflicts = check_conflicts
+        if should_check_conflicts is None:
+            should_check_conflicts = space_id.startswith(_CHAT_SPACE_PREFIX)
+
+        conflict_items: list[dict] | None = None
+        conflict_warning: dict | None = None
+        if should_check_conflicts:
+            try:
+                query_text = content[:200].strip()
+                conflict_search = await self._client.search_memories(
+                    group_id=to_group_id(space_id),
+                    query=query_text,
+                    top_k=5,
+                    retrieve_method="hybrid",
+                )
+                raw_memories = conflict_search.get("result", {}).get(
+                    "memories", []
+                )
+                if isinstance(raw_memories, list):
+                    conflict_items = []
+                    for item in raw_memories:
+                        if not isinstance(item, dict):
+                            continue
+                        mid = self._extract_memory_id(item)
+                        if not mid:
+                            continue
+                        snippet = self._extract_memory_text(item)
+                        ts = (
+                            item.get("timestamp", "")
+                            or item.get("start_time", "")
+                            or item.get("created_at", "")
+                        )
+                        conflict_items.append(
+                            {
+                                "memory_id": mid,
+                                "memory_type": item.get("memory_type", ""),
+                                "snippet": snippet[:200] if snippet else "",
+                                "score": item.get("score"),
+                                "timestamp": ts,
+                            }
+                        )
+                    if not conflict_items:
+                        conflict_items = None
+            except Exception as exc:
+                logger.warning("Conflict check failed: %s", exc)
+                conflict_warning = {
+                    "code": "CONFLICT_CHECK_FAILED",
+                    "message": f"Could not check for conflicting memories: {exc}",
+                }
 
         actor_profile = self._extract_chat_profile_patch(
             space_id=space_id,
@@ -1403,6 +1484,20 @@ class MemoryService:
                         "confirmed. Inspect request_status.success / request_status.error, "
                         "then keep the request_id and retry request_status later."
                     )
+
+        if conflict_items:
+            output["conflicts"] = {
+                "found": len(conflict_items),
+                "items": conflict_items,
+                "hint": (
+                    "Similar memories already exist in this space. "
+                    "If these represent outdated information, use forget to remove "
+                    "them. The new memory has been stored regardless."
+                ),
+            }
+
+        if conflict_warning is not None:
+            output.setdefault("warnings", []).append(conflict_warning)
 
         return output
 
