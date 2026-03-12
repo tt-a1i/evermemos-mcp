@@ -147,6 +147,85 @@ async def test_dispatch_remember_with_status(svc):
 
 
 @pytest.mark.asyncio
+async def test_dispatch_remember_blocks_sensitive_content(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+            "space_id": "chat:test",
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is False
+    assert data["blocked_reason"] == "sensitive_content_detected"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_remember_allow_sensitive_bypasses_guard(svc):
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+            "space_id": "chat:test",
+            "allow_sensitive": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispatch_remember_check_conflicts_no_matches(svc):
+    """check_conflicts=True with empty search results produces no conflicts key."""
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "test",
+            "space_id": "chat:test",
+            "check_conflicts": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert "conflicts" not in data
+
+
+@pytest.mark.asyncio
+async def test_dispatch_remember_check_conflicts_with_matches(svc):
+    """check_conflicts=True with existing memories surfaces conflicts."""
+    # Override search_memories to return a match.
+    svc._client.search_memories = AsyncMock(
+        return_value={
+            "result": {
+                "memories": [
+                    {
+                        "id": "mem-old",
+                        "memory_type": "profile",
+                        "content": "User prefers vim",
+                        "score": 0.88,
+                        "timestamp": "2026-03-01T00:00:00Z",
+                    }
+                ],
+                "pending_messages": [],
+            }
+        }
+    )
+    result = await server_mod.handle_call_tool(
+        "remember",
+        {
+            "content": "I prefer vscode now",
+            "space_id": "chat:test",
+            "check_conflicts": True,
+        },
+    )
+    data = _parse(result)
+    assert data["ok"] is True
+    assert "conflicts" in data
+    assert data["conflicts"]["found"] == 1
+    assert data["conflicts"]["items"][0]["memory_id"] == "mem-old"
+
+
+@pytest.mark.asyncio
 async def test_dispatch_request_status(svc):
     result = await server_mod.handle_call_tool(
         "request_status",

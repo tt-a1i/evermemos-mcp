@@ -170,6 +170,215 @@ async def test_list_spaces_after_remember():
     assert result["spaces"][0]["description"] == "My app"
 
 
+# -- sensitive content detection --
+
+
+@pytest.mark.asyncio
+async def test_remember_blocks_sensitive_content_by_default():
+    svc, client = _make_svc()
+    result = await svc.remember(
+        space_id="chat:test",
+        content="Use this key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+    )
+    assert result["ok"] is False
+    assert result["blocked_reason"] == "sensitive_content_detected"
+    assert len(result["sensitive_matches"]) >= 1
+    assert result["sensitive_matches"][0]["category"] == "api_key"
+    client.add_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_remember_allows_sensitive_content_when_explicitly_allowed():
+    svc, client = _make_svc()
+    result = await svc.remember(
+        space_id="chat:test",
+        content="Use this key: sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+        allow_sensitive=True,
+    )
+    assert result["ok"] is True
+    client.add_message.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_remember_passes_clean_content_without_blocking():
+    svc, client = _make_svc()
+    result = await svc.remember(
+        space_id="chat:test",
+        content="I prefer using vim for quick edits",
+    )
+    assert result["ok"] is True
+    client.add_message.assert_called_once()
+
+
+# -- conflict detection --
+
+
+@pytest.mark.asyncio
+async def test_remember_skips_conflict_check_when_allow_sensitive():
+    """allow_sensitive=True should skip conflict check to avoid leaking secrets to search."""
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="my api key is sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+        allow_sensitive=True,
+    )
+
+    assert result["ok"] is True
+    client.add_message.assert_called_once()
+    # search_memories should NOT be called (conflict check skipped)
+    client.search_memories.assert_not_called()
+    assert "conflicts" not in result
+
+
+@pytest.mark.asyncio
+async def test_remember_skips_conflict_even_when_explicitly_requested_with_allow_sensitive():
+    """allow_sensitive=True overrides check_conflicts=True to prevent leaking secrets."""
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="my api key is sk-proj-abcdefghijklmnopqrstuvwxyz1234567890abcdef",
+        allow_sensitive=True,
+        check_conflicts=True,
+    )
+
+    assert result["ok"] is True
+    client.search_memories.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_remember_detects_conflicts_for_chat_space():
+    search_rv = {
+        "result": {
+            "memories": [
+                {
+                    "id": "mem-old",
+                    "memory_type": "profile",
+                    "content": "User prefers vim",
+                    "score": 0.88,
+                    "timestamp": "2026-03-01T00:00:00Z",
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, client = _make_svc(search_rv=search_rv)
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="I now prefer vscode over vim",
+    )
+
+    assert result["ok"] is True
+    client.add_message.assert_called_once()
+    assert "conflicts" in result
+    assert result["conflicts"]["found"] >= 1
+    item = result["conflicts"]["items"][0]
+    assert item["memory_id"] == "mem-old"
+    assert item["memory_type"] == "profile"
+    assert "vim" in item["snippet"]
+    assert item["score"] == 0.88
+    assert item["timestamp"] == "2026-03-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_remember_check_conflicts_false_skips_on_chat_space():
+    """check_conflicts=False explicitly disables on chat:* spaces."""
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="I like dark themes",
+        check_conflicts=False,
+    )
+
+    assert result["ok"] is True
+    client.search_memories.assert_not_called()
+    assert "conflicts" not in result
+
+
+@pytest.mark.asyncio
+async def test_remember_skips_conflicts_for_coding_space_by_default():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.remember(
+        space_id="coding:app",
+        content="Decided to use PostgreSQL",
+    )
+
+    assert result["ok"] is True
+    assert "conflicts" not in result
+    client.search_memories.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_remember_force_conflict_check_on_coding_space():
+    search_rv = {
+        "result": {
+            "memories": [
+                {
+                    "id": "mem-db",
+                    "memory_type": "episodic_memory",
+                    "content": "Using MongoDB for storage",
+                    "score": 0.75,
+                    "timestamp": "2026-02-20T00:00:00Z",
+                }
+            ],
+            "pending_messages": [],
+        }
+    }
+    svc, client = _make_svc(search_rv=search_rv)
+    svc._catalog.ensure_space("coding:app")
+
+    result = await svc.remember(
+        space_id="coding:app",
+        content="Migrated from MongoDB to PostgreSQL",
+        check_conflicts=True,
+    )
+
+    assert result["ok"] is True
+    assert "conflicts" in result
+    assert result["conflicts"]["found"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_remember_no_conflicts_returns_clean_response():
+    empty_search = {"result": {"memories": [], "pending_messages": []}}
+    svc, client = _make_svc(search_rv=empty_search)
+    svc._catalog.ensure_space("chat:preferences")
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="I like dark themes",
+    )
+
+    assert result["ok"] is True
+    assert "conflicts" not in result
+
+
+@pytest.mark.asyncio
+async def test_remember_conflict_check_failure_does_not_block_write():
+    svc, client = _make_svc()
+    svc._catalog.ensure_space("chat:preferences")
+    client.search_memories = AsyncMock(side_effect=Exception("network error"))
+
+    result = await svc.remember(
+        space_id="chat:preferences",
+        content="My favorite color is blue",
+    )
+
+    assert result["ok"] is True
+    client.add_message.assert_called_once()
+    warnings = result.get("warnings", [])
+    assert any(w.get("code") == "CONFLICT_CHECK_FAILED" for w in warnings)
+
+
 # -- remember --
 
 

@@ -91,6 +91,11 @@ TOOLS: list[types.Tool] = [
             "Store information in long-term memory within a specific space. "
             "Use this proactively to save architecture decisions, user preferences, "
             "project conventions, bug solutions, and key context. "
+            "Content is scanned for sensitive patterns (API keys, passwords, tokens) before "
+            "sending to Cloud. If detected, the write is blocked and findings are returned "
+            "so the user can confirm. Retry with allow_sensitive=true after confirmation. "
+            "For chat:* spaces, similar existing memories are checked automatically and "
+            "surfaced as conflicts in the response. Use check_conflicts to override. "
             "Content is queued for AI extraction and becomes searchable only after "
             "upstream processing completes. "
             "For important writes, prefer remember(include_status=true) so the write-after "
@@ -164,6 +169,24 @@ TOOLS: list[types.Tool] = [
                         "checks"
                     ),
                     "default": False,
+                },
+                "allow_sensitive": {
+                    "type": "boolean",
+                    "description": (
+                        "Set to true to bypass sensitive content detection. "
+                        "Only use after the user has explicitly confirmed they want "
+                        "to store content containing API keys, passwords, or tokens."
+                    ),
+                    "default": False,
+                },
+                "check_conflicts": {
+                    "type": "boolean",
+                    "description": (
+                        "Check for similar existing memories before storing. "
+                        "Default: auto (enabled for chat:* spaces, disabled for others). "
+                        "When conflicts are found, the new memory is still stored "
+                        "and conflicts are returned for the agent to decide."
+                    ),
                 },
             },
             "required": ["content"],
@@ -525,6 +548,8 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             flush=args.get("flush", False),
             refer_list=args.get("refer_list"),
             include_status=args.get("include_status", False),
+            allow_sensitive=args.get("allow_sensitive", False),
+            check_conflicts=args.get("check_conflicts"),
         )
 
     if name == "request_status":

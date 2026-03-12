@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-03-12
+
+### Added
+- Sensitive content detection: `remember` scans for API keys, passwords, tokens, private keys, and connection strings before storing. Blocked writes return findings so the user can confirm; retry with `allow_sensitive=true` after confirmation.
+- Memory conflict detection: `remember` checks for similar existing memories in `chat:*` spaces by default. Conflicts are surfaced in the response with memory IDs and snippets. Use `check_conflicts` parameter to override auto behavior.
+- New module `content_guard.py` with `scan_sensitive_content()` for pattern-based sensitive content detection.
+
+### Changed
+- Updated `remember` tool description to document content guard and conflict detection behavior.
+- Added `allow_sensitive` and `check_conflicts` parameters to `remember` tool schema.
+
 ## [0.4.8] - 2026-03-10
 
 ### Fixed
