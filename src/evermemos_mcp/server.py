@@ -93,7 +93,7 @@ TOOLS: list[types.Tool] = [
             "project conventions, bug solutions, and key context. "
             "Content is scanned for sensitive patterns (API keys, passwords, tokens) before "
             "sending to Cloud. If detected, the write is blocked and findings are returned "
-            "so the user can confirm. Retry with allow_sensitive=true after confirmation. "
+            "with a hint on how to proceed. "
             "For chat:* spaces, similar existing memories are checked automatically and "
             "surfaced as conflicts in the response. Use check_conflicts to override. "
             "Content is queued for AI extraction and becomes searchable only after "
@@ -173,9 +173,8 @@ TOOLS: list[types.Tool] = [
                 "allow_sensitive": {
                     "type": "boolean",
                     "description": (
-                        "Set to true to bypass sensitive content detection. "
-                        "Only use after the user has explicitly confirmed they want "
-                        "to store content containing API keys, passwords, or tokens."
+                        "Internal override. Do not set this unless the blocked response "
+                        "hint explicitly tells you to."
                     ),
                     "default": False,
                 },
