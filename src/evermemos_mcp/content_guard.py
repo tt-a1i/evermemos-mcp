@@ -74,9 +74,14 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "Database connection string with credentials",
     ),
     # -- Explicit password/secret assignments --
+    # Supports English (=/:) and Chinese (是/为/：) connectors.
+    # Uses (?:^|\b|(?<=[\u4e00-\u9fff])) instead of bare \b so that
+    # Chinese text like "我的密码是xxx" is matched correctly (Python treats
+    # CJK characters as \w, so \b won't fire between two CJK chars).
     (
         re.compile(
-            r"\b(?:password|passwd|pwd)\s*[=:]\s*[\"']?([^\s\"']{8,})",
+            r"(?:^|\b|(?<=[\u4e00-\u9fff]))"
+            r"(?:password|passwd|pwd|密码)\s*[=:是为：]\s*[\"']?([^\s\"']+)",
             re.IGNORECASE,
         ),
         "password",
@@ -84,8 +89,9 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     ),
     (
         re.compile(
-            r"\b(?:secret|token|api[_-]?key|access[_-]?key|SECRET_KEY|API_KEY)"
-            r"\s*[=:]\s*[\"']?([^\s\"']{16,})",
+            r"(?:^|\b|(?<=[\u4e00-\u9fff]))"
+            r"(?:secret|token|api[_-]?key|access[_-]?key|SECRET_KEY|API_KEY|密钥|秘钥)"
+            r"\s*[=:是为：]\s*[\"']?([^\s\"']+)",
             re.IGNORECASE,
         ),
         "secret",
