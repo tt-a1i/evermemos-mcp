@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.6] - 2026-03-14
+
+### Changed
+- Rewrote sensitive content detection with two-tier approach: Tier 1 matches specific formats (sk-, AKIA, ghp_, private keys, connection strings). Tier 2 blocks on keyword presence alone (password, api_key, secret, token, credential, 密码, 密钥, 秘钥, 凭证) regardless of value format, so AI model rewrites cannot bypass the guard.
+
 ## [0.5.5] - 2026-03-14
 
 ### Fixed
