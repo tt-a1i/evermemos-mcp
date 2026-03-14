@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-03-14
+
+### Fixed
+- Changed `flush` default from `false` to `true` so memories are extracted immediately instead of waiting indefinitely in the queue.
+
 ## [0.5.1] - 2026-03-12
 
 ### Fixed
