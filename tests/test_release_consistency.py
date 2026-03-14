@@ -16,10 +16,10 @@ def test_release_consistency_checks_pass_for_repo_state():
 
 def test_project_versions_match_repo_files():
     repo_root = Path(__file__).resolve().parents[1]
-    assert read_project_version(repo_root / "pyproject.toml") == "0.5.3"
+    assert read_project_version(repo_root / "pyproject.toml") == "0.5.4"
     assert (
         read_init_version(repo_root / "src" / "evermemos_mcp" / "__init__.py")
-        == "0.5.3"
+        == "0.5.4"
     )
 
 
@@ -31,6 +31,6 @@ def test_server_tool_count_is_seven():
 def test_changelog_tracks_current_release_highlights():
     repo_root = Path(__file__).resolve().parents[1]
     changelog = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
-    assert "## [0.5.3]" in changelog
+    assert "## [0.5.4]" in changelog
     assert "Sensitive content detection" in changelog
     assert "conflict detection" in changelog

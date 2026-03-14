@@ -1,6 +1,6 @@
 [project]
 name = "evermemos-mcp"
-version = "0.5.3"
+version = "0.5.4"
 description = "MCP Server that brings long-term memory to AI coding tools via EverMemOS"
 readme = "README.md"
 license = "MIT"

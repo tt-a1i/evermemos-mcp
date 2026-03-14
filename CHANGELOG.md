@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.4] - 2026-03-14
+
+### Changed
+- Hidden `allow_sensitive` from tool description so AI models try the normal path first and see the content guard block before bypassing it.
+
 ## [0.5.3] - 2026-03-14
 
 ### Fixed
