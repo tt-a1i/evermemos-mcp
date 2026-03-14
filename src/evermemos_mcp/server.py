@@ -151,10 +151,10 @@ TOOLS: list[types.Tool] = [
                 "flush": {
                     "type": "boolean",
                     "description": (
-                        "Whether to force immediate boundary detection/extraction. "
-                        "Default false allows natural boundary detection"
+                        "Whether to trigger immediate extraction. "
+                        "Default true. Set false only when sending multiple messages in a batch"
                     ),
-                    "default": False,
+                    "default": True,
                 },
                 "refer_list": {
                     "type": "array",
@@ -545,7 +545,7 @@ async def _dispatch(name: str, args: dict[str, Any]) -> dict:
             sender=args.get("sender", "user"),
             user_id=args.get("user_id"),
             role=args.get("role"),
-            flush=args.get("flush", False),
+            flush=args.get("flush", True),
             refer_list=args.get("refer_list"),
             include_status=args.get("include_status", False),
             allow_sensitive=args.get("allow_sensitive", False),
