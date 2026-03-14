@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.5] - 2026-03-14
+
+### Fixed
+- Added bare `key` to sensitive keyword list so `我的key是xxx` and `key=xxx` are now blocked.
+- Removed `allow_sensitive` from tool schema so AI models cannot bypass content guard preemptively. The parameter still works but is only revealed in the blocked response hint.
+
 ## [0.5.4] - 2026-03-14
 
 ### Changed

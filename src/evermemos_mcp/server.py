@@ -170,14 +170,6 @@ TOOLS: list[types.Tool] = [
                     ),
                     "default": False,
                 },
-                "allow_sensitive": {
-                    "type": "boolean",
-                    "description": (
-                        "Internal override. Do not set this unless the blocked response "
-                        "hint explicitly tells you to."
-                    ),
-                    "default": False,
-                },
                 "check_conflicts": {
                     "type": "boolean",
                     "description": (

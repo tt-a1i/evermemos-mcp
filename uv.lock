@@ -194,7 +194,7 @@ wheels = [
 
 [[package]]
 name = "evermemos-mcp"
-version = "0.5.0"
+version = "0.5.5"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

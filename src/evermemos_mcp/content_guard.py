@@ -90,7 +90,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     (
         re.compile(
             r"(?:^|\b|(?<=[\u4e00-\u9fff]))"
-            r"(?:secret|token|api[_-]?key|access[_-]?key|SECRET_KEY|API_KEY|密钥|秘钥)"
+            r"(?:secret|token|key|api[_-]?key|access[_-]?key|SECRET_KEY|API_KEY|密钥|秘钥)"
             r"\s*[=:是为：]\s*[\"']?([^\s\"']+)",
             re.IGNORECASE,
         ),
