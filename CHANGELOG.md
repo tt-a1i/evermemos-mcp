@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3] - 2026-03-14
+
+### Fixed
+- Sensitive content guard now supports Chinese connectors (是/为/：) and Chinese keywords (密码/密钥/秘钥).
+- Removed minimum value length requirement — any value after a sensitive keyword is now blocked regardless of length.
+- Fixed `\b` word boundary not matching after CJK characters in Python regex.
+
 ## [0.5.2] - 2026-03-14
 
 ### Fixed
