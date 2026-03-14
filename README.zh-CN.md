@@ -45,7 +45,7 @@ evermemos-mcp 解决这个问题。一次 `remember` 调用存下来，一次 `b
 uvx evermemos-mcp@latest
 ```
 
-支持 **Claude Code、Cursor、Cline、Cherry Studio** 及任何 MCP 兼容客户端。各客户端配置详见 [`docs/05-client-integrations.zh-CN.md`](docs/05-client-integrations.zh-CN.md)。
+支持 **Claude Code、Cursor、Cline、Cherry Studio、OpenClaw、Gemini CLI、Aider** 及任何 MCP 兼容客户端和 Agent。各客户端配置详见 [`docs/05-client-integrations.zh-CN.md`](docs/05-client-integrations.zh-CN.md)。
 
 <details>
 <summary>从源码安装</summary>
@@ -177,7 +177,7 @@ uv run evermemos-mcp
 ## 架构
 
 ```
-MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio）
+MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio / OpenClaw / 任意 Agent）
         │
         │  MCP stdio
         ▼

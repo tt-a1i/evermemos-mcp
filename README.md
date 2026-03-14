@@ -45,7 +45,7 @@ Or run directly:
 uvx evermemos-mcp@latest
 ```
 
-Works with **Claude Code, Cursor, Cline, Cherry Studio**, and any MCP-compatible client. See [`docs/05-client-integrations.md`](docs/05-client-integrations.md) for client-specific setup.
+Works with **Claude Code, Cursor, Cline, Cherry Studio, OpenClaw, Gemini CLI, Aider**, and any MCP-compatible client or agent. See [`docs/05-client-integrations.md`](docs/05-client-integrations.md) for client-specific setup.
 
 <details>
 <summary>Install from source</summary>
@@ -177,7 +177,7 @@ Evidence:
 ## How It Works
 
 ```
-MCP Client (Claude Code / Cursor / Cline / Cherry Studio)
+MCP Client (Claude Code / Cursor / Cline / Cherry Studio / OpenClaw / any agent)
         │
         │  MCP stdio
         ▼
