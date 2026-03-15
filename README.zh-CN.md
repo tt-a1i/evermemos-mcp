@@ -3,7 +3,6 @@
 [![PyPI](https://img.shields.io/pypi/v/evermemos-mcp)](https://pypi.org/project/evermemos-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/evermemos-mcp)](https://pypi.org/project/evermemos-mcp/)
 [![CI](https://github.com/tt-a1i/evermemos-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tt-a1i/evermemos-mcp/actions/workflows/ci.yml)
-[![Smithery](https://smithery.ai/badge/@tt-a1i/evermemos-mcp)](https://smithery.ai/server/@tt-a1i/evermemos-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | [简体中文](README.zh-CN.md)
