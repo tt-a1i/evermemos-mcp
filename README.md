@@ -10,6 +10,8 @@
 
 **Long-term memory for AI coding assistants. Remember once, recall forever.**
 
+![evermemos-mcp overview](assets/overview-en.jpg)
+
 You spent thirty minutes explaining your architecture, naming conventions, and why you dropped MongoDB. Next session — gone. You explain it all over again.
 
 evermemos-mcp fixes this. One `remember` call stores it. One `briefing` call brings it back — across any session, any client.

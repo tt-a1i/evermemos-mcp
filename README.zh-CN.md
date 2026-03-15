@@ -10,6 +10,8 @@
 
 **AI 编程助手的长期记忆。记一次，永远记得。**
 
+![evermemos-mcp 概览](assets/overview-zh.jpg)
+
 你花了半小时跟 AI 讲项目架构、命名规范、为什么放弃了 MongoDB。第二天开新会话——全忘了。你只好再讲一遍。
 
 evermemos-mcp 解决这个问题。一次 `remember` 调用存下来，一次 `briefing` 调用恢复——跨会话、跨客户端。
