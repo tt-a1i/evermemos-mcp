@@ -16,6 +16,8 @@ evermemos-mcp fixes this. One `remember` call stores it. One `briefing` call bri
 
 > **Benchmark: 60/60 recall vs 0/60 baseline. Zero attribution errors. P95 < 2s.** ([evidence](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json))
 
+> **Intro video:** [Watch on Bilibili](https://www.bilibili.com/video/BV1jMwhzKEVo)
+
 > **Demo video:** [Watch on Bilibili](https://www.bilibili.com/video/BV13twWzuETU)
 
 ---
