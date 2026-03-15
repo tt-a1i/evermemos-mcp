@@ -16,6 +16,8 @@ evermemos-mcp 解决这个问题。一次 `remember` 调用存下来，一次 `b
 
 > **Benchmark: 有记忆 60/60 命中 vs 无记忆 0/60。零归因错误。P95 < 2s。** ([证据](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json))
 
+> **简介视频：** [B站观看](https://www.bilibili.com/video/BV1jMwhzKEVo)
+
 > **演示视频：** [B站观看](https://www.bilibili.com/video/BV13twWzuETU)
 
 ---
