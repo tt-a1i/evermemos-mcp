@@ -310,6 +310,10 @@ uv run pytest             # 测试（285 通过）
 | [`docs/06-benchmark.md`](docs/06-benchmark.md) | Benchmark 协议 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 版本历史 |
 
+## 相关项目
+
+**[MCO](https://github.com/mco-org/mco)** — Agent 编排 CLI 工具。让你的主 Agent（Claude Code、Cursor、Aider）把任务分发给多个编程 Agent 并行执行。和 evermemos-mcp 搭配使用：MCO 负责并行调度，evermemos-mcp 负责持久记忆。
+
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)

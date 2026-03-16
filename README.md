@@ -310,6 +310,10 @@ uv run pytest             # Tests (285 pass)
 | [`docs/06-benchmark.md`](docs/06-benchmark.md) | Benchmark protocol |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
 
+## Also Check Out
+
+**[MCO](https://github.com/mco-org/mco)** — Agent orchestration CLI. Let your main agent (Claude Code, Cursor, Aider) dispatch tasks to multiple coding agents in parallel. Pairs well with evermemos-mcp: MCO handles parallel execution, evermemos-mcp handles persistent memory.
+
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)
