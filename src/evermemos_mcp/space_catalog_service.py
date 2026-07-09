@@ -88,6 +88,65 @@ class SpaceCatalogService:
         self._known_conversation_meta_spaces: set[str] = set()
         self._conversation_meta_created_at: dict[str, str] = {}
         self._conversation_meta_user_details: dict[str, dict[str, dict]] = {}
+        self._last_conversation_meta_persist_result: dict = (
+            self._default_conversation_meta_persist_result()
+        )
+
+    @staticmethod
+    def _default_conversation_meta_persist_result() -> dict:
+        return {
+            "ok": True,
+            "degraded": False,
+            "durable_user_details": True,
+            "warnings": [],
+        }
+
+    @staticmethod
+    def _conversation_meta_persist_result(
+        *,
+        ok: bool = True,
+        degraded: bool = False,
+        durable_user_details: bool = True,
+        warnings: list[str] | None = None,
+        error: str | None = None,
+    ) -> dict:
+        result = {
+            "ok": ok,
+            "degraded": degraded,
+            "durable_user_details": durable_user_details,
+            "warnings": list(warnings or []),
+        }
+        if error:
+            result["error"] = error
+        return result
+
+    @staticmethod
+    def _client_meta_warnings(response: object) -> list[str]:
+        if not isinstance(response, dict):
+            return []
+        raw = response.get("warnings")
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, str)]
+
+    @classmethod
+    def _user_details_ignored_by_warnings(cls, warnings: list[str]) -> bool:
+        return any("user_details" in warning for warning in warnings)
+
+    @classmethod
+    def _result_from_client_response(cls, response: object) -> dict:
+        warnings = cls._client_meta_warnings(response)
+        durable = not cls._user_details_ignored_by_warnings(warnings)
+        return cls._conversation_meta_persist_result(
+            ok=True,
+            degraded=bool(warnings),
+            durable_user_details=durable,
+            warnings=warnings,
+        )
+
+    @property
+    def last_conversation_meta_persist_result(self) -> dict:
+        return dict(self._last_conversation_meta_persist_result)
 
     # -- public API --
 
@@ -119,13 +178,15 @@ class SpaceCatalogService:
 
         # Best-effort persist to catalog space
         await self._persist_entry(space_id, description, created_at=info.created_at)
-        await self._persist_conversation_meta_locked(
-            space_id,
-            description,
-            created_at=info.created_at,
-            actor_user_id=actor_user_id,
-            actor_role=actor_role,
-            actor_profile=actor_profile,
+        self._last_conversation_meta_persist_result = (
+            await self._persist_conversation_meta_locked(
+                space_id,
+                description,
+                created_at=info.created_at,
+                actor_user_id=actor_user_id,
+                actor_role=actor_role,
+                actor_profile=actor_profile,
+            )
         )
         return info
 
@@ -173,10 +234,11 @@ class SpaceCatalogService:
         actor_user_id: str | None = None,
         actor_role: str = "user",
         actor_profile: dict | None = None,
-    ) -> None:
+    ) -> dict:
         """Best-effort metadata upsert for a space.
 
         Useful when remember() writes to a space that has no explicit description.
+        Returns persist result with ok/degraded/durable_user_details/warnings.
         """
         info = self.ensure_space(space_id)
         if description is not None and description.strip():
@@ -185,7 +247,7 @@ class SpaceCatalogService:
         created_at = info.created_at or datetime.now(timezone.utc).isoformat()
         if not info.created_at:
             info.created_at = created_at
-        await self._persist_conversation_meta_locked(
+        result = await self._persist_conversation_meta_locked(
             space_id,
             info.description,
             created_at=created_at,
@@ -193,6 +255,8 @@ class SpaceCatalogService:
             actor_role=actor_role,
             actor_profile=actor_profile,
         )
+        self._last_conversation_meta_persist_result = result
+        return result
 
     async def get_conversation_meta(
         self,
@@ -311,10 +375,10 @@ class SpaceCatalogService:
         actor_user_id: str | None = None,
         actor_role: str = "user",
         actor_profile: dict | None = None,
-    ) -> None:
+    ) -> dict:
         lock = self._get_conversation_meta_lock(space_id)
         async with lock:
-            await self._persist_conversation_meta(
+            result = await self._persist_conversation_meta(
                 space_id,
                 description,
                 created_at=created_at,
@@ -331,6 +395,7 @@ class SpaceCatalogService:
             and not has_waiters
         ):
             self._conversation_meta_locks.pop(space_id, None)
+        return result
 
     @staticmethod
     def _extract_meta_created_at(meta: dict) -> str | None:
@@ -345,6 +410,7 @@ class SpaceCatalogService:
         *,
         created_at: str | None,
         user_details: object,
+        durable_user_details: bool = True,
     ) -> None:
         self._known_conversation_meta_spaces.add(space_id)
 
@@ -356,9 +422,27 @@ class SpaceCatalogService:
             if info is not None:
                 info.created_at = normalized_created_at
 
+        if not durable_user_details:
+            return
+
         normalized_user_details = self._normalize_user_details(user_details)
         if normalized_user_details:
             self._conversation_meta_user_details[space_id] = normalized_user_details
+
+    def _apply_meta_cache_from_persist(
+        self,
+        space_id: str,
+        *,
+        created_at: str | None,
+        user_details: object | None,
+        result: dict,
+    ) -> None:
+        self._cache_conversation_meta_snapshot(
+            space_id,
+            created_at=created_at,
+            user_details=user_details,
+            durable_user_details=result.get("durable_user_details", True),
+        )
 
     def _get_cached_conversation_meta_snapshot(self, space_id: str) -> dict | None:
         if space_id not in self._known_conversation_meta_spaces:
@@ -405,7 +489,7 @@ class SpaceCatalogService:
         scene_desc: dict,
         tags: list[str],
         user_details: dict | None,
-    ) -> None:
+    ) -> dict:
         payload = {
             "group_id": group_id,
             "scene": scene,
@@ -419,8 +503,7 @@ class SpaceCatalogService:
         }
 
         try:
-            await self._client.set_conversation_metadata(**payload)
-            return
+            return await self._client.set_conversation_metadata(**payload)
         except EverMemosError as exc:
             needs_group_create_compat = (
                 self._is_group_scene_inherited_error(exc)
@@ -434,7 +517,7 @@ class SpaceCatalogService:
         compat_payload.pop("scene", None)
         compat_payload.pop("scene_desc", None)
         compat_payload["name"] = self._conversation_meta_name(space_id)
-        await self._client.set_conversation_metadata(**compat_payload)
+        return await self._client.set_conversation_metadata(**compat_payload)
 
     async def _update_conversation_metadata_compat(
         self,
@@ -444,7 +527,7 @@ class SpaceCatalogService:
         scene_desc: dict,
         tags: list[str],
         user_details: dict | None,
-    ) -> None:
+    ) -> dict:
         payload = {
             "group_id": group_id,
             "description": description,
@@ -456,14 +539,13 @@ class SpaceCatalogService:
         }
 
         try:
-            await self._client.update_conversation_metadata(**payload)
-            return
+            return await self._client.update_conversation_metadata(**payload)
         except EverMemosError as exc:
             if not self._is_group_scene_desc_compat_error(exc):
                 raise
 
         payload.pop("scene_desc", None)
-        await self._client.update_conversation_metadata(**payload)
+        return await self._client.update_conversation_metadata(**payload)
 
     async def _fetch_conversation_meta_snapshot(self, group_id: str) -> dict | None:
         try:
@@ -496,9 +578,9 @@ class SpaceCatalogService:
         actor_user_id: str | None = None,
         actor_role: str = "user",
         actor_profile: dict | None = None,
-    ) -> None:
+    ) -> dict:
         if not EVERMEMOS_ENABLE_CONVERSATION_META:
-            return
+            return self._default_conversation_meta_persist_result()
 
         group_id = to_group_id(space_id)
         domain = space_id.split(":", 1)[0] if ":" in space_id else "general"
@@ -530,10 +612,12 @@ class SpaceCatalogService:
             if isinstance(fetched_snapshot, dict):
                 existing_snapshot = fetched_snapshot
                 known_exists = True
+                fetched_user_details = fetched_snapshot.get("user_details")
                 self._cache_conversation_meta_snapshot(
                     space_id,
                     created_at=fetched_snapshot.get("created_at"),
-                    user_details=fetched_snapshot.get("user_details"),
+                    user_details=fetched_user_details,
+                    durable_user_details=bool(fetched_user_details),
                 )
 
         effective_created_at = created_at
@@ -551,7 +635,7 @@ class SpaceCatalogService:
 
         if known_exists:
             try:
-                await self._update_conversation_metadata_compat(
+                response = await self._update_conversation_metadata_compat(
                     group_id=group_id,
                     description=payload_description or None,
                     scene_desc=scene_desc,
@@ -562,16 +646,23 @@ class SpaceCatalogService:
                 logger.warning(
                     "Failed to persist conversation metadata for %s: %s", space_id, exc
                 )
-            else:
-                self._cache_conversation_meta_snapshot(
-                    space_id,
-                    created_at=effective_created_at,
-                    user_details=user_details,
+                return self._conversation_meta_persist_result(
+                    ok=False,
+                    degraded=True,
+                    durable_user_details=False,
+                    error=str(exc),
                 )
-            return
+            result = self._result_from_client_response(response)
+            self._apply_meta_cache_from_persist(
+                space_id,
+                created_at=effective_created_at,
+                user_details=user_details,
+                result=result,
+            )
+            return result
 
         try:
-            await self._set_conversation_metadata_compat(
+            response = await self._set_conversation_metadata_compat(
                 group_id=group_id,
                 space_id=space_id,
                 scene=scene,
@@ -581,12 +672,14 @@ class SpaceCatalogService:
                 tags=tags,
                 user_details=user_details,
             )
-            self._cache_conversation_meta_snapshot(
+            result = self._result_from_client_response(response)
+            self._apply_meta_cache_from_persist(
                 space_id,
                 created_at=effective_created_at,
                 user_details=user_details,
+                result=result,
             )
-            return
+            return result
         except EverMemosError as exc:
             recoverable_statuses = {400, 404, 409, 422}
             if exc.code == "UPSTREAM_UNAVAILABLE" or (
@@ -595,7 +688,12 @@ class SpaceCatalogService:
                 logger.warning(
                     "Failed to set conversation metadata for %s: %s", space_id, exc
                 )
-                return
+                return self._conversation_meta_persist_result(
+                    ok=False,
+                    degraded=True,
+                    durable_user_details=False,
+                    error=str(exc),
+                )
             if (
                 exc.status_code is not None
                 and exc.status_code not in recoverable_statuses
@@ -603,7 +701,12 @@ class SpaceCatalogService:
                 logger.warning(
                     "Failed to set conversation metadata for %s: %s", space_id, exc
                 )
-                return
+                return self._conversation_meta_persist_result(
+                    ok=False,
+                    degraded=True,
+                    durable_user_details=False,
+                    error=str(exc),
+                )
             # Existing metadata or schema variance — fallback to patch.
 
         retry_snapshot = await self._fetch_conversation_meta_snapshot(group_id)
@@ -615,14 +718,16 @@ class SpaceCatalogService:
                 base_user_details,
                 retry_snapshot.get("user_details"),
             )
+            retry_user_details = retry_snapshot.get("user_details")
             self._cache_conversation_meta_snapshot(
                 space_id,
                 created_at=retry_snapshot.get("created_at"),
-                user_details=retry_snapshot.get("user_details"),
+                user_details=retry_user_details,
+                durable_user_details=bool(retry_user_details),
             )
 
         try:
-            await self._update_conversation_metadata_compat(
+            response = await self._update_conversation_metadata_compat(
                 group_id=group_id,
                 description=payload_description or None,
                 scene_desc=scene_desc,
@@ -633,12 +738,21 @@ class SpaceCatalogService:
             logger.warning(
                 "Failed to persist conversation metadata for %s: %s", space_id, exc
             )
-        else:
-            self._cache_conversation_meta_snapshot(
-                space_id,
-                created_at=effective_created_at,
-                user_details=user_details,
+            return self._conversation_meta_persist_result(
+                ok=False,
+                degraded=True,
+                durable_user_details=False,
+                error=str(exc),
             )
+
+        result = self._result_from_client_response(response)
+        self._apply_meta_cache_from_persist(
+            space_id,
+            created_at=effective_created_at,
+            user_details=user_details,
+            result=result,
+        )
+        return result
 
     @staticmethod
     def _merge_user_details(
@@ -883,27 +997,55 @@ class SpaceCatalogService:
                 _RECOVER_COOLDOWN_SECS,
             )
 
+    def _recovery_fetch_memory_types(self) -> tuple[str, ...]:
+        """Memory types to try during catalog fetch recovery.
+
+        Prefer client-advertised supported types when available so Cloud v1 does
+        not start with legacy event_log (UNSUPPORTED_UPSTREAM).
+        """
+        candidates = ("event_log", "episodic_memory")
+        if type(self._client) is EverMemosClient:
+            supported = self._client.supported_fetch_memory_types()
+            filtered = tuple(
+                memory_type for memory_type in candidates if memory_type in supported
+            )
+            if filtered:
+                return filtered
+        return candidates
+
     async def _recover_from_paginated_fetch(self) -> bool:
         """Recover catalog entries by paging through fetch_memories results.
 
         Returns True when fetch API returned a parseable dict response at least once.
+        Unsupported/invalid per-type failures are skipped so later types and the
+        search fallback can still run.
         """
 
         saw_valid_fetch = False
         # Keep pagination aligned with client-side limit clamp (<=100).
         page_size = max(1, min(_CATALOG_PAGE_SIZE, 100))
-        for memory_type in ("event_log", "episodic_memory"):
+        for memory_type in self._recovery_fetch_memory_types():
             page = 0
             offset = 0
             while page < _CATALOG_MAX_FETCH_PAGES:
-                response = await self._client.fetch_memories(
-                    CATALOG_GROUP_ID,
-                    memory_type=memory_type,
-                    limit=page_size,
-                    offset=offset,
-                )
+                try:
+                    response = await self._client.fetch_memories(
+                        CATALOG_GROUP_ID,
+                        memory_type=memory_type,
+                        limit=page_size,
+                        offset=offset,
+                    )
+                except EverMemosError as exc:
+                    if exc.code in {"UNSUPPORTED_UPSTREAM", "INVALID_INPUT"}:
+                        logger.debug(
+                            "Skipping unsupported catalog fetch type %s: %s",
+                            memory_type,
+                            exc,
+                        )
+                        break
+                    raise
                 if not isinstance(response, dict):
-                    return saw_valid_fetch
+                    break
 
                 result = response.get("result")
                 if not isinstance(result, dict):

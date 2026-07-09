@@ -22,6 +22,7 @@ def _make_svc(
     """Create a MemoryService with a fully mocked client."""
     client = AsyncMock(spec=EverMemosClient)
     client.user_id = "mcp-user"
+    client._api_version = "v0"
     client.add_message = AsyncMock(
         return_value=add_msg_rv or {"status": "queued", "request_id": "req-123"}
     )
@@ -489,6 +490,70 @@ async def test_remember_chat_identity_mirrors_chinese_name_to_metadata():
     _, kwargs = client.set_conversation_metadata.call_args
     user_details = kwargs["user_details"]
     assert user_details["mcp-user"]["full_name"] == "Tom"
+
+
+@pytest.mark.asyncio
+async def test_remember_chat_identity_reports_degraded_mirror_when_user_details_not_durable():
+    svc, client = _make_svc()
+    client.set_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {"group_id": "space::chat:preferences", "name": "chat:preferences"},
+            "warnings": [
+                "v1 Groups API does not support user_details; field ignored (live key verification pending)"
+            ],
+        }
+    )
+    client.update_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError(
+            "v1 Groups API update requires name or description",
+            code="UNSUPPORTED_UPSTREAM",
+        )
+    )
+
+    result = await svc.remember(
+        "chat:preferences",
+        "My name is Tom and I prefer dark mode.",
+        user_id="alice",
+    )
+
+    mirror = result["metadata_mirror"]
+    assert mirror["enabled"] is False
+    assert mirror["degraded"] is True
+    assert mirror.get("limited") is True
+    assert "user_details" in mirror["message"] or any(
+        "user_details" in warning for warning in mirror.get("warnings", [])
+    )
+    snapshot = svc._catalog._get_cached_conversation_meta_snapshot("chat:preferences")
+    assert snapshot is None or "user_details" not in (snapshot or {})
+
+
+@pytest.mark.asyncio
+async def test_remember_chat_identity_does_not_claim_mirror_on_unsupported_upstream():
+    svc, client = _make_svc()
+    client.set_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError(
+            "v1 Groups API update requires name or description; only unsupported fields were provided",
+            code="UNSUPPORTED_UPSTREAM",
+        )
+    )
+    client.update_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError(
+            "v1 Groups API update requires name or description",
+            code="UNSUPPORTED_UPSTREAM",
+        )
+    )
+
+    result = await svc.remember(
+        "chat:preferences",
+        "My name is Tom and I prefer dark mode.",
+        user_id="alice",
+    )
+
+    mirror = result["metadata_mirror"]
+    assert mirror["enabled"] is False
+    assert mirror["degraded"] is True
+    assert mirror.get("message")
 
 
 @pytest.mark.asyncio
@@ -1514,6 +1579,66 @@ async def test_briefing_assembles_four_types():
 
     types_found = {h["type"] for h in result["highlights"]}
     assert types_found == {"profile", "episodic_memory", "event_log", "foresight"}
+
+
+@pytest.mark.asyncio
+async def test_briefing_v1_skips_event_log_and_foresight():
+    svc, client = _make_svc()
+    client._api_version = "v1"
+    client.fetch_memories = AsyncMock(return_value={"result": {"memories": []}})
+
+    result = await svc.briefing("coding:app")
+
+    assert client.fetch_memories.call_count == 2
+    called_types = {
+        call.kwargs.get("memory_type")
+        for call in client.fetch_memories.call_args_list
+    }
+    assert called_types == {"profile", "episodic_memory"}
+    assert result["skipped_fetch_types"] == ["foresight", "event_log"]
+    assert "event_log" in result["v1_limitations"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_v1_rejects_event_log():
+    svc, client = _make_svc()
+    client._api_version = "v1"
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.fetch_history("coding:app", memory_type="event_log")
+
+    assert exc_info.value.code == "UNSUPPORTED_UPSTREAM"
+    client.fetch_memories.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_v1_routes_agent_case_and_agent_skill():
+    svc, client = _make_svc()
+    client._api_version = "v1"
+    client.fetch_memories = AsyncMock(
+        return_value={"result": {"memories": [], "count": 0, "total_count": 0}}
+    )
+
+    for memory_type in ("agent_case", "agent_skill"):
+        client.fetch_memories.reset_mock()
+        result = await svc.fetch_history("coding:app", memory_type=memory_type)
+        assert result["ok"] is True
+        assert result["memory_type"] == memory_type
+        client.fetch_memories.assert_called_once()
+        _, kwargs = client.fetch_memories.call_args
+        assert kwargs["memory_type"] == memory_type
+
+
+@pytest.mark.asyncio
+async def test_fetch_history_v0_rejects_agent_case():
+    svc, client = _make_svc()
+    client._api_version = "v0"
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await svc.fetch_history("coding:app", memory_type="agent_case")
+
+    assert exc_info.value.code == "UNSUPPORTED_UPSTREAM"
+    client.fetch_memories.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,12 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from . import config
-from .evermemos_client import EverMemosClient, EverMemosError
+from .evermemos_client import (
+    EverMemosClient,
+    EverMemosError,
+    V0_FETCH_MEMORY_TYPES,
+    V1_FETCH_MEMORY_TYPES,
+)
 from .space_catalog_service import SpaceCatalogService, from_group_id, to_group_id
 
 _VALID_ROLES = {"user", "assistant"}
@@ -21,7 +26,17 @@ _VALID_RETRIEVE_METHODS = {"keyword", "hybrid", "vector", "rrf", "agentic", "aut
 _DEFAULT_RECALL_TOP_K = 10
 _MAX_RECALL_TOP_K = 100
 _MEMORY_TYPE_ORDER = ("episodic_memory", "profile", "foresight", "event_log")
-_FETCH_MEMORY_TYPES = set(_MEMORY_TYPE_ORDER)
+_PUBLIC_FETCH_MEMORY_TYPES = (
+    "profile",
+    "episodic_memory",
+    "agent_case",
+    "agent_skill",
+    "event_log",
+    "foresight",
+)
+_FETCH_MEMORY_TYPES = frozenset(_PUBLIC_FETCH_MEMORY_TYPES)
+_PUBLIC_FETCH_MEMORY_TYPE_LIST = ", ".join(_PUBLIC_FETCH_MEMORY_TYPES)
+_BRIEFING_MEMORY_TYPES = _MEMORY_TYPE_ORDER
 _SEARCH_MEMORY_TYPES = ("profile", "episodic_memory")
 _VALID_MEMORY_TYPES = set(_SEARCH_MEMORY_TYPES)
 _HYBRID_RESTRICTED_METHODS = {"hybrid", "rrf", "agentic"}
@@ -463,10 +478,52 @@ class MemoryService:
         value = memory_type.strip()
         if value not in _FETCH_MEMORY_TYPES:
             raise EverMemosError(
-                "memory_type must be one of: profile, episodic_memory, foresight, event_log",
+                "memory_type must be one of: "
+                f"{_PUBLIC_FETCH_MEMORY_TYPE_LIST}",
                 code="INVALID_INPUT",
             )
         return value
+
+    def _api_uses_v0(self) -> bool:
+        version = getattr(self._client, "_api_version", None)
+        if isinstance(version, str) and version.strip():
+            return version.strip() == "v0"
+        return config.EVERMEMOS_API_VERSION == "v0"
+
+    def _supported_fetch_memory_types(self) -> frozenset[str]:
+        if type(self._client) is EverMemosClient:
+            return self._client.supported_fetch_memory_types()
+        return V0_FETCH_MEMORY_TYPES if self._api_uses_v0() else V1_FETCH_MEMORY_TYPES
+
+    def _ensure_client_fetch_memory_type_supported(self, memory_type: str) -> None:
+        if memory_type in self._supported_fetch_memory_types():
+            return
+        if memory_type in {"event_log", "foresight"} and not self._api_uses_v0():
+            raise EverMemosError(
+                "Cloud v1 /memories/get does not support memory_type "
+                f"'{memory_type}' (supported: episodic_memory, profile, "
+                "agent_case, agent_skill)",
+                code="UNSUPPORTED_UPSTREAM",
+            )
+        if memory_type in {"agent_case", "agent_skill"} and self._api_uses_v0():
+            raise EverMemosError(
+                "Cloud v0 /memories/get does not support memory_type "
+                f"'{memory_type}' (supported: episodic_memory, profile, "
+                "event_log, foresight)",
+                code="UNSUPPORTED_UPSTREAM",
+            )
+        raise EverMemosError(
+            f"Unsupported fetch memory_type '{memory_type}' for current API version",
+            code="INVALID_INPUT",
+        )
+
+    def _briefing_fetch_types(self) -> tuple[str, ...]:
+        supported = self._supported_fetch_memory_types()
+        return tuple(
+            memory_type
+            for memory_type in _BRIEFING_MEMORY_TYPES
+            if memory_type in supported
+        )
 
     @staticmethod
     def _validate_radius(radius: float | None) -> float | None:
@@ -694,6 +751,54 @@ class MemoryService:
             patch["preference_notes"] = [normalized[:240]]
 
         return patch or None
+
+    @staticmethod
+    def _build_metadata_mirror_output(
+        actor_profile: dict | None,
+        meta_persist_result: dict | None,
+    ) -> dict | None:
+        if not actor_profile:
+            return None
+
+        result = meta_persist_result or {}
+        if not result.get("ok", True):
+            mirror: dict = {
+                "enabled": False,
+                "degraded": True,
+                "message": (
+                    result.get("error")
+                    or "Conversation metadata mirror was not persisted upstream."
+                ),
+            }
+            warnings = result.get("warnings")
+            if isinstance(warnings, list) and warnings:
+                mirror["warnings"] = warnings
+            return mirror
+
+        if result.get("degraded") or not result.get("durable_user_details", True):
+            mirror = {
+                "enabled": False,
+                "degraded": True,
+                "limited": True,
+                "message": (
+                    "Detected chat identity/preferences locally, but upstream metadata "
+                    "only persisted supported group fields (name/description). "
+                    "user_details and other extended fields are not durably mirrored."
+                ),
+            }
+            warnings = result.get("warnings")
+            if isinstance(warnings, list) and warnings:
+                mirror["warnings"] = warnings
+            return mirror
+
+        return {
+            "enabled": True,
+            "message": (
+                "Detected chat identity/preferences and mirrored them into conversation "
+                "metadata so recall or briefing can expose a fallback while searchable "
+                "memories are not ready yet."
+            ),
+        }
 
     @staticmethod
     def _classify_identity_query(query: str) -> tuple[bool, bool]:
@@ -1371,9 +1476,10 @@ class MemoryService:
                 actor_role=effective_role,
                 actor_profile=actor_profile,
             )
+            meta_persist_result = self._catalog.last_conversation_meta_persist_result
         else:
             self._catalog.ensure_space(space_id)
-            await self._catalog.ensure_conversation_meta(
+            meta_persist_result = await self._catalog.ensure_conversation_meta(
                 space_id,
                 actor_user_id=sender_id,
                 actor_role=effective_role,
@@ -1452,15 +1558,11 @@ class MemoryService:
                 ),
             }
 
-        if actor_profile:
-            output["metadata_mirror"] = {
-                "enabled": True,
-                "message": (
-                    "Detected chat identity/preferences and mirrored them into conversation "
-                    "metadata so recall or briefing can expose a fallback while searchable "
-                    "memories are not ready yet."
-                ),
-            }
+        metadata_mirror = self._build_metadata_mirror_output(
+            actor_profile, meta_persist_result
+        )
+        if metadata_mirror is not None:
+            output["metadata_mirror"] = metadata_mirror
 
         if include_status and request_id:
             try:
@@ -2130,46 +2232,59 @@ class MemoryService:
 
         profile_limit = 1 if user_id is not None else max_items
 
-        profile_res, episodic_res, event_res, foresight_res = await asyncio.gather(
-            self._client.fetch_memories(
-                group_id,
-                user_id=user_id,
-                memory_type="profile",
-                limit=profile_limit,
-            ),
-            self._client.fetch_memories(
-                group_id,
-                user_id=user_id,
-                memory_type="episodic_memory",
-                limit=max_items,
-                start_time=start_time,
-                end_time=end_time,
-            ),
-            self._client.fetch_memories(
-                group_id,
-                user_id=user_id,
-                memory_type="event_log",
-                limit=max_items,
-                start_time=start_time,
-                end_time=end_time,
-            ),
-            self._client.fetch_memories(
-                group_id,
-                user_id=user_id,
-                memory_type="foresight",
-                limit=max_items,
-                start_time=start_time,
-                end_time=end_time,
-            ),
-            return_exceptions=True,
-        )
+        fetch_types = self._briefing_fetch_types()
+        fetch_coroutines = []
+        for memory_type in fetch_types:
+            if memory_type == "profile":
+                fetch_coroutines.append(
+                    self._client.fetch_memories(
+                        group_id,
+                        user_id=user_id,
+                        memory_type="profile",
+                        limit=profile_limit,
+                    )
+                )
+            elif memory_type == "episodic_memory":
+                fetch_coroutines.append(
+                    self._client.fetch_memories(
+                        group_id,
+                        user_id=user_id,
+                        memory_type="episodic_memory",
+                        limit=max_items,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                )
+            elif memory_type == "event_log":
+                fetch_coroutines.append(
+                    self._client.fetch_memories(
+                        group_id,
+                        user_id=user_id,
+                        memory_type="event_log",
+                        limit=max_items,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                )
+            elif memory_type == "foresight":
+                fetch_coroutines.append(
+                    self._client.fetch_memories(
+                        group_id,
+                        user_id=user_id,
+                        memory_type="foresight",
+                        limit=max_items,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                )
 
-        results = {
-            "profile": profile_res,
-            "episodic_memory": episodic_res,
-            "event_log": event_res,
-            "foresight": foresight_res,
-        }
+        fetch_results = await asyncio.gather(*fetch_coroutines, return_exceptions=True)
+        results = dict(zip(fetch_types, fetch_results))
+
+        profile_res = results.get("profile")
+        episodic_res = results.get("episodic_memory")
+        event_res = results.get("event_log")
+        foresight_res = results.get("foresight")
         failures = [
             (memory_type, value)
             for memory_type, value in results.items()
@@ -2177,7 +2292,7 @@ class MemoryService:
         ]
 
         # All fetches failed — propagate as upstream error
-        if len(failures) == len(results):
+        if results and len(failures) == len(results):
             first_err = failures[0][1]
             if isinstance(first_err, EverMemosError):
                 raise first_err
@@ -2368,6 +2483,18 @@ class MemoryService:
             ]
             output["lifecycle"]["partial"] = True
 
+        skipped_types = [
+            memory_type
+            for memory_type in _BRIEFING_MEMORY_TYPES
+            if memory_type not in fetch_types
+        ]
+        if skipped_types and not self._api_uses_v0():
+            output["skipped_fetch_types"] = skipped_types
+            output["v1_limitations"] = (
+                "Cloud v1 /memories/get does not support: "
+                + ", ".join(skipped_types)
+            )
+
         return output
 
     # -- fetch_history --
@@ -2386,6 +2513,7 @@ class MemoryService:
     ) -> dict:
         space_id = self._validate_space_id(space_id)
         memory_type = self._validate_fetch_memory_type(memory_type)
+        self._ensure_client_fetch_memory_type_supported(memory_type)
         limit = self._validate_fetch_limit(limit)
         offset = self._validate_non_negative_int(offset, "offset")
         user_id = self._validate_user_id(user_id)
@@ -2504,7 +2632,11 @@ class MemoryService:
         target_set = set(memory_ids)
         id_to_parent: dict[str, str] = {}
 
-        fetch_types = ("episodic_memory", "event_log", "profile", "foresight")
+        fetch_types = tuple(
+            memory_type
+            for memory_type in ("episodic_memory", "event_log", "profile", "foresight")
+            if memory_type in self._supported_fetch_memory_types()
+        )
         fetch_results = await asyncio.gather(
             *(
                 self._client.fetch_memories(

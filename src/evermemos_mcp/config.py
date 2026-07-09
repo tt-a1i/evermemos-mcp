@@ -18,10 +18,23 @@ if _DOTENV_PATH.exists():
 
 EVERMEMOS_BASE_URL = os.getenv("EVERMEMOS_BASE_URL", "https://api.evermind.ai")
 EVERMEMOS_API_KEY = os.getenv("EVERMEMOS_API_KEY", "")
-EVERMEMOS_API_VERSION = os.getenv("EVERMEMOS_API_VERSION", "v0")
+EVERMEMOS_API_VERSION = os.getenv("EVERMEMOS_API_VERSION", "v1")
 EVERMEMOS_USER_ID = os.getenv("EVERMEMOS_USER_ID", "mcp-user")
 
-# Conversation metadata integration (Cloud v0)
+_LOCAL_BASE_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def is_local_base_url(base_url: str) -> bool:
+    """True when base_url points at a loopback host (OSS/local dev)."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(base_url).hostname or "").lower()
+    if host in _LOCAL_BASE_HOSTS:
+        return True
+    return host.endswith(".localhost")
+
+
+# Conversation metadata integration (Cloud; v0 conversation-meta, v1 groups TBD)
 EVERMEMOS_ENABLE_CONVERSATION_META = os.getenv(
     "EVERMEMOS_ENABLE_CONVERSATION_META", "true"
 ).strip().lower() in {"1", "true", "yes", "on"}

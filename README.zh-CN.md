@@ -102,7 +102,7 @@ uv run evermemos-mcp
 - **生命周期追踪** — 所有结果标注 `queued`、`provisional`、`fallback` 或 `searchable`
 - **可追溯引用** — 每条结果包含 `memory_type`、`snippet`、`timestamp`、`score`、`source_message_id`
 - **Git 自动推断** — 省略 `space_id` 时自动从 git remote 推断 `coding:<仓库名>`
-- **健壮的错误处理** — 429/5xx 自动退避重试、GET body 代理兼容回退、结构化错误码
+- **健壮的错误处理** — 429/5xx 自动退避重试；legacy v0 的 GET body 代理/WAF 兼容回退（默认 v1 fetch/search 使用 POST body）；结构化错误码
 
 ---
 
@@ -246,7 +246,7 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio / OpenClaw / 任意
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `EVERMEMOS_API_VERSION` | `v0` | API 版本 |
+| `EVERMEMOS_API_VERSION` | `v1` | API 版本（`v0` 为旧版兼容） |
 | `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` | — | 自定义 LLM 提取设置 |
 | `EVERMEMOS_USER_DETAILS_JSON` | — | 会话用户详情 |
 
@@ -269,7 +269,7 @@ MCP 客户端（Claude Code / Cursor / Cline / Cherry Studio / OpenClaw / 任意
 |------|------|
 | `queued` | 写入已接受，提取尚未确认 |
 | `provisional` | 结果来自 `pending_messages`，提取仍在进行 |
-| `fallback` | 结果来自镜像的 `conversation-meta`，非正式提取记忆 |
+| `fallback` | 当前答案来自 `pending_messages` 和/或 metadata fallback（正式记忆尚未可检索）；Cloud v1 下仅有 Groups API 的有限字段（如 name/description）可被 durable 镜像 |
 | `searchable` | 结果来自正式提取后的记忆 |
 
 所有 7 个工具输出兼容的 `lifecycle` 字段，Agent 始终可知记忆成熟度。

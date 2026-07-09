@@ -44,8 +44,8 @@ EverMemOS API
 - 元数据存储在 EverMemOS（Cloud-only），不落本地文件。
 - 当前实现：
   1. 使用保留空间 `space::catalog` 做空间枚举（兼容历史数据）
-  2. 同步写入 `conversation-meta`（description/scene/tags/llm_custom_setting）
-  3. recovery 后用 `conversation-meta` 反查并覆盖描述，减少正则解析依赖
+  2. 同步写入 conversation-meta（description/scene/tags/llm_custom_setting）；Cloud v1 映射到 Groups API，仅 name/description 等有限字段 durable；v0 使用 `/memories/conversation-meta`
+  3. recovery 后从 conversation metadata 反查并覆盖描述（v1 为 Groups，v0 为 conversation-meta），减少正则解析依赖
 
 ### 3.4 `memory_service`（业务编排）
 - 将通用语义映射到 EverMemOS API
@@ -53,12 +53,10 @@ EverMemOS API
 - 负责 V1 的安全删除策略（仅按明确 id 删除）
 
 ### 3.5 `evermemos_client`（HTTP 适配）
-- Cloud 优先：封装 `/api/v0/memories` 与 `/api/v0/memories/search`
-- 封装 `/api/v0/status/request`，用于查询异步写入状态
-- 状态查询使用 `/api/v0/status/request`（Cloud v0 标准路径）
-- 本地兼容：可切换到 `/api/v1/*`（通过配置）
-- 处理鉴权、超时、重试（含 429 退避）和错误信息提炼
-- 注意：官方 `fetch/search` 契约是 `GET + JSON body`，在部分代理/WAF 环境可能被剥离请求体
+- 默认 Cloud v1：`/api/v1/memories/group`、`/memories/get`、`/memories/search`、`/memories/delete`、`/tasks/{task_id}`、`/groups`
+- 旧版 v0（`EVERMEMOS_API_VERSION=v0`）：`/api/v0/memories`、`/memories/search`、`/status/request`、`/memories/conversation-meta`
+- 统一 auth、超时、重试（含 429 退避）与响应规范化，供 service 层使用
+- v0 fetch/search 使用 `GET + JSON body`；v1 使用 POST body
 
 ## 4) 数据与隔离模型
 

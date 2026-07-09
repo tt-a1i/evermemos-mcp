@@ -1,15 +1,16 @@
-"""Phase 3.1 Round 2: Deep validation.
+"""Phase 3.1 Round 2: Deep validation (LEGACY v0 ONLY).
 
-1. Check if first run's spaces have memories now (minutes later)
-2. Try setting conversation-meta before writing
-3. Try different auth header formats
-4. Send a longer conversation to force boundary detection
+This script targets removed Cloud v0 endpoints. Do not run against Cloud v1.
+Use scripts/validate_api.py for default v1 validation.
+
+Set EVERMEMOS_API_VERSION=v0 explicitly to run this script.
 """
 
 import asyncio
 import argparse
 import json
 import os
+import sys
 from uuid import uuid4
 
 import httpx
@@ -20,6 +21,7 @@ load_dotenv()
 
 BASE_URL = os.getenv("EVERMEMOS_BASE_URL", "https://api.evermind.ai")
 API_KEY = os.getenv("EVERMEMOS_API_KEY", "")
+API_VERSION = os.getenv("EVERMEMOS_API_VERSION", "v1")
 API_BASE = f"{BASE_URL}/api/v0"
 
 # Optional: reuse a previous validation space (set via env/cli)
@@ -274,7 +276,15 @@ async def main():
     args = parser.parse_args()
     OLD_SPACE = args.old_space.strip()
 
-    print("EverMemOS Cloud API - Deep Validation")
+    if API_VERSION != "v0":
+        print(
+            "validate_api_2.py is legacy v0-only. "
+            "Set EVERMEMOS_API_VERSION=v0 or use scripts/validate_api.py for v1.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    print("EverMemOS Cloud API - Deep Validation (legacy v0)")
     print(f"Base: {API_BASE}")
     if OLD_SPACE:
         print(f"Old space: {OLD_SPACE}")

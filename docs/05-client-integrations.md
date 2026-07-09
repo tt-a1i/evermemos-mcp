@@ -13,7 +13,7 @@ Config snippet directory: `docs/mcp-config-snippets/`
 4. Optional custom extraction config: `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 5. Optional conversation metadata timezone: `EVERMEMOS_DEFAULT_TIMEZONE` (default `UTC`)
 
-> `EVERMEMOS_BASE_URL` and `EVERMEMOS_API_VERSION` already default to Cloud (`https://api.evermind.ai` + `v0`) in this project.
+> `EVERMEMOS_BASE_URL` and `EVERMEMOS_API_VERSION` already default to Cloud (`https://api.evermind.ai` + `v1`) in this project. Set `EVERMEMOS_API_VERSION=v0` only for legacy self-hosted endpoints.
 
 ## 2) Recommended Startup
 
@@ -202,7 +202,7 @@ In your MCP client:
 |-------|---------|
 | `queued` | write accepted, formal extraction not confirmed searchable |
 | `provisional` | answer comes from `pending_messages` |
-| `fallback` | answer comes from mirrored `conversation-meta` |
+| `fallback` | Answer from `pending_messages` and/or metadata fallback while formal memories are not searchable yet; on Cloud v1, only limited Groups metadata (name/description) is durably mirrored |
 | `searchable` | answer comes from formal extracted memories |
 
 ## Write-After Check Playbook
@@ -230,7 +230,7 @@ Recommended delete flow:
 4. If the target still appears, record it as a Cloud limitation rather than assuming the MCP route failed.
 
 ## 10) Common Issues
-- `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
+- `CONFIG_ERROR: EVERMEMOS_API_KEY is required for EverMemOS Cloud API`
   - add `EVERMEMOS_API_KEY` in MCP server `env`
 - `UNKNOWN_TOOL`
   - restart client and verify the active server is `evermemos`
@@ -239,5 +239,7 @@ Recommended delete flow:
   - inspect `request_status.success/error` first, then `request_status.lifecycle`, `recall.lifecycle`, and `briefing.lifecycle` instead of assuming a fixed delay
 - Cherry Studio still starts an older version after a release
 - `uvx` may reuse cached builds; run `uv cache clean evermemos-mcp` or pin an explicit release such as `evermemos-mcp@0.4.7`
-- Missing required field errors behind proxy/WAF
-  - your network may strip GET request bodies used by upstream `fetch/search`
+- Missing required field errors behind proxy/WAF (legacy v0 only)
+  - v0 fetch/search use `GET + JSON body`; your network may strip those GET request bodies
+  - default v1 fetch/search use POST bodies and are not affected by GET-body stripping
+  - workaround: change network, allowlist the endpoint, or bypass the proxy (v0 scenarios)

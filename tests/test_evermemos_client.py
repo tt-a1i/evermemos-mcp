@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -14,8 +15,20 @@ from evermemos_mcp import config
 # -- auth gating --
 
 
-def test_v0_requires_api_key():
-    """v0 (Cloud) must reject calls when API key is missing."""
+def test_cloud_requires_api_key():
+    """Cloud base URL must reject calls when API key is missing."""
+    c = EverMemosClient(
+        api_key="none",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._api_key = ""
+    with pytest.raises(EverMemosError) as exc_info:
+        c._require_key()
+    assert exc_info.value.code == "CONFIG_ERROR"
+
+
+def test_v0_cloud_also_requires_api_key():
     c = EverMemosClient(api_key="none", api_version="v0")
     c._api_key = ""
     with pytest.raises(EverMemosError) as exc_info:
@@ -23,11 +36,14 @@ def test_v0_requires_api_key():
     assert exc_info.value.code == "CONFIG_ERROR"
 
 
-def test_v1_allows_no_api_key():
-    """v1 (local) should not enforce API key."""
-    c = EverMemosClient(api_key="none", api_version="v1")
+def test_localhost_allows_no_api_key():
+    """Loopback base URLs should not enforce API key."""
+    c = EverMemosClient(
+        api_key="none",
+        api_version="v1",
+        base_url="http://localhost:8001",
+    )
     c._api_key = ""
-    # Should not raise
     c._require_key()
 
 
@@ -697,3 +713,508 @@ async def test_update_conversation_metadata_payload():
     assert kwargs["json"]["description"] == "Updated"
     assert kwargs["json"]["tags"] == ["mcp", "space"]
     assert kwargs["json"]["user_details"]["assistant"]["role"] == "assistant"
+
+
+# -- v1 Cloud API --
+
+
+@pytest.mark.asyncio
+async def test_v1_add_message_uses_group_endpoint_and_maps_task_id():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={
+            "data": {
+                "task_id": "task-abc",
+                "status": "queued",
+                "message_count": 1,
+            }
+        }
+    )
+
+    result = await c.add_message(
+        "space::coding:app",
+        "hello",
+        sender="alice",
+        sender_name="Alice",
+        message_id="msg-001",
+        create_time="2024-01-01T00:00:00+00:00",
+    )
+
+    assert result["request_id"] == "task-abc"
+    assert result["message_id"] == "msg-001"
+    assert result["status"] == "queued"
+    c._request.assert_called_once()
+    _, kwargs = c._request.call_args
+    payload = kwargs["json"]
+    assert payload["group_id"] == "space::coding:app"
+    assert payload["async_mode"] is True
+    assert payload["messages"][0]["sender_id"] == "alice"
+    assert payload["messages"][0]["message_id"] == "msg-001"
+    assert payload["messages"][0]["timestamp"] == 1704067200000
+
+
+@pytest.mark.asyncio
+async def test_v1_add_message_calls_group_flush_when_requested():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        side_effect=[
+            {"data": {"task_id": "task-abc", "status": "queued"}},
+            {"data": {"status": "extracted"}},
+        ]
+    )
+
+    await c.add_message("space::coding:app", "hello", flush=True)
+
+    assert c._request.call_count == 2
+    flush_call = c._request.call_args_list[1]
+    assert flush_call.args[1] == "/memories/group/flush"
+    assert flush_call.kwargs["json"] == {"group_id": "space::coding:app"}
+
+
+@pytest.mark.asyncio
+async def test_v1_fetch_memories_uses_post_get_and_normalizes_episodes():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={
+            "data": {
+                "episodes": [{"id": "ep-1", "summary": "hello"}],
+                "count": 1,
+                "total_count": 1,
+            }
+        }
+    )
+
+    result = await c.fetch_memories(
+        "space::coding:app",
+        memory_type="episodic_memory",
+        limit=20,
+    )
+
+    assert result["result"]["memories"][0]["id"] == "ep-1"
+    assert result["result"]["memories"][0]["memory_type"] == "episodic_memory"
+    assert result["result"]["count"] == 1
+    c._request.assert_called_once()
+    assert c._request.call_args.args[1] == "/memories/get"
+    payload = c._request.call_args.kwargs["json"]
+    assert payload["memory_type"] == "episodic_memory"
+    assert payload["filters"] == {"group_id": "space::coding:app"}
+    assert payload["page"] == 1
+    assert payload["page_size"] == 20
+
+
+@pytest.mark.asyncio
+async def test_v1_fetch_memories_builds_group_in_filter_for_multiple_groups():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(return_value={"data": {"profiles": [], "count": 0}})
+
+    await c.fetch_memories(
+        ["space::a", "space::b"],
+        memory_type="profile",
+    )
+
+    payload = c._request.call_args.kwargs["json"]
+    assert payload["filters"] == {
+        "group_id": {"in": ["space::a", "space::b"]},
+        "user_id": "mcp-user",
+    }
+
+
+@pytest.mark.asyncio
+async def test_v1_fetch_profile_includes_user_id_filter():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(return_value={"data": {"profiles": [], "count": 0}})
+
+    await c.fetch_memories("space::coding:app", memory_type="profile")
+
+    payload = c._request.call_args.kwargs["json"]
+    assert payload["filters"] == {
+        "group_id": "space::coding:app",
+        "user_id": "mcp-user",
+    }
+
+
+@pytest.mark.asyncio
+async def test_v1_fetch_agent_case_and_agent_skill_include_user_id_filter():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(return_value={"data": {"agent_cases": [], "count": 0}})
+
+    for memory_type in ("agent_case", "agent_skill"):
+        c._request.reset_mock()
+        await c.fetch_memories("space::coding:app", memory_type=memory_type)
+        payload = c._request.call_args.kwargs["json"]
+        assert payload["memory_type"] == memory_type
+        assert payload["filters"] == {
+            "group_id": "space::coding:app",
+            "user_id": "mcp-user",
+        }
+
+
+@pytest.mark.asyncio
+async def test_v1_fetch_rejects_event_log_and_foresight():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock()
+
+    for memory_type in ("event_log", "foresight"):
+        with pytest.raises(EverMemosError) as exc_info:
+            await c.fetch_memories("space::coding:app", memory_type=memory_type)
+        assert exc_info.value.code == "UNSUPPORTED_UPSTREAM"
+
+    c._request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_v0_fetch_rejects_agent_case_and_agent_skill():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v0",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock()
+
+    for memory_type in ("agent_case", "agent_skill"):
+        with pytest.raises(EverMemosError) as exc_info:
+            await c.fetch_memories("space::coding:app", memory_type=memory_type)
+        assert exc_info.value.code == "UNSUPPORTED_UPSTREAM"
+
+    c._request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_v1_search_rejects_unsupported_memory_types():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock()
+
+    for memory_types in (["event_log"], ["foresight"], ["event_log", "profile"]):
+        with pytest.raises(EverMemosError) as exc_info:
+            await c.search_memories(
+                "query",
+                "space::coding:app",
+                memory_types=memory_types,
+            )
+        assert exc_info.value.code == "UNSUPPORTED_UPSTREAM"
+
+    c._request.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_v1_search_memories_uses_post_search_and_normalizes_results():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={
+            "data": {
+                "episodes": [{"id": "ep-1", "summary": "fact"}],
+                "profiles": [{"id": "p-1", "profile_data": {"x": 1}}],
+                "unprocessed_messages": [{"content": "pending"}],
+                "count": 2,
+                "total_count": 2,
+            }
+        }
+    )
+
+    result = await c.search_memories(
+        "coffee",
+        "space::coding:app",
+        retrieve_method="rrf",
+        memory_types=["episodic_memory", "profile"],
+        top_k=5,
+        radius=0.7,
+        include_metadata=True,
+    )
+
+    memories = result["result"]["memories"]
+    assert len(memories) == 2
+    assert memories[0]["memory_type"] == "episodic_memory"
+    assert memories[1]["memory_type"] == "profile"
+    assert result["result"]["pending_messages"] == [{"content": "pending"}]
+    payload = c._request.call_args.kwargs["json"]
+    assert payload["method"] == "hybrid"
+    assert payload["memory_types"] == ["episodic_memory", "profile"]
+    assert payload["radius"] == 0.7
+    assert payload["include_original_data"] is True
+
+
+@pytest.mark.asyncio
+async def test_v1_get_request_status_uses_tasks_endpoint_and_normalizes():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(return_value={"data": {"task_id": "task-1", "status": "success"}})
+
+    result = await c.get_request_status("task-1")
+
+    assert result["success"] is True
+    assert result["found"] is True
+    assert result["data"]["status"] == "success"
+    assert c._request.call_args.args[1] == "/tasks/task-1"
+
+
+@pytest.mark.asyncio
+async def test_v1_get_request_status_maps_processing_to_queued():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={"data": {"task_id": "task-1", "status": "processing"}}
+    )
+
+    result = await c.get_request_status("task-1")
+
+    assert result["data"]["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_v1_delete_memories_uses_post_delete():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={"data": {"count": 2, "message": "Successfully deleted 2 memories"}}
+    )
+
+    result = await c.delete_memories(memory_id="mem-123", group_id="space::coding:app")
+
+    assert result["result"]["count"] == 2
+    assert c._request.call_args.args[1] == "/memories/delete"
+    assert c._request.call_args.kwargs["json"] == {"memory_id": "mem-123"}
+
+
+@pytest.mark.asyncio
+async def test_v1_delete_does_not_use_v0_event_id_fallback():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        side_effect=EverMemosError(
+            "Missing required field event_id",
+            code="INVALID_PARAMETER",
+            status_code=400,
+        )
+    )
+
+    with pytest.raises(EverMemosError):
+        await c.delete_memories(memory_id="mem-123")
+
+    assert c._request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_v1_set_conversation_metadata_uses_groups_api_not_conversation_meta():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={
+            "data": {
+                "group_id": "space::coding:app",
+                "name": "coding:app",
+                "description": "desc",
+            }
+        }
+    )
+
+    result = await c.set_conversation_metadata(
+        group_id="space::coding:app",
+        scene="assistant",
+        created_at="2025-01-15T10:00:00+00:00",
+        name="coding:app",
+        description="desc",
+        tags=["mcp"],
+        user_details={"mcp-user": {"full_name": "Test User"}},
+    )
+
+    assert c._request.call_args.args[1] == "/groups"
+    payload = c._request.call_args.kwargs["json"]
+    assert payload == {
+        "group_id": "space::coding:app",
+        "name": "coding:app",
+        "description": "desc",
+    }
+    assert "scene" not in payload
+    assert "user_details" not in payload
+    assert result["result"]["description"] == "desc"
+    assert any("tags" in warning for warning in result.get("warnings", []))
+    assert any("user_details" in warning for warning in result.get("warnings", []))
+
+
+@pytest.mark.asyncio
+async def test_v1_set_conversation_metadata_requires_name_or_description():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.set_conversation_metadata(
+            group_id="space::coding:app",
+            scene="assistant",
+            created_at="2025-01-15T10:00:00+00:00",
+            tags=["mcp"],
+        )
+
+    assert exc_info.value.code == "INVALID_INPUT"
+
+
+@pytest.mark.asyncio
+async def test_v1_get_conversation_metadata_uses_groups_get():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={
+            "data": {
+                "group_id": "space::coding:app",
+                "name": "coding:app",
+                "description": "Updated",
+                "created_at": "2025-01-15T10:00:00+00:00",
+            }
+        }
+    )
+
+    result = await c.get_conversation_metadata("space::coding:app")
+
+    assert c._request.call_args.args[1] == f"/groups/{quote('space::coding:app', safe='')}"
+    assert result["result"]["description"] == "Updated"
+    assert result["result"]["created_at"] == "2025-01-15T10:00:00+00:00"
+    assert "user_details" not in result["result"]
+
+
+@pytest.mark.asyncio
+async def test_v1_get_conversation_metadata_propagates_404():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        side_effect=EverMemosError("group not found", status_code=404)
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.get_conversation_metadata("space::missing")
+
+    assert exc_info.value.status_code == 404
+    assert c._request.call_args.args[1] == f"/groups/{quote('space::missing', safe='')}"
+
+
+@pytest.mark.asyncio
+async def test_v1_update_conversation_metadata_uses_groups_patch():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(
+        return_value={
+            "data": {
+                "group_id": "space::coding:app",
+                "description": "Updated",
+            }
+        }
+    )
+
+    result = await c.update_conversation_metadata(
+        group_id="space::coding:app",
+        description="Updated",
+        tags=["mcp"],
+    )
+
+    assert c._request.call_args.args[0] == "PATCH"
+    assert c._request.call_args.args[1] == f"/groups/{quote('space::coding:app', safe='')}"
+    assert c._request.call_args.kwargs["json"] == {"description": "Updated"}
+    assert any("tags" in warning for warning in result.get("warnings", []))
+
+
+@pytest.mark.asyncio
+async def test_v1_update_conversation_metadata_rejects_unsupported_only():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+
+    with pytest.raises(EverMemosError) as exc_info:
+        await c.update_conversation_metadata(
+            group_id="space::coding:app",
+            tags=["mcp"],
+            user_details={"mcp-user": {"full_name": "Test User"}},
+        )
+
+    assert exc_info.value.code == "UNSUPPORTED_UPSTREAM"
+    assert "tags" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_v1_search_maps_auto_retrieve_method_to_hybrid():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(return_value={"data": {"episodes": [], "profiles": []}})
+
+    await c.search_memories("coffee", "space::coding:app", retrieve_method="auto")
+
+    assert c._request.call_args.kwargs["json"]["method"] == "hybrid"
+
+
+@pytest.mark.asyncio
+async def test_v1_search_maps_auto_retrieve_method_to_hybrid():
+    c = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    c._request = AsyncMock(return_value={"data": {"episodes": [], "profiles": []}})
+
+    await c.search_memories("coffee", "space::coding:app", retrieve_method="auto")
+
+    assert c._request.call_args.kwargs["json"]["method"] == "hybrid"

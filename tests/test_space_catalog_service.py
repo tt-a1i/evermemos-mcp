@@ -178,6 +178,66 @@ async def test_register_passes_user_details(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_register_does_not_cache_user_details_when_v1_groups_warns():
+    client = AsyncMock(spec=EverMemosClient)
+    client.add_message = AsyncMock(return_value={"status": "queued"})
+    client.set_conversation_metadata = AsyncMock(
+        return_value={
+            "status": "ok",
+            "result": {"group_id": "space::coding:app", "name": "coding:app"},
+            "warnings": [
+                "v1 Groups API does not support user_details; field ignored (live key verification pending)"
+            ],
+        }
+    )
+    catalog = SpaceCatalogService(client)
+
+    result = await catalog.ensure_conversation_meta(
+        "coding:app",
+        description="My React app",
+        actor_user_id="alice",
+        actor_profile={"full_name": "Alice", "preferences": ["dark mode"]},
+    )
+
+    assert result["degraded"] is True
+    assert result["durable_user_details"] is False
+    snapshot = catalog._get_cached_conversation_meta_snapshot("coding:app")
+    assert snapshot is None or "user_details" not in snapshot
+
+
+@pytest.mark.asyncio
+async def test_ensure_conversation_meta_reports_failure_on_unsupported_upstream():
+    client = AsyncMock(spec=EverMemosClient)
+    client.get_conversation_metadata = AsyncMock(return_value={"status": "ok", "result": {}})
+    client.set_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError(
+            "v1 Groups API update requires name or description; only unsupported fields were provided",
+            code="UNSUPPORTED_UPSTREAM",
+        )
+    )
+    client.update_conversation_metadata = AsyncMock(
+        side_effect=EverMemosError(
+            "v1 Groups API update requires name or description",
+            code="UNSUPPORTED_UPSTREAM",
+        )
+    )
+    catalog = SpaceCatalogService(client)
+
+    result = await catalog.ensure_conversation_meta(
+        "coding:app",
+        description="My React app",
+        actor_user_id="alice",
+        actor_profile={"full_name": "Alice"},
+    )
+
+    assert result["ok"] is False
+    assert result["degraded"] is True
+    assert result["durable_user_details"] is False
+    snapshot = catalog._get_cached_conversation_meta_snapshot("coding:app")
+    assert snapshot is None or "user_details" not in (snapshot or {})
+
+
+@pytest.mark.asyncio
 async def test_ensure_conversation_meta_adds_dynamic_actor_to_user_details(monkeypatch):
     monkeypatch.setattr(
         catalog_module,
@@ -1010,6 +1070,144 @@ async def test_recover_from_paginated_fetch_without_topk_truncation():
     assert len(spaces) == total
     assert catalog.get_space("bulk:space-0") is not None
     assert catalog.get_space("bulk:space-219") is not None
+
+
+@pytest.mark.asyncio
+async def test_recover_continues_when_event_log_unsupported_on_v1():
+    """v1 UNSUPPORTED_UPSTREAM for event_log must not abort episodic recovery."""
+
+    async def fetch_side_effect(
+        group_id, *, memory_type="episodic_memory", limit=40, offset=0, **kwargs
+    ):
+        if memory_type == "event_log":
+            raise EverMemosError(
+                "Cloud v1 /memories/get does not support memory_type 'event_log'",
+                code="UNSUPPORTED_UPSTREAM",
+            )
+        if memory_type == "episodic_memory":
+            return {
+                "result": {
+                    "memories": [
+                        {
+                            "memory_type": "episodic_memory",
+                            "summary": (
+                                "Registered memory space: coding:app — Recovered via episodic"
+                            ),
+                            "timestamp": "2026-02-10T10:00:00+00:00",
+                        }
+                    ],
+                    "count": 1,
+                    "total_count": 1,
+                }
+            }
+        raise AssertionError(f"unexpected memory_type: {memory_type}")
+
+    client = AsyncMock(spec=EverMemosClient)
+    client._api_version = "v1"
+    client.fetch_memories = AsyncMock(side_effect=fetch_side_effect)
+    client.search_memories = AsyncMock(
+        return_value={"result": {"pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces()
+
+    assert {space.space_id for space in spaces} == {"coding:app"}
+    assert catalog.get_space("coding:app") is not None
+    called_types = [
+        call.kwargs.get("memory_type") for call in client.fetch_memories.call_args_list
+    ]
+    assert "event_log" in called_types
+    assert "episodic_memory" in called_types
+    assert catalog._recovered is True
+    assert catalog._recover_failed_at == 0.0
+
+
+@pytest.mark.asyncio
+async def test_recover_falls_back_to_search_when_all_fetch_types_unsupported():
+    """If every fetch type is unsupported, search fallback must still recover."""
+
+    client = AsyncMock(spec=EverMemosClient)
+    client._api_version = "v1"
+    client.fetch_memories = AsyncMock(
+        side_effect=EverMemosError(
+            "Cloud v1 /memories/get does not support memory_type",
+            code="UNSUPPORTED_UPSTREAM",
+        )
+    )
+    client.search_memories = AsyncMock(
+        return_value={
+            "result": {
+                "memories": [
+                    {
+                        "memory_type": "episodic_memory",
+                        "summary": (
+                            "Registered memory space: study:ml — Recovered via search"
+                        ),
+                        "timestamp": "2026-02-10T10:00:00+00:00",
+                    }
+                ],
+                "pending_messages": [],
+            }
+        }
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces()
+
+    assert {space.space_id for space in spaces} == {"study:ml"}
+    client.search_memories.assert_called()
+    assert catalog._recovered is True
+
+
+@pytest.mark.asyncio
+async def test_recover_uses_client_supported_fetch_types_when_available():
+    """Real EverMemosClient v1 should skip event_log without calling upstream."""
+
+    client = EverMemosClient(
+        api_key="fake",
+        api_version="v1",
+        base_url="https://api.evermind.ai",
+    )
+    client.fetch_memories = AsyncMock(
+        return_value={
+            "result": {
+                "memories": [
+                    {
+                        "memory_type": "episodic_memory",
+                        "summary": (
+                            "Registered memory space: chat:daily — From supported types"
+                        ),
+                        "timestamp": "2026-02-10T10:00:00+00:00",
+                    }
+                ],
+                "count": 1,
+                "total_count": 1,
+            }
+        }
+    )
+    client.search_memories = AsyncMock(
+        return_value={"result": {"pending_messages": []}}
+    )
+    client.get_conversation_metadata = AsyncMock(
+        return_value={"status": "ok", "result": {}}
+    )
+
+    catalog = SpaceCatalogService(client)
+    spaces = await catalog.list_spaces()
+
+    assert {space.space_id for space in spaces} == {"chat:daily"}
+    called_types = [
+        call.kwargs.get("memory_type") for call in client.fetch_memories.call_args_list
+    ]
+    assert called_types == ["episodic_memory"]
+    assert "event_log" not in called_types
 
 
 @pytest.mark.asyncio

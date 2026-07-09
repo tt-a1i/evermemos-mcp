@@ -18,6 +18,7 @@ def svc():
     """Wire up a MemoryService with mocked client and install it on the server module."""
     client = AsyncMock(spec=EverMemosClient)
     client.user_id = "mcp-user"
+    client._api_version = "v0"
     client.add_message = AsyncMock(
         return_value={"status": "queued", "request_id": "req-abc"}
     )
@@ -75,6 +76,11 @@ async def test_tool_descriptions_cover_client_guidance():
     briefing_description = tool_map["briefing"].description or ""
     forget_description = tool_map["forget"].description or ""
     history_description = tool_map["fetch_history"].description or ""
+    history_memory_type_schema = (
+        tool_map["fetch_history"]
+        .inputSchema.get("properties", {})
+        .get("memory_type", {})
+    )
     list_spaces_limit_description = (
         tool_map["list_spaces"]
         .inputSchema.get("properties", {})
@@ -109,6 +115,16 @@ async def test_tool_descriptions_cover_client_guidance():
     assert "memcell ID" in forget_memory_ids_description
     assert "100-item scan window" in forget_memory_ids_description
     assert "timeline" in history_description
+    assert history_memory_type_schema["enum"] == [
+        "profile",
+        "episodic_memory",
+        "agent_case",
+        "agent_skill",
+        "foresight",
+        "event_log",
+    ]
+    assert "legacy v0-only" in history_memory_type_schema["description"]
+    assert "agent_case" in history_memory_type_schema["description"]
 
 
 # -- dispatch --
@@ -581,7 +597,7 @@ async def test_upstream_unavailable_includes_hint(svc):
 async def test_config_error_api_key_includes_hint(svc):
     svc._client.search_memories = AsyncMock(
         side_effect=EverMemosError(
-            "EVERMEMOS_API_KEY is required for Cloud API (v0)",
+            "EVERMEMOS_API_KEY is required for EverMemOS Cloud API",
             code="CONFIG_ERROR",
         )
     )

@@ -43,8 +43,8 @@ EverMemOS API
 - Cloud-only metadata (no local file persistence)
 - Current implementation:
   1. Enumerate via reserved `space::catalog` (backward compatible)
-  2. Dual-write `conversation-meta` (`description/scene/tags/llm_custom_setting`)
-  3. Recovery can enrich descriptions from `conversation-meta`
+  2. Dual-write `conversation-meta` (`description/scene/tags/llm_custom_setting`); Cloud v1 maps this to Groups API with limited durable fields (name/description); v0 uses `/memories/conversation-meta`
+  3. Recovery can enrich descriptions from conversation metadata (Groups on v1, conversation-meta on v0)
 
 ### 3.4 `memory_service`
 - Maps MCP semantics to EverMemOS API calls
@@ -52,11 +52,10 @@ EverMemOS API
 - Enforces explicit-id deletion safety
 
 ### 3.5 `evermemos_client`
-- Wraps `/api/v0/memories`, `/api/v0/memories/search`, `/api/v0/status/request`
-- Request status uses `/api/v0/status/request` (Cloud v0 canonical path)
-- Adds auth, timeout, retries (including 429 backoff), and error normalization
-- Supports local `v1` endpoints via configuration
-- Note: upstream fetch/search contract is `GET + JSON body`; some proxies/WAFs may strip GET bodies
+- Cloud v1 (default): `/api/v1/memories/group`, `/memories/get`, `/memories/search`, `/memories/delete`, `/tasks/{task_id}`, `/groups`
+- Legacy v0 (`EVERMEMOS_API_VERSION=v0`): `/api/v0/memories`, `/memories/search`, `/status/request`, `/memories/conversation-meta`
+- Adds auth, timeout, retries (including 429 backoff), and response normalization for service-layer compatibility
+- v0 fetch/search use `GET + JSON body`; v1 uses POST bodies
 
 ## 4) Data & Isolation Model
 

@@ -13,7 +13,7 @@
 4. （可选）若需要自定义提取模型，可设置 `EVERMEMOS_LLM_CUSTOM_SETTING_JSON`
 5. （可选）可设置 conversation metadata 时区：`EVERMEMOS_DEFAULT_TIMEZONE`（默认 `UTC`）
 
-> 本项目默认内置 Cloud 地址和版本：`EVERMEMOS_BASE_URL=https://api.evermind.ai`、`EVERMEMOS_API_VERSION=v0`。
+> 本项目默认内置 Cloud 地址和版本：`EVERMEMOS_BASE_URL=https://api.evermind.ai`、`EVERMEMOS_API_VERSION=v1`。仅连接旧版自建端点时使用 `EVERMEMOS_API_VERSION=v0`。
 
 ## 2) 推荐启动方式
 
@@ -203,7 +203,7 @@ uv cache clean evermemos-mcp
 |------|------|
 | `queued` | 写入已接受，但正式提取结果还没确认可检索 |
 | `provisional` | 当前答案来自 `pending_messages` |
-| `fallback` | 当前答案来自镜像后的 `conversation-meta` |
+| `fallback` | 当前答案来自 `pending_messages` 和/或 metadata fallback（正式记忆尚未可检索）；Cloud v1 下仅有 Groups API 的有限字段（如 name/description）可被 durable 镜像 |
 | `searchable` | 当前答案来自正式提取后的记忆 |
 
 ## 写后检查 Playbook
@@ -231,7 +231,7 @@ uv cache clean evermemos-mcp
 4. 如果目标仍出现，应先按 Cloud 限制记录，而不是立刻判断 MCP 路由失败。
 
 ## 10) 常见问题
-- `CONFIG_ERROR: EVERMEMOS_API_KEY is required for Cloud API (v0)`
+- `CONFIG_ERROR: EVERMEMOS_API_KEY is required for EverMemOS Cloud API`
   - 原因：未配置 API Key
   - 处理：在 MCP server 的 `env` 增加 `EVERMEMOS_API_KEY`
 
@@ -247,6 +247,7 @@ uv cache clean evermemos-mcp
   - 原因：`uvx` 可能复用本地缓存
 - 处理：执行 `uv cache clean evermemos-mcp`，或直接固定显式版本，例如 `evermemos-mcp@0.4.7`
 
-- 在代理/WAF 环境出现缺字段错误
-  - 原因：中间件可能剥离了 GET 请求体（上游 fetch/search 使用 `GET + JSON body`）
-  - 处理：更换网络、配置白名单或绕过相关代理策略
+- 在代理/WAF 环境出现缺字段错误（仅 legacy v0）
+  - v0 fetch/search 使用 `GET + JSON body`，中间件可能剥离 GET 请求体
+  - 默认 v1 fetch/search 使用 POST body，不受 GET 请求体剥离影响
+  - 处理：更换网络、配置白名单或绕过相关代理策略（v0 场景）

@@ -102,7 +102,7 @@ MCP client config for source installs:
 - **Lifecycle tracking** — Every result labeled `queued`, `provisional`, `fallback`, or `searchable` across all tools
 - **Traceable citations** — `memory_type`, `snippet`, `timestamp`, `score`, `source_message_id` on every result
 - **Git auto-detection** — Omit `space_id` and it infers `coding:<repo-name>` from git remote
-- **Robust error handling** — Retry with backoff (429/5xx), GET body fallback for proxy/WAF, structured error codes
+- **Robust error handling** — Retry with backoff (429/5xx); legacy v0 GET-body proxy/WAF fallback (default v1 fetch/search use POST bodies); structured error codes
 
 ---
 
@@ -246,7 +246,7 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio / OpenClaw / any agent)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EVERMEMOS_API_VERSION` | `v0` | API version |
+| `EVERMEMOS_API_VERSION` | `v1` | API version (`v0` legacy) |
 | `EVERMEMOS_LLM_CUSTOM_SETTING_JSON` | — | Custom LLM extraction settings |
 | `EVERMEMOS_USER_DETAILS_JSON` | — | User profile details for conversations |
 
@@ -269,7 +269,7 @@ MCP Client (Claude Code / Cursor / Cline / Cherry Studio / OpenClaw / any agent)
 |-------|---------|
 | `queued` | Write accepted, extraction not yet confirmed |
 | `provisional` | Answer from `pending_messages` while extraction is in progress |
-| `fallback` | Answer from mirrored `conversation-meta`, not formal extracted memory |
+| `fallback` | Answer from `pending_messages` and/or metadata fallback while formal memories are not searchable yet; on Cloud v1, only limited Groups metadata (name/description) is durably mirrored |
 | `searchable` | Answer from formal extracted memories |
 
 All 7 tools expose compatible `lifecycle` blocks so agents always know memory maturity.

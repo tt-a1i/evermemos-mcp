@@ -416,10 +416,17 @@ TOOLS: list[types.Tool] = [
                 },
                 "memory_type": {
                     "type": "string",
-                    "description": "Memory type to page through",
+                    "description": (
+                        "Memory type to page through. Cloud v1 supports "
+                        "episodic_memory, profile, agent_case, and agent_skill. "
+                        "event_log and foresight are legacy v0-only and return "
+                        "UNSUPPORTED_UPSTREAM on Cloud v1."
+                    ),
                     "enum": [
                         "profile",
                         "episodic_memory",
+                        "agent_case",
+                        "agent_skill",
                         "foresight",
                         "event_log",
                     ],
