@@ -84,9 +84,9 @@
 ## Evidence Release
 - Tag: `competition-evidence-2026-02-26`
 - Release URL:
-  - `https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26`
+  - `https://github.com/tt-a1i/everos-mcp/releases/tag/competition-evidence-2026-02-26`
 - Raw runs asset URL (`runs.jsonl`):
-  - `https://github.com/tt-a1i/evermemos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
+  - `https://github.com/tt-a1i/everos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
 - Raw runs sha256:
   - `4facef0cbebf752eb1d34709072a2d81aa7fd3b946d3970dbe542b95382f3421`
 

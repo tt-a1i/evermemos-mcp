@@ -69,18 +69,18 @@ Current release line also includes `uvx` installation, Smithery registry config,
 - Why this matters: `It upgrades MCP clients from stateless chat tools into workflows that can preserve project memory safely over time.`
 - Primary evidence: `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` with `100%` with-memory hit rate, `P95=1957.75 ms`, and `0%` attribution error.
 - Supplemental lifecycle evidence status: `scripts/competition_lifecycle_appendix.py` is implemented and now produces live appendix artifacts with stage logs. The latest rerun captured `9/9` remember acknowledgements, `3/3` searchable spaces, and `PASS` isolation evidence; only forget remains `WARN` in the current Cloud deployment.`
-- Repository URL: `https://github.com/tt-a1i/evermemos-mcp`
-- Release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.5.7`
-- Evidence release URL: `https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26`
+- Repository URL: `https://github.com/tt-a1i/everos-mcp`
+- Release URL: `https://github.com/tt-a1i/everos-mcp/releases/tag/v0.5.7`
+- Evidence release URL: `https://github.com/tt-a1i/everos-mcp/releases/tag/competition-evidence-2026-02-26`
 - PyPI URL: `https://pypi.org/project/evermemos-mcp/`
 
 ## Links
-- Repository: https://github.com/tt-a1i/evermemos-mcp
-- Release/tag: https://github.com/tt-a1i/evermemos-mcp/releases/tag/v0.5.7
+- Repository: https://github.com/tt-a1i/everos-mcp
+- Release/tag: https://github.com/tt-a1i/everos-mcp/releases/tag/v0.5.7
 - PyPI package: https://pypi.org/project/evermemos-mcp/
 - Smithery config: `smithery.yaml`
 - Auto-memory prompts: `docs/auto-memory-prompt.md`
-- Evidence release: https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26
+- Evidence release: https://github.com/tt-a1i/everos-mcp/releases/tag/competition-evidence-2026-02-26
 - Benchmark deep dive: `docs/competition/benchmark_deep_dive.md`
 - Lifecycle appendix (write/read/delete): `docs/competition/benchmark_deep_dive.md` Section 10
 - Latest appendix artifact: `artifacts/competition/2026-03-07-lifecycle-appendix-dec0612e/appendix_notes.md`
@@ -92,7 +92,7 @@ Current release line also includes `uvx` installation, Smithery registry config,
 - Benchmark artifacts (Phase 2):
   - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json` (primary evidence)
   - `artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md`
-  - `runs.jsonl` raw data (Release asset): `https://github.com/tt-a1i/evermemos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
+  - `runs.jsonl` raw data (Release asset): `https://github.com/tt-a1i/everos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
   - `artifacts/competition/2026-02-25-smoke/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-formal-synthetic/benchmark_summary.json`
   - `artifacts/competition/2026-02-25-formal-real/benchmark_summary.json` (earlier failed baseline)

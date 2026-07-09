@@ -223,6 +223,6 @@ examples/competition-demo/run.sh --retrieve-method auto --top-k -1
     `4facef0cbebf752eb1d34709072a2d81aa7fd3b946d3970dbe542b95382f3421`
 - Raw dataset distribution:
   - Stored as Release asset (not committed): `runs.jsonl` download link:
-    `https://github.com/tt-a1i/evermemos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
+    `https://github.com/tt-a1i/everos-mcp/releases/download/competition-evidence-2026-02-26/runs.jsonl`
   - Evidence release page:
-    `https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26`
+    `https://github.com/tt-a1i/everos-mcp/releases/tag/competition-evidence-2026-02-26`

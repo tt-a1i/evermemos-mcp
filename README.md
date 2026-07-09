@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/evermemos-mcp)](https://pypi.org/project/evermemos-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/evermemos-mcp)](https://pypi.org/project/evermemos-mcp/)
-[![CI](https://github.com/tt-a1i/evermemos-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tt-a1i/evermemos-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/tt-a1i/everos-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/tt-a1i/everos-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | [简体中文](README.zh-CN.md)
@@ -54,8 +54,8 @@ Works with **Claude Code, Cursor, Cline, Cherry Studio, OpenClaw, Gemini CLI, Ai
 <summary>Install from source</summary>
 
 ```bash
-git clone https://github.com/tt-a1i/evermemos-mcp.git
-cd evermemos-mcp
+git clone https://github.com/tt-a1i/everos-mcp.git
+cd everos-mcp
 cp .env.example .env   # set EVERMEMOS_API_KEY
 uv run evermemos-mcp
 ```
@@ -173,7 +173,7 @@ Tested on a fixed 60-query set across coding, chat, and study spaces.
 Evidence:
 - [`benchmark_summary.json`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_summary.json)
 - [`benchmark_report.md`](artifacts/competition/2026-02-26-formal-real-auto-all-v3/benchmark_report.md)
-- [`runs.jsonl` (release)](https://github.com/tt-a1i/evermemos-mcp/releases/tag/competition-evidence-2026-02-26)
+- [`runs.jsonl` (release)](https://github.com/tt-a1i/everos-mcp/releases/tag/competition-evidence-2026-02-26)
 
 ---
 

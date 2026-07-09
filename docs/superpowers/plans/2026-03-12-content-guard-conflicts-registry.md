@@ -805,7 +805,7 @@ git commit -m "release: bump version to 0.5.0"
 After line 1 (`# evermemos-mcp`), add badges:
 
 ```markdown
-[![Smithery](https://smithery.ai/badge/@tt-a1i/evermemos-mcp)](https://smithery.ai/server/@tt-a1i/evermemos-mcp)
+[![Smithery](https://smithery.ai/badge/@tt-a1i/everos-mcp)](https://smithery.ai/server/@tt-a1i/everos-mcp)
 ```
 
 In the Features table, update the `remember` row:
@@ -842,7 +842,7 @@ The existing `smithery.yaml` is already correct. No code changes needed.
 
 **Manual steps (not automated):**
 
-1. **Smithery.ai**: Go to https://smithery.ai/new and submit the GitHub repo URL `https://github.com/tt-a1i/evermemos-mcp`. Smithery reads `smithery.yaml` automatically.
+1. **Smithery.ai**: Go to https://smithery.ai/new and submit the GitHub repo URL `https://github.com/tt-a1i/everos-mcp`. Smithery reads `smithery.yaml` automatically.
 
 2. **mcp.so**: Go to https://mcp.so/submit (or equivalent) and submit the same repo URL. May need to provide: name, description, category (Knowledge & Memory).
 
