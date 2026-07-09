@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.7] - 2026-07-09
+
+### Changed
+- Updated the default EverMemOS Cloud integration from legacy `/api/v0` to `/api/v1`, including v1 write, fetch, search, task status, delete, and Groups API metadata paths.
+- Preserved explicit legacy v0 behavior for self-hosted or older deployments while making Cloud API key requirements version-independent.
+- Updated validation scripts, README, and integration/architecture docs for the v1 default contract.
+
+### Fixed
+- Surfaced Cloud v1 metadata limitations instead of claiming durable mirrored user details when Groups API only stores limited fields.
+- Aligned v1 fetch/search memory type validation with live Cloud behavior, including `agent_case` and `agent_skill` support and v1 gating for `event_log`/`foresight`.
+- Fixed v1 catalog recovery so unsupported legacy fetch types do not abort recovery before supported fetches or search fallback run.
+
 ## [0.5.6] - 2026-03-14
 
 ### Changed

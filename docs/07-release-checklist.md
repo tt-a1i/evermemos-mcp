@@ -1,7 +1,7 @@
-# Release Checklist (Competition v0.5.6)
+# Release Checklist (Competition v0.5.7)
 
 ## 1) Goal
-Ship a stable competition release (`v0.5.6`) and ensure all submission assets are complete and verifiable.
+Ship a stable competition release (`v0.5.7`) and ensure all submission assets are complete and verifiable.
 
 ## 2) Release Gate (Must Pass Before Tag)
 
@@ -46,14 +46,14 @@ uv run python scripts/demo_live_walkthrough.py
 
 ```bash
 git add .
-git commit -m "release: prepare v0.5.6 competition package"
-git tag v0.5.6
+git commit -m "release: prepare v0.5.7 competition package"
+git tag v0.5.7
 git push origin main
-git push origin v0.5.6
+git push origin v0.5.7
 ```
 
 ## 5) GitHub Release
-- [x] Create GitHub release for `v0.5.6`
+- [x] Create GitHub release for `v0.5.7`
 - [x] Attach changelog summary
 - [x] Include benchmark artifact links (or report snapshots)
 - [x] Verify release page is publicly accessible
@@ -61,7 +61,7 @@ git push origin v0.5.6
 Recommended command:
 
 ```bash
-gh release create v0.5.6 --title "v0.5.6" --notes-file CHANGELOG.md
+gh release create v0.5.7 --title "v0.5.7" --notes-file CHANGELOG.md
 ```
 
 ## 6) Submission Asset Checklist
