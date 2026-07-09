@@ -1192,19 +1192,6 @@ async def test_v1_update_conversation_metadata_rejects_unsupported_only():
     assert "tags" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
-async def test_v1_search_maps_auto_retrieve_method_to_hybrid():
-    c = EverMemosClient(
-        api_key="fake",
-        api_version="v1",
-        base_url="https://api.evermind.ai",
-    )
-    c._request = AsyncMock(return_value={"data": {"episodes": [], "profiles": []}})
-
-    await c.search_memories("coffee", "space::coding:app", retrieve_method="auto")
-
-    assert c._request.call_args.kwargs["json"]["method"] == "hybrid"
-
 
 @pytest.mark.asyncio
 async def test_v1_search_maps_auto_retrieve_method_to_hybrid():
